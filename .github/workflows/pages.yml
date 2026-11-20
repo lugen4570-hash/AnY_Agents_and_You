@@ -30,13 +30,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path _site/downloads | Out-Null
           Copy-Item website/* _site -Recurse -Force
-          $version = (Get-Content website/update.json -Raw | ConvertFrom-Json).version
-          # 安装包不放进仓库：从同名 Release 取，站点仍按 /Cojam/downloads/ 提供
-          gh release download "v$version" --repo "${{ github.repository }}" `
-            --pattern "Cojam-Setup-*.exe" --pattern "Cojam-Portable-*.exe" `
-            --dir _site/downloads --clobber
-          if (-not (Test-Path "_site/downloads/Cojam-Setup-$version.exe")) {
-            throw "Cojam-Setup-$version.exe 不在 Release v$version 里"
+          $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json
+          $version = $manifest.version
+          # Publish an update manifest only when its exact installer is available and verified.
+          gh release view "v$version" --repo "${{ github.repository }}" --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release download "v$version" --repo "${{ github.repository }}" `
+              --pattern "Cojam-Setup-$version.exe" --pattern "Cojam-Portable-$version.exe" `
+              --dir _site/downloads --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Release downloads failed for v$version" }
+            $installer = "_site/downloads/Cojam-Setup-$version.exe"
+            if (-not (Test-Path $installer)) { throw "Installer missing from Release v$version" }
+            if ((Get-Item $installer).Length -ne [long]$manifest.size -or
+                (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256.ToLowerInvariant()) {
+              throw "Installer does not match update.json"
+            }
+          } else {
+            Write-Warning "Release v$version is unavailable; publishing the website without update.json or downloads."
+            Remove-Item _site/update.json -Force
           }
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -1,7 +1,7 @@
 {
   "app": "Cojam",
   "version": "2.8.6",
-  "url": "https://jun-genyan.github.io/Cojam/downloads/Cojam-Setup-2.8.6.exe",
+  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.6.exe",
   "sha256": "da139b6053277cabd4de2d23312425e16baca791efb14ad9c6719e597b43ad3a",
   "size": 26707665,
   "notes": "安装版后台核心改为目录模式（--onedir），消除启动自解压延迟，并支持升级时安全清理旧运行目录同时完整保留会话与设备数据。"
