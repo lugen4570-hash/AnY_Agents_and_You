@@ -1,0 +1,756 @@
+# -*- coding: utf-8 -*-
+"""接更多 agent：注册表读配置、通用 cli 驱动、http 驱动、每场会议各自的参会者、没有会话的 AI 拿整份记录。"""
+import json, os, sys, tempfile, threading, time, unittest
+from unittest.mock import patch
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+DATA = tempfile.mkdtemp(prefix="rt_reg_")
+os.environ["ROUNDTABLE_LOG_DIR"] = DATA
+os.environ["ROUNDTABLE_NO_PRESETS"] = "1"      # 别让这台机器上装了哪些 CLI 影响测试
+AGD = os.path.join(DATA, "agents.d")
+os.makedirs(AGD, exist_ok=True)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from bridge import common, drivers, registry, room as R
+
+FAKE = os.path.join(DATA, "fake_agent.py")
+REC = os.path.join(DATA, "calls.jsonl")
+open(FAKE, "w", encoding="utf-8").write(
+    "import json, sys\n"
+    "open(%r, 'a', encoding='utf-8').write(json.dumps(sys.argv[1:], ensure_ascii=False) + chr(10))\n"
+    "print(json.dumps({'reply': 'fake 说：收到', 'sid': 'sid-fake-1'}, ensure_ascii=False))\n" % REC)
+
+
+def write_cfg(name, obj):
+    with open(os.path.join(AGD, name), "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False)
+
+
+def calls():
+    if not os.path.exists(REC):
+        return []
+    with open(REC, encoding="utf-8") as f:
+        return [json.loads(x) for x in f if x.strip()]
+
+
+CLI_CFG = {"id": "fake", "label": "假 CLI", "driver": "cli", "bin": ["python"],
+           "args": {"new": [FAKE, "{prompt}"], "resume": [FAKE, "--resume", "{session}", "{prompt}"]},
+           "prompt": "arg", "parse": {"type": "json", "text": "reply", "session": "sid"}}
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        # These tests exercise room behavior, not what happens to be installed
+        # on the machine running them. Keep the built-in agents deterministic.
+        from unittest.mock import patch
+        real_find = registry.find_executable
+        detector = patch.object(registry, 'find_executable',
+            side_effect=lambda name: ('test-' + name) if name in ('claude', 'codex') else real_find(name))
+        detector.start()
+        self.addCleanup(detector.stop)
+        for f in os.listdir(AGD):
+            os.remove(os.path.join(AGD, f))
+        if os.path.exists(REC):
+            os.remove(REC)
+
+
+class Registry(Base):
+    def test_bad_config_is_reported_not_fatal(self):
+        write_cfg("good.json", CLI_CFG)
+        write_cfg("bad.json", {"id": "Bad Id!", "driver": "cli", "bin": ["x"]})
+        registry.load()
+        self.assertIn("fake", registry.SPECS)
+        self.assertTrue(any("bad.json" in e for e in registry.ERRORS))
+        self.assertTrue(registry.get("fake")["enabled"])
+
+    def test_disabled_when_bin_missing(self):
+        write_cfg("nobin.json", {"id": "nobin", "driver": "cli", "bin": ["肯定没有这个命令-xyz"]})
+        registry.load()
+        self.assertFalse(registry.get("nobin")["enabled"])
+        self.assertNotIn("nobin", common.AIS)
+
+    def test_saved_enabled_cli_disappears_when_executable_is_removed(self):
+        from unittest.mock import patch
+        config = {"id": "savedcli", "driver": "cli", "bin": ["savedcli"], "enabled": True}
+        with patch.object(registry, "find_executable", return_value="/installed/savedcli"):
+            self.assertTrue(registry._norm(config)["enabled"])
+        with patch.object(registry, "find_executable", return_value=None):
+            self.assertFalse(registry._norm(config)["enabled"])
+
+    def test_rescan_sees_a_command_after_path_changes(self):
+        from unittest.mock import patch
+        directory = tempfile.mkdtemp(prefix="cojam_scan_")
+        executable = os.path.join(directory, "cojam-scan-test" + (".cmd" if os.name == "nt" else ""))
+        with open(executable, "w", encoding="utf-8") as f:
+            f.write("@exit /b 0\n" if os.name == "nt" else "#!/bin/sh\nexit 0\n")
+        os.chmod(executable, 0o755)
+        with patch.dict(os.environ, {"PATH": directory + os.pathsep + os.environ.get("PATH", "")}):
+            self.assertIsNotNone(common.find_executable("cojam-scan-test"))
+        os.remove(executable)
+        with patch.dict(os.environ, {"PATH": directory + os.pathsep + os.environ.get("PATH", "")}):
+            self.assertIsNone(common.find_executable("cojam-scan-test"))
+
+    def test_reserved_and_bad_driver(self):
+        write_cfg("a.json", {"id": "user", "driver": "cli", "bin": ["python"]})
+        write_cfg("b.json", {"id": "x", "driver": "telepathy", "bin": ["python"]})
+        registry.load()
+        self.assertIsNone(registry.get("user"))
+        self.assertIsNone(registry.get("x"))
+        self.assertEqual(len(registry.ERRORS), 2)
+
+    def test_mention_picks_up_new_agent(self):
+        write_cfg("good.json", CLI_CFG)
+        registry.load()
+        self.assertEqual(common.mentions("@fake 你看 @claude"), ["fake", "claude"])
+        self.assertEqual(common.mentions("@用户 好"), ["用户"])
+
+
+class CliDriver(Base):
+    def test_model_controls_match_driver_arguments_and_model_specific_efforts(self):
+        from bridge import agents
+        write_cfg('plain.json', dict(CLI_CFG, models=['ignored-model'], efforts=['high']))
+        registry.load()
+        plain = agents.model_capabilities('fake')
+        self.assertFalse(plain['model_supported'])
+        self.assertFalse(plain['effort_supported'])
+        self.assertEqual(plain['models'], [])
+        cfg = dict(CLI_CFG, models=['fast', 'reasoning'], efforts=['low', 'high'],
+                   model_efforts={'fast': [], 'reasoning': ['low', 'high']},
+                   args={'model': ['--model', '{model}'], 'effort': ['--effort', '{effort}'], 'new': [FAKE, '{prompt}']})
+        write_cfg('plain.json', cfg)
+        registry.load()
+        caps = agents.model_capabilities('fake')
+        self.assertTrue(caps['model_supported'])
+        self.assertEqual(caps['efforts_by_model']['fast'], [])
+        self.assertEqual(caps['efforts_by_model']['reasoning'], ['low', 'high'])
+
+    def test_codex_catalog_can_explicitly_disable_reasoning(self):
+        from bridge import agents
+        with patch.object(agents, 'codex_catalog', return_value=[('fast', [])]):
+            self.assertEqual(agents.effort_options('codex', 'fast'), [])
+
+    def test_qoder_cli_preset_detects_only_the_actual_cli(self):
+        from pathlib import Path
+        preset = json.loads((Path(__file__).resolve().parents[1] / 'bridge' / 'presets' / 'qodercli.json').read_text(encoding='utf-8'))
+        with patch.object(registry, 'find_executable', return_value=None):
+            self.assertFalse(registry._norm(preset)['enabled'])
+        with patch.object(registry, 'find_executable', return_value='qodercli.exe'):
+            spec = registry._norm(preset)
+        self.assertTrue(spec['enabled'])
+        self.assertEqual(spec['models'], [])
+        self.assertEqual(spec['args']['model'], ['--model', '{model}'])
+        self.assertIn('high', spec['efforts'])
+
+    def test_optional_model_and_effort_reach_cli_only_when_selected(self):
+        cfg = dict(CLI_CFG, args={"new": [FAKE, "{prompt}"],
+                                   "model": ["--model", "{model}"],
+                                   "effort": ["--reasoning-effort", "{effort}"]})
+        spec = registry._norm(cfg)
+        args, _ = drivers._compose(spec, {"model": "performance", "effort": "high"}, None, [], "discuss", "hello")
+        self.assertEqual(args, ["--model", "performance", "--reasoning-effort", "high", FAKE, "hello"])
+        args, _ = drivers._compose(spec, {"model": "", "effort": ""}, None, [], "discuss", "hello")
+        self.assertEqual(args, [FAKE, "hello"])
+
+    def test_roundtrip_and_session_reuse(self):
+        write_cfg("good.json", CLI_CFG)
+        registry.load()
+        ok, text, sid, edits = drivers.call("fake", "第一句", None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "fake 说：收到")
+        self.assertEqual(sid, "sid-fake-1")
+        ok2, text2, sid2, _ = drivers.call("fake", "第二句", sid, (), "discuss", None)
+        self.assertTrue(ok2, text2)
+        got = calls()
+        self.assertEqual(got[0][-1], "第一句")
+        self.assertIn("--resume", got[1])          # 第二轮带着会话 id 重开
+        self.assertIn("sid-fake-1", got[1])
+
+    def test_missing_binary_message(self):
+        write_cfg("nb.json", {"id": "nb", "driver": "cli", "bin": ["肯定没有这个命令-xyz"],
+                              "args": {"new": ["{prompt}"]}})
+        registry.load()
+        ok, text, sid, _ = drivers.call("nb", "hi", None, (), "discuss", None)
+        self.assertFalse(ok)
+        self.assertIn("找不到", text)
+
+
+class HttpDriver(Base):
+    def test_http_roundtrip(self):
+        got_body = {}
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                got_body.update(json.loads(self.rfile.read(n).decode("utf-8")))
+                out = json.dumps({"text": "http 那边的回复", "session": "h-9"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(out)))
+                self.end_headers()
+                self.wfile.write(out)
+
+            def log_message(self, *a):
+                pass
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            write_cfg("h.json", {"id": "h", "driver": "http", "label": "H", "default": ["service-model", "high"],
+                                 "endpoint": "http://127.0.0.1:%d/bridge" % srv.server_address[1]})
+            registry.load()
+            ok, text, sid, _ = drivers.call("h", "你好", "h-1", (), "discuss", None)
+            self.assertTrue(ok, text)
+            self.assertEqual(text, "http 那边的回复")
+            self.assertEqual(sid, "h-9")
+            self.assertEqual(got_body["speaker"], "h")
+            self.assertEqual(got_body["session"], "h-1")
+            self.assertIn("prompt", got_body)
+            self.assertEqual((got_body['model'], got_body['effort']), ('service-model', 'high'))
+        finally:
+            srv.shutdown()
+
+
+class Participants(Base):
+    def setUp(self):
+        super().setUp()
+        write_cfg("good.json", CLI_CFG)
+        registry.load()
+        self.seen = []
+        self._orig = R.ai_caller
+        R.ai_caller = lambda ai, prompt, sid, imgs, mode=None, room=None: (
+            self.seen.append(ai), (True, "@用户 好", sid or "s-" + ai, []))[1]
+        self.wd = tempfile.mkdtemp(prefix="rt_reg_wd_")
+
+    def tearDown(self):
+        R.ai_caller = self._orig
+
+    def wait(self, r, t=8):
+        end = time.time() + t
+        while time.time() < end:
+            if not r.busy_for():
+                return True
+            time.sleep(0.05)
+        return False
+
+    def test_new_room_defaults_to_claude_codex(self):
+        r = R.rooms.create("新会", "", self.wd)
+        self.assertEqual(r.ais, ["claude", "codex"])
+
+    def test_room_rejects_settings_the_cli_cannot_transmit(self):
+        r = R.rooms.create('模型能力', '', self.wd)
+        r.set_participants(['fake'])
+        self.assertFalse(r.set_models('fake', 'invented', '')[0])
+        self.assertFalse(r.set_models('fake', '', 'high')[0])
+        self.assertTrue(r.set_models('fake', '', '')[0])
+        self.assertFalse(r.model_info('fake')['model_supported'])
+
+    def test_room_does_not_inherit_an_effort_unsupported_by_new_model(self):
+        from bridge import agents
+        r = R.rooms.create('模型默认', '', self.wd)
+        with patch.object(agents, 'codex_catalog', return_value=[('fast', [])]):
+            self.assertTrue(r.set_models('codex', 'fast', '')[0])
+            self.assertEqual(r.effective_models('codex'), ('fast', ''))
+            self.assertEqual(r.model_info('codex')['efforts_by_model']['fast'], [])
+
+    def test_only_participants_get_called(self):
+        r = R.rooms.create("选人", "", self.wd)
+        self.assertTrue(r.set_participants(["claude", "fake"])[0])
+        self.assertEqual(r.ais, ["claude", "fake"])
+        r.handle_message("你", "大家好")          # 没 @：叫会里的全部
+        self.assertTrue(self.wait(r))
+        self.assertEqual(sorted(self.seen), ["claude", "fake"])
+        self.assertNotIn("codex", r.ais)
+
+    def test_mention_of_non_participant_is_ignored(self):
+        r = R.rooms.create("不叫人", "", self.wd)
+        r.set_participants(["claude"])
+        r.handle_message("你", "@codex 你好")
+        time.sleep(0.4)
+        self.assertEqual(self.seen, [])
+
+    def test_empty_conversation_and_unknown_contact(self):
+        r = R.rooms.create("边界", "", self.wd)
+        self.assertTrue(r.set_participants([])[0])
+        self.assertEqual(r.ais, [])
+        self.assertFalse(r.set_participants(["不存在的"])[0])
+
+    def test_agent_installed_after_room_created(self):
+        for f in os.listdir(AGD):
+            os.remove(os.path.join(AGD, f))
+        registry.load()                      # 这会儿还没装 fake
+        r = R.rooms.create("后来的", "", self.wd)
+        self.assertNotIn("fake", r.ais)
+        write_cfg("good.json", CLI_CFG)
+        registry.load()                      # 会开完之后才装上
+        self.assertTrue(r.set_participants(["claude", "fake"])[0])
+        r.handle_message("你", "@fake 你好")
+        self.assertTrue(self.wait(r))
+        self.assertIn("fake", self.seen)     # 会后加的 agent 也能叫（锁、per-AI 字段都按需建）
+
+    def test_guest_joins_and_is_never_called(self):
+        r = R.rooms.create("外来", "", self.wd)
+        ok, err = r.join_external("ghost")
+        self.assertTrue(ok, err)
+        self.assertIn("ghost", r.ais)
+        self.assertTrue(r.is_guest("ghost"))
+        r.handle_message("ghost", "我经 /api/post 进来了")
+        time.sleep(0.4)
+        self.assertEqual(self.seen, [])           # 会外参与者不会被会议室叫
+        self.assertEqual(r.messages[-1]["speaker"], "ghost")
+
+    def test_bad_guest_name_rejected(self):
+        r = R.rooms.create("外来2", "", self.wd)
+        self.assertFalse(r.join_external("Bad Name")[0])
+        self.assertFalse(r.join_external("user")[0])
+
+    def test_context_full_sends_whole_transcript(self):
+        write_cfg("full.json", dict(CLI_CFG, id="full1", context="full"))
+        registry.load()
+        prompts = []
+        R.ai_caller = lambda ai, prompt, sid, imgs, mode=None, room=None: (
+            prompts.append(prompt), (True, "@用户 好", sid, []))[1]
+        r = R.rooms.create("整份", "", self.wd)
+        r.set_participants(["full1"])
+        r.handle_message("你", "@full1 第一件事")
+        self.assertTrue(self.wait(r))
+        r.handle_message("你", "@full1 第二件事")
+        self.assertTrue(self.wait(r))
+        self.assertIn("第一件事", prompts[1])     # 没有会话的 AI，第二轮也要看得到第一轮
+        self.assertIn("第二件事", prompts[1])
+
+
+class PresetHiding(Base):
+    """预置联系人可以在界面上删除（记进隐藏名单），重新接入同名联系人会解除隐藏。"""
+
+    def setUp(self):
+        super().setUp()
+        self.saved_dir = registry.PRESET_DIR
+        self.preset_dir = os.path.join(DATA, "presets")
+        os.makedirs(self.preset_dir, exist_ok=True)
+        for f in os.listdir(self.preset_dir):
+            os.remove(os.path.join(self.preset_dir, f))
+        self.hidden = os.path.join(DATA, "hidden_presets.json")
+        if os.path.exists(self.hidden):
+            os.remove(self.hidden)
+        os.environ.pop("ROUNDTABLE_NO_PRESETS", None)
+        registry.PRESET_DIR = self.preset_dir
+
+    def tearDown(self):
+        registry.PRESET_DIR = self.saved_dir
+        os.environ["ROUNDTABLE_NO_PRESETS"] = "1"
+        if os.path.exists(self.hidden):
+            os.remove(self.hidden)
+        super().tearDown()
+
+    @staticmethod
+    def _write_preset(name, obj):
+        with open(os.path.join(DATA, "presets", name), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+
+    def test_preset_removable_and_hidden(self):
+        self._write_preset("cli1.json", dict(CLI_CFG, id="cli1", label="预置 CLI"))
+        registry.load()
+        self.assertIn("cli1", registry.SPECS)
+        ok, msg = registry.remove_agent("cli1")
+        self.assertTrue(ok, msg)
+        self.assertNotIn("cli1", registry.SPECS)
+        self.assertNotIn("cli1", [a["id"] for a in registry.catalog()["agents"]])
+        self.assertIn("cli1", json.load(open(self.hidden, encoding="utf-8")))
+        self.assertIn("cli1", [a["id"] for a in registry.discover_hidden_presets()])
+        self.assertTrue(registry.restore_preset("cli1"))
+        self.assertIn("cli1", registry.SPECS)
+
+    def test_readding_same_id_unhides_preset(self):
+        self._write_preset("cli1.json", dict(CLI_CFG, id="cli1", label="预置 CLI"))
+        registry.load()
+        registry.remove_agent("cli1")
+        ok, msg = registry.save_agent(dict(CLI_CFG, id="cli1", label="我的预置"))
+        self.assertTrue(ok, msg)
+        self.assertIn("cli1", registry.SPECS)
+        self.assertTrue(registry.get("cli1")["user"])
+        self.assertNotIn("cli1", json.load(open(self.hidden, encoding="utf-8")))
+
+    def test_agents_d_override_wins_over_hidden_preset(self):
+        self._write_preset("cli1.json", dict(CLI_CFG, id="cli1", label="预置 CLI"))
+        write_cfg("cli1.json", dict(CLI_CFG, id="cli1", label="我自己的"))
+        json.dump(["cli1"], open(self.hidden, "w", encoding="utf-8"))
+        registry.load()
+        spec = registry.get("cli1")
+        self.assertTrue(spec["user"])            # agents.d 的同名配置盖过被隐藏的预置
+        self.assertEqual(spec["label"], "我自己的")
+
+    def test_removing_override_does_not_reveal_bundled_contact(self):
+        self._write_preset("cli1.json", dict(CLI_CFG, id="cli1", label="Bundled"))
+        write_cfg("cli1.json", dict(CLI_CFG, id="cli1", label="Override"))
+        registry.load()
+        self.assertTrue(registry.remove_agent("cli1")[0])
+        self.assertIsNone(registry.get("cli1"))
+        registry.load()
+        self.assertIsNone(registry.get("cli1"))
+
+    def test_builtin_still_not_removable(self):
+        ok, _ = registry.remove_agent("claude")
+        self.assertFalse(ok)
+
+
+class ShortcutDetection(Base):
+    """桌面端应用靠开始菜单快捷方式检测：装在哪个盘都认（比如 Devin 装在 E:\\）。"""
+
+    def setUp(self):
+        super().setUp()
+        self.saved_dir = registry.PRESET_DIR
+        self.preset_dir = os.path.join(DATA, "presets")
+        os.makedirs(self.preset_dir, exist_ok=True)
+        for f in os.listdir(self.preset_dir):
+            os.remove(os.path.join(self.preset_dir, f))
+        menu = os.path.join(DATA, "menu", "Microsoft", "Windows", "Start Menu", "Programs", "Devin")
+        os.makedirs(menu, exist_ok=True)
+        open(os.path.join(menu, "Devin.lnk"), "w", encoding="utf-8").close()
+        self.real_shortcut_target_exists = registry._shortcut_target_exists
+        shortcut = patch.object(registry, "_shortcut_target_exists", return_value=True)
+        shortcut.start()
+        self.addCleanup(shortcut.stop)
+        self.hidden = os.path.join(DATA, "hidden_presets.json")
+        if os.path.exists(self.hidden):
+            os.remove(self.hidden)
+        os.environ.pop("ROUNDTABLE_NO_PRESETS", None)
+        registry.PRESET_DIR = self.preset_dir
+
+    def tearDown(self):
+        registry.PRESET_DIR = self.saved_dir
+        os.environ["ROUNDTABLE_NO_PRESETS"] = "1"
+        if os.path.exists(self.hidden):
+            os.remove(self.hidden)
+        super().tearDown()
+
+    @staticmethod
+    def _write_preset(name, obj):
+        with open(os.path.join(DATA, "presets", name), "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+
+    def _load_with_fake_menu(self):
+        env = {"APPDATA": os.path.join(DATA, "menu"), "ProgramData": os.path.join(DATA, "no-common")}
+        with patch.dict(os.environ, env):
+            registry.load()
+
+    def test_start_menu_shortcut_counts_as_installed(self):
+        self._write_preset("devin.json", dict(CLI_CFG, id="devin", label="Devin", driver="external",
+                                              bin=[], detect=[os.path.join(DATA, "missing.exe")],
+                                              shortcuts=["Devin"]))
+        self._load_with_fake_menu()
+        spec = registry.get("devin")
+        self.assertTrue(spec["enabled"])
+        self.assertEqual(spec["driver"], "external")
+
+    def test_no_shortcut_and_no_path_stays_undetected(self):
+        self._write_preset("ghost.json", dict(CLI_CFG, id="ghostapp", label="Ghost", driver="external",
+                                              bin=[], detect=[os.path.join(DATA, "missing.exe")],
+                                              shortcuts=["Ghost"]))
+        self._load_with_fake_menu()
+        self.assertFalse(registry.get("ghostapp")["enabled"])
+
+    def test_stale_shortcut_does_not_count_as_installed(self):
+        self._write_preset("devin.json", dict(CLI_CFG, id="devin", driver="external",
+                                              bin=[], shortcuts=["Devin"]))
+        with patch.object(registry, "_shortcut_target_exists", return_value=False):
+            self._load_with_fake_menu()
+        self.assertFalse(registry.get("devin")["enabled"])
+
+    def test_resolved_shortcut_rechecks_removed_target(self):
+        link = os.path.join(DATA, "test-target.lnk")
+        target = os.path.join(DATA, "test-target.exe")
+        with open(link, "w", encoding="utf-8") as file:
+            file.write("link")
+        with open(target, "w", encoding="utf-8") as file:
+            file.write("program")
+        with patch.object(registry, "_shortcut_target", return_value=target):
+            self.assertTrue(self.real_shortcut_target_exists(link))
+            os.remove(target)
+            self.assertFalse(self.real_shortcut_target_exists(link))
+
+    def test_hidden_external_preset_is_discoverable_again(self):
+        self._write_preset("devin.json", dict(CLI_CFG, id="devin", label="Devin", driver="external",
+                                              bin=[], shortcuts=["Devin"]))
+        registry._set_hidden(["devin"])
+        self._load_with_fake_menu()
+        self.assertNotIn("devin", registry.SPECS)
+        with patch.dict(os.environ, {"APPDATA": os.path.join(DATA, "menu"), "ProgramData": os.path.join(DATA, "no-common")}):
+            found = [row["id"] for row in registry.discover_hidden_presets()]
+            self.assertIn("devin", found)       # 「重新检索」能找回删掉的会外参与者
+            self.assertTrue(registry.restore_preset("devin"))
+        self.assertIn("devin", registry.SPECS)
+
+
+class AntigravityCli(Base):
+    """Antigravity 自带的 agy CLI：自动发现、JSON 输出解析、会话续接、交给终端。"""
+
+    def _load(self):
+        saved = os.environ.pop("ROUNDTABLE_NO_PRESETS", None)
+        find = lambda n: "/opt/agy" if os.path.basename(n).lower().startswith("agy") else None
+        try:
+            with patch.object(common, "find_executable", side_effect=find), \
+                 patch.object(registry, "find_executable", side_effect=find):
+                registry.load()
+        finally:
+            if saved is not None:
+                os.environ["ROUNDTABLE_NO_PRESETS"] = saved
+        return registry.get("antigravity")
+
+    def test_preset_is_a_local_cli_agent(self):
+        spec = self._load()
+        self.assertIsNotNone(spec)
+        self.assertEqual(spec["driver"], "cli")
+        self.assertTrue(spec["enabled"])
+        with patch.object(common, "find_executable", return_value="/opt/agy"):
+            self.assertEqual(registry.exe_of(spec), ["/opt/agy"])
+        self.assertEqual(spec["prompt"], "stdin")
+        self.assertEqual(spec["args"]["new"], ["--print=", "--input-format", "stream-json", "--output-format", "stream-json"])
+        self.assertEqual(spec["args"]["resume"][:2], ["--conversation", "{session}"])
+        self.assertIn("--mode", spec["args"]["read"])
+        self.assertIn("--sandbox", spec["args"]["read"])
+        self.assertIn("--dangerously-skip-permissions", spec["args"]["read"])
+        self.assertIn("--disable-slash-commands", spec["args"]["read"])
+        self.assertIn("--mode", spec["args"]["work"])
+        self.assertIn("--disable-slash-commands", spec["args"]["work"])
+        self.assertTrue(spec["caps"]["handoff"])
+        self.assertIn("--conversation", spec["handoff"])
+        # agy 看到 SSH_* 会改用文件令牌，读不到 Windows 已登录的凭据
+        self.assertEqual(spec["env"].get("SSH_CONNECTION"), "")
+
+    def test_parses_agy_json_output(self):
+        spec = self._load()
+        stream_out = (
+            '{"event": "init", "conversation_id": "9efc7920-ded1-4417-aeb5-1447d41b3713"}\n'
+            '{"event": "result", "conversation_id": "9efc7920-ded1-4417-aeb5-1447d41b3713",'
+            ' "result": {"status": "SUCCESS", "response": "OK\\n"}}\n'
+        )
+        text, sess = drivers._parse(spec, stream_out)
+        self.assertEqual(text, "OK")
+        self.assertEqual(sess, "9efc7920-ded1-4417-aeb5-1447d41b3713")
+        # 兼容单行 JSON 输出
+        text2, sess2 = drivers._parse(
+            spec, '{"conversation_id": "9efc7920-ded1-4417-aeb5-1447d41b3713",'
+                  ' "status": "SUCCESS", "response": "OK\\n"}')
+        self.assertEqual(text2, "OK")
+        self.assertEqual(sess2, "9efc7920-ded1-4417-aeb5-1447d41b3713")
+
+    def test_upgrades_legacy_agents_d_and_streams_long_prompt_on_stdin(self):
+        write_cfg("antigravity.json", {
+            "id": "antigravity",
+            "label": "Google Antigravity",
+            "driver": "cli",
+            "bin": ["agy"],
+            "args": {"new": ["-p", "{prompt}"]},
+            "parse": {"type": "text"},
+            "context": "full",
+        })
+        spec = self._load()
+        self.assertEqual(spec["prompt"], "stdin")
+        self.assertEqual(spec["context"], "delta")
+        self.assertNotIn("{prompt}", spec["args"]["new"])
+        long_prompt = "长提示词内容" * 8000
+        seen = {}
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            seen["cmd"] = list(cmd)
+            seen["stdin"] = stdin_text
+            line = '{"event": "result", "conversation_id": "conv-1", "result": {"response": "收到"}}'
+            on_line(line)
+            return 0, line, "", None
+
+        with patch.object(common, "find_executable", return_value="/opt/agy"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, sid, _ = drivers.call("antigravity", long_prompt, None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "收到")
+        self.assertEqual(sid, "conv-1")
+        self.assertTrue(all(len(a) < 200 for a in seen["cmd"]))
+        payload = json.loads(seen["stdin"].strip())
+        self.assertEqual(payload["event"], "user")
+        self.assertEqual(payload["message"]["content"][0]["text"], long_prompt)
+
+    def test_reports_denied_actions_when_agy_returns_empty_response(self):
+        self._load()
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            line = json.dumps({
+                "event": "result",
+                "conversation_id": "conv-denied",
+                "result": {
+                    "status": "SUCCESS",
+                    "response": "",
+                    "denied_actions": [{"action": "command", "display_name": "Bash"}],
+                },
+            })
+            on_line(line)
+            return 0, line, "", None
+
+        with patch.object(common, "find_executable", return_value="/opt/agy"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, sid, _ = drivers.call("antigravity", "hello", None, (), "discuss", None)
+        self.assertFalse(ok)
+        self.assertIn("权限拦截", text)
+        self.assertIn("Bash", text)
+
+
+class ExecutableSearch(unittest.TestCase):
+    """bin 里可以直接写绝对路径 / 环境变量；Antigravity 的 agy 在 ~/.gemini/bin 也能找到。"""
+
+    def test_finds_cli_in_gemini_bin(self):
+        home = tempfile.mkdtemp(prefix="cojam_home_")
+        bindir = os.path.join(home, ".gemini", "bin")
+        os.makedirs(bindir)
+        name = "cojam-agy-test" + (".exe" if os.name == "nt" else "")
+        path = os.path.join(bindir, name)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("")
+        os.chmod(path, 0o755)
+        env = {"HOME": home, "USERPROFILE": home, "PATH": ""}
+        with patch.dict(os.environ, env):
+            found = common.find_executable(name)
+        self.assertEqual(os.path.normcase(found or ""), os.path.normcase(path))
+
+    def test_absolute_path_is_found_without_path(self):
+        directory = tempfile.mkdtemp(prefix="cojam_abs_")
+        exe = os.path.join(directory, "cojam-abs-test" + (".exe" if os.name == "nt" else ""))
+        with open(exe, "w", encoding="utf-8") as f:
+            f.write("")
+        os.chmod(exe, 0o755)
+        with patch.dict(os.environ, {"PATH": ""}):
+            self.assertEqual(common.find_executable(exe), exe)
+
+    @unittest.skipUnless(os.name == "nt", "Windows 环境变量写法")
+    def test_expands_environment_variable(self):
+        home = tempfile.mkdtemp(prefix="cojam_env_")
+        exe = os.path.join(home, "cojam-env-test.exe")
+        with open(exe, "w", encoding="utf-8") as f:
+            f.write("")
+        with patch.dict(os.environ, {"USERPROFILE": home, "PATH": ""}):
+            self.assertEqual(common.find_executable("%USERPROFILE%\\cojam-env-test.exe"), exe)
+
+
+class LongPromptDelivery(Base):
+    """长 prompt 不能塞进 Windows 命令行（cmd 8191 / CreateProcess 32767）。"""
+
+    def test_prompt_file_placeholder_writes_and_cleans_up(self):
+        write_cfg("pf.json", {
+            "id": "pf",
+            "driver": "cli",
+            "bin": ["pf-cli"],
+            "args": {"new": ["--prompt-file", "{prompt_file}"]},
+            "parse": {"type": "text"},
+        })
+        registry.load()
+        seen = {}
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            seen["cmd"] = list(cmd)
+            seen["stdin"] = stdin_text
+            idx = cmd.index("--prompt-file") + 1
+            seen["path"] = cmd[idx]
+            with open(seen["path"], encoding="utf-8") as handle:
+                seen["file_text"] = handle.read()
+            on_line("done")
+            return 0, "done", "", None
+
+        with patch.object(common, "find_executable", return_value="/opt/pf-cli"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, _, _ = drivers.call("pf", "你好世界", None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "done")
+        self.assertEqual(seen["stdin"], "")
+        self.assertEqual(seen["file_text"], "你好世界")
+        self.assertFalse(os.path.exists(seen["path"]))
+
+    def test_grok_long_prompt_switches_minus_p_to_prompt_file(self):
+        write_cfg("grok.json", {
+            "id": "grok",
+            "driver": "cli",
+            "bin": ["grok"],
+            "args": {"base": ["-p", "{prompt}"]},
+            "parse": {"type": "text"},
+            "context": "full",
+        })
+        registry.load()
+        long_prompt = "x" * 30000
+        seen = {}
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            seen["cmd"] = list(cmd)
+            seen["stdin"] = stdin_text
+            idx = cmd.index("--prompt-file") + 1
+            seen["path"] = cmd[idx]
+            with open(seen["path"], encoding="utf-8") as handle:
+                seen["file_text"] = handle.read()
+            on_line("grok ok")
+            return 0, "grok ok", "", None
+
+        with patch.object(common, "find_executable", return_value="C:\\Users\\test\\.grok\\bin\\grok.exe"), \
+             patch.object(drivers.os, "name", "nt"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, _, _ = drivers.call("grok", long_prompt, None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "grok ok")
+        self.assertNotIn("-p", seen["cmd"])
+        self.assertIn("--prompt-file", seen["cmd"])
+        self.assertEqual(seen["stdin"], "")
+        self.assertEqual(seen["file_text"], long_prompt)
+        self.assertFalse(os.path.exists(seen["path"]))
+
+    def test_qodercn_long_prompt_moves_minus_p_arg_to_stdin(self):
+        write_cfg("qodercn.json", {
+            "id": "qodercn",
+            "driver": "cli",
+            "bin": ["qodercn"],
+            "args": {"base": ["-p", "{prompt}"]},
+            "parse": {"type": "text"},
+            "context": "full",
+        })
+        registry.load()
+        long_prompt = "q" * 30000
+        seen = {}
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            seen["cmd"] = list(cmd)
+            seen["stdin"] = stdin_text
+            on_line("qoder ok")
+            return 0, "qoder ok", "", None
+
+        with patch.object(common, "find_executable", return_value="D:\\npm\\global\\qodercn.cmd"), \
+             patch.object(drivers.os, "name", "nt"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, _, _ = drivers.call("qodercn", long_prompt, None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "qoder ok")
+        self.assertNotIn(long_prompt, seen["cmd"])
+        self.assertIn("-p", seen["cmd"])
+        self.assertEqual(seen["stdin"], long_prompt)
+
+    def test_cursor_preset_streams_long_prompt_on_stdin(self):
+        from pathlib import Path
+        preset = json.loads(
+            (Path(__file__).resolve().parents[1] / "bridge" / "presets" / "cursor.json").read_text(encoding="utf-8")
+        )
+        write_cfg("cursor.json", preset)
+        registry.load()
+        long_prompt = "c" * 30000
+        seen = {}
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            seen["cmd"] = list(cmd)
+            seen["stdin"] = stdin_text
+            out = json.dumps({"result": "cursor ok", "session_id": "cur-1"})
+            on_line(out)
+            return 0, out, "", None
+
+        with patch.object(common, "find_executable", return_value="D:\\cursor\\versions\\2026.11.11-b912975\\node.exe"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, sid, _ = drivers.call("cursor", long_prompt, None, (), "discuss", None)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "cursor ok")
+        self.assertEqual(sid, "cur-1")
+        self.assertNotIn(long_prompt, seen["cmd"])
+        self.assertEqual(seen["stdin"], long_prompt)
+
+
+if __name__ == "__main__":
+    unittest.main()

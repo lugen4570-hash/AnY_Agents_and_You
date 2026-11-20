@@ -1,0 +1,2144 @@
+# -*- coding: utf-8 -*-
+"""一场会议 = 一个 Room。几个 Room 可以同时跑：各自的消息、排队、锁、AI 会话、codex 后台进程都分开。
+
+同一个 Room 里的规矩跟原来一样：
+1. 用户发言叫起来的 AI 并行回答（每个 AI 一个线程）；AI 之间的对话进这个 Room 自己的串行队列。
+2. 同一个 AI 永远串行（它在这场会议里只有一个会话）：每个 AI 一把锁，无论来源都排队等它自己。
+3. 增量在拿到锁之后才取快照，所以排着队的那段时间里新来的消息也会带上。
+
+本文件后半段是会议目录的增删（新建、列表、归档、回收站）和 Rooms（已经读进内存的会议）。"""
+import copy, json, os, queue, re, secrets, shutil, stat, threading, time
+from contextlib import ExitStack
+from datetime import datetime
+from typing import Any, Sequence
+from urllib.parse import quote
+
+from . import access, agents, detached_jobs, drivers, execution, model_catalog, registry, workspace as ws
+from .common import (AIS, ATT_BASE, LAST_FILE, LOG_DIR, MAX_ATTACH, MAX_IMAGES, MAX_UPLOAD, MEET_DIR, MODES, PROJECT,
+                     ROOM_RE, SID_RE, TRASH_DIR, get_logger, in_dir, is_archived, kill_tree, kind_of, mentions, mode_key,
+                     norm, now_str, preamble, read_json, ref_safe, safe_title, sanitize_name, write_json)
+from .guard import guard
+
+logger = get_logger(__name__)
+registry.ensure()
+
+# 测试时可替换：ai_caller(ai, prompt, sid, images, mode, room) -> (ok, text, sid, edits)
+ai_caller = drivers.call
+ai_native_compact = agents.compact_native   # (ai, sid, room) -> bool
+
+QUOTE_LEN = 200
+MAX_CONTEXT = 120          # context = full 的 AI（没有会话、每轮递整份记录）最多递多少条，再长就只给最近的
+MAX_BOARD = 100
+MAX_BOARD_TEXT = 500
+BOARD_CMD = re.compile(r"^\s*[【\[](公告|待办|完成|删)[】\]]\s*(.*?)\s*$")
+BOARD_KIND = {"公告": "note", "待办": "todo"}
+KIND_CN = {"note": "公告", "todo": "待办"}
+SEND_CMD = re.compile(r"^\s*[【\[]发送[】\]]\s*(.*?)\s*$")
+MD_IMAGE = re.compile(r"!\[([^\]\n]*)\]\(\s*(<[^>\n]+>|(?:[^()\s]|\([^()\n]*\))(?:[^()\n]|\([^()\n]*\))*?)\s*\)")   # 路径里允许一层成对括号，比如 a(1).png
+CLOSING = "现在轮到你（%s）回复。只输出你要说的话，不要加发言人前缀。"
+
+# 每场会议每个 AI 一把钥匙：会议室起 claude / codex 时带上，它们的钩子、MCP 调用拿这把钥匙证明"我是哪场会议的哪个 AI"
+KEYS: dict[str, tuple[str, str]] = {}            # 钥匙 -> (会议号, ai)
+keys_lock = threading.Lock()
+
+
+def who_by_key(key: str | None) -> tuple[str, str] | None:
+    with keys_lock:
+        return KEYS.get(key or "")
+
+
+# 每个 AI 各一份的那些字段，缺了按这里的默认值补（装了新 agent 之后老会议也能用）
+PER_AI_EMPTY = {"last_seen": -1, "announcement_seen": 0, "handed_off": False, "returned": False,
+                "mode_seen": "discuss", "ctx": None, "old_sessions": []}
+
+
+def default_meta(title, ann, wd=None):
+    return {"title": title or "会议", "announcement": ann or "", "ann_ver": 1, "created": now_str(),
+            "workdir": wd or PROJECT,
+            "status": "open",
+            "last_seen": {a: -1 for a in AIS}, "announcement_seen": {a: 0 for a in AIS},
+            "handed_off": {a: False for a in AIS}, "returned": {a: False for a in AIS},
+            "mode": "discuss", "mode_seen": {a: "discuss" for a in AIS},
+            "step_seq": 0, "steps": {},
+            "board": [], "board_seq": 0, "ctx": {a: None for a in AIS},
+            "models": {a: {"model": "", "effort": ""} for a in AIS},
+            "tools": {a: agents.default_tools(a) for a in AIS},
+            "goal_synced": {"codex": None},
+            "participants": registry.default_participants(),
+            "old_sessions": {a: [] for a in AIS}}
+
+
+def fix_meta(m):
+    d = default_meta("", "")
+    for k, v in d.items():
+        m.setdefault(k, v)
+    for k, empty in PER_AI_EMPTY.items():
+        if not isinstance(m.get(k), dict):
+            m[k] = dict(d.get(k) or {})
+        for a in AIS:
+            if a in d.get(k, {}):
+                m[k].setdefault(a, d[k][a])
+            else:
+                m[k].setdefault(a, list() if isinstance(empty, list) else empty)
+    if not isinstance(m.get("models"), dict):
+        m["models"] = dict(d["models"])
+    for a in AIS:
+        if not isinstance(m["models"].get(a), dict):
+            m["models"][a] = {"model": "", "effort": ""}
+        m["models"][a].setdefault("model", "")
+        m["models"][a].setdefault("effort", "")
+    if not isinstance(m.get("tools"), dict):
+        m["tools"] = dict(d["tools"])
+    for a in AIS:
+        m["tools"][a] = agents.fix_tools(a, m["tools"].get(a))
+    if not isinstance(m.get("goal_synced"), dict):
+        m["goal_synced"] = {"codex": None}
+    # 谁参加这场会议。老会议没有这个字段：按原来的 claude + codex 算，不让它们突然多出几个 AI
+    ok = registry.enabled_ids()
+    cur = m.get("participants")
+    if not isinstance(cur, list):
+        cur = [a for a in ("claude", "codex") if a in ok] or list(ok)
+    cur = [a for a in cur if isinstance(a, str) and (a in ok or registry.get(a) is None)]
+    m["participants"] = cur
+    return m
+
+
+# ===== 附件 =====
+def _safe_relpath(path, start):
+    try:
+        return os.path.relpath(path, start).replace("\\", "/")
+    except ValueError:
+        return os.path.abspath(path).replace("\\", "/")
+
+
+def make_attachment(full):
+    full = os.path.normpath(full)
+    real_full = os.path.realpath(full)
+    real_meet = os.path.realpath(MEET_DIR)
+    try:
+        same_meet = in_dir(real_full, real_meet)
+    except ValueError:
+        same_meet = False
+    url = ("/files/" + quote(_safe_relpath(real_full, real_meet))) if same_meet else ""
+    return {"name": os.path.basename(full).split("_", 1)[-1],
+            "path": _safe_relpath(full, ATT_BASE),
+            "url": url,
+            "kind": kind_of(full), "size": os.path.getsize(full)}
+
+
+def abs_path(att):
+    p = att["path"]
+    if os.path.isabs(p) or (len(p) >= 2 and p[1] == ":" and p[0].isalpha()):
+        return os.path.normpath(p)
+    return os.path.normpath(os.path.join(ATT_BASE, p))
+
+
+def fmt_message(m):
+    text = m["text"]
+    atts = m.get("attachments") or []
+    if not text and any(a["kind"] == "audio" for a in atts):
+        text = "（语音，未转文字）"
+    rt = m.get("reply_to")
+    if rt:
+        text = ("（回复 [%s] 那条里的这段：“%s”）%s" if rt.get("part") else "（回复 [%s] 的“%s”）%s") % (rt["speaker"], rt["text"], text)
+    lines = [("[%s] %s" % (m["speaker"], text)).rstrip()]
+    for a in atts:
+        label = {"image": "图片", "audio": "音频"}.get(a["kind"], "文件")
+        lines.append("[附件 %s] %s" % (label, abs_path(a)))
+    return "\n".join(lines)
+
+
+def delta_images(msgs):
+    imgs = []
+    for m in reversed(msgs):
+        for a in reversed(m.get("attachments") or []):
+            if a["kind"] == "image":
+                p = abs_path(a)
+                if os.path.isfile(p) and p not in imgs:
+                    imgs.append(p)
+    return list(reversed(imgs[:MAX_IMAGES]))
+
+
+def md_local_path(target):
+    """markdown 图片的目标是不是本机路径；是就返回路径，网址 / data: 之类返回 None。"""
+    from urllib.parse import unquote
+    t = target.strip().strip("<>").strip()
+    if t.lower().startswith("file:"):
+        t = unquote(re.sub(r"^file:/*", "", t, flags=re.I))
+        if not re.match(r"^[A-Za-z]:", t):
+            t = "/" + t
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]+:(?![\\/])", t) and not re.match(r"^[A-Za-z]:[\\/]", t):
+        return None   # http:、data: 这类
+    if re.match(r"^(//|https?:)", t, re.I):
+        return None
+    return t
+
+
+def _hidden_from(m, ai):
+    nf = m.get("not_for")
+    if isinstance(nf, (list, tuple, set)):
+        return ai in nf
+    return nf == ai
+
+
+WRAPUP_TEXT = (
+    "【落盘】用户点了落盘按钮。@claude 请按工作文件夹里的 wrapup 技能（.claude/skills/wrapup/SKILL.md）把这场会议到目前为止定下的东西落盘，"
+    "技能里怎么写就怎么做。"
+    "然后 git commit 并 push：只提交这次落盘改到的文件和改动块，工作区里别人没提交的改动不要带上。"
+    "技能里要是有「提醒用户 /compact」之类要用户在终端里敲的步骤，在会议室里省掉。"
+    "这一轮不管会议在什么模式，你都有完整权限。没有能落盘的结论就直说，不要硬写。"
+    "做完 @用户 汇报：改了哪些文件、提交号、推送成没成。"
+)
+
+WRAPUP_GENERIC = (
+    "【落盘】用户点了落盘按钮。@claude 请把这场会议到目前为止定下的东西写进工作文件夹（{wd}）里合适的文档："
+    "先看这个文件夹有没有自己的规矩（CLAUDE.md / AGENTS.md / README 之类）并照着做；没有就写进最相关的现有文档，"
+    "实在没有合适的，就新建一份 .md 会议纪要（已定结论 + 没解决的问题）。"
+    "如果这是 git 仓库：git commit，有远端就 push；只提交这次落盘改到的文件和改动块，工作区里别人没提交的改动不要带上。"
+    "这一轮不管会议在什么模式，你都有完整权限。没有能落盘的结论就直说，不要硬写。"
+    "做完 @用户 汇报：改了哪些文件、提交号、推送成没成。"
+)
+
+
+class Room:
+    def __init__(self, rid, d, meta, messages):
+        self.id, self.dir, self.meta, self.messages = rid, d, meta, messages
+        self.lock = threading.RLock()
+        self.pending = []      # 已排上（队列里或在等自己的锁）还没开始的 ai，避免同一个人被重复叫
+        self.state: dict[str, Any] = {
+            "running": [], "chain": 0,         # running：正在跑的名字列表（压缩时是 "compact:claude" 这样）
+            "compacting": set(),                # 排上或正在压缩的 AI（每个 AI 各压各的）
+            "force_work": set(),                # 下一轮不管会议在什么模式都按干活模式叫的 AI（落盘用）
+            "epoch": {a: 0 for a in AIS},       # 停了谁就给谁加一；排队时记下，开跑时对不上就不跑
+            "stopped": set(),                   # 被"停"打断、还没收尾的 AI
+        }
+        self.live = {}        # ai -> {"text": 这一轮最近说的一句中途的话, "time": 时:分:秒, "since": 开跑的时间戳}
+        self.last_ctx = {}    # call_ai 填，process_job 成功后搬进 meta["ctx"]
+        self.procs = {}       # ai -> 正在跑的子进程（claude -p），"停"的时候连同子孙进程一起杀
+        self.ai_locks = {}           # 按需创建：会开完之后才装上的 agent 也得能叫
+        self._locks_guard = threading.Lock()
+        self.jobs: queue.Queue[Any] = queue.Queue()   # 这场会议 AI 之间的对话：(标签, 类型, ai)，一个跑完下一个才开始
+        self.codex = None     # agents.CodexServer，第一次叫 codex 时起
+        self.keys = {}
+        with keys_lock:
+            for a in AIS:
+                k = secrets.token_urlsafe(18)
+                self.keys[a] = k
+                KEYS[k] = (rid, a)
+        self.closed = False
+        self.touched = time.time()
+        self._send_allow = set()
+        threading.Thread(target=self._worker, daemon=True, name="room-" + rid).start()
+        threading.Thread(target=agents.prewarm, args=(self.workdir(),), daemon=True).start()
+        detached_jobs.collect_for_room(self)
+
+    # ---------- 基本 ----------
+    @property
+    def ais(self):
+        """这场会议有哪些 AI。注册表里启用的 + 会外参与者（自己经 /api/post 报到的，注册表里没有）。"""
+        cur = self.meta.get("participants") or []
+        got = [a for a in cur if a in AIS or registry.get(a) is None]
+        return got
+
+    def is_guest(self, ai):
+        """会外参与者：不在注册表里（IDE 里的 agent、随便哪个 harness 自己报到的）。"""
+        return registry.get(ai) is None
+
+    def join_external(self, pid, label=None):
+        """让一个会外的东西自己进来：第一次发言带 join=true 就到这场会议报到。返回 (ok, 错误)。"""
+        pid = (pid or "").strip().lower()
+        if not registry.ID_RE.match(pid):
+            return False, "id 只能是小写字母开头、字母数字和 - _，最长 24"
+        if pid in registry.RESERVED or pid in registry.CANT_MENTION:
+            return False, "%s 是会议室自己用的名字" % pid
+        with self.lock:
+            cur = list(self.meta.get("participants") or [])
+            if pid in cur:
+                return True, ""
+            self._ensure_meta_for([pid])
+            self.meta["participants"] = cur + [pid]
+            self.save_meta()
+            self.add_message("系统", "%s 加入了（会外参与者，会议室不主动叫它）" % (label or pid), quiet=True)
+        return True, ""
+
+    def workdir(self):
+        """这场会议的工作文件夹：两个 AI 在这里跑、git 存档 / 撤回也在这里。开会时定死（claude 的会话按文件夹存，中途换了接不上）。"""
+        return self.meta.get("workdir") or PROJECT
+
+    def title(self):
+        return self.meta.get("title") or self.id
+
+    def session_name(self):
+        """AI 那边的会话名 = 会议名（用户 2026-10-18 定），在 claude / codex 的会话列表里能认出是哪场会议。"""
+        return (self.meta.get("title") or "").strip()[:80]
+
+    def mode(self):
+        return self.meta.get("mode", "discuss")
+
+    def ref_name(self):
+        return self.meta.get("ref_name") or ref_safe(self.id)
+
+    def goal(self):
+        return (self.meta.get("announcement") or "").strip()
+
+    def goal_text(self):
+        return self.goal() or "（还没写目标）"
+
+    def save_meta(self):
+        with self.lock:
+            if not self.closed:
+                write_json(os.path.join(self.dir, "meeting.json"), self.meta)
+
+    def close(self, release_guard=True):
+        """会议移进回收站前：停后台、钥匙作废。"""
+        with self.lock:
+            self.closed = True
+        self.jobs.put(None)
+        agents.stop_codex(self)
+        from . import acp
+        acp.stop(self)
+        with keys_lock:
+            for k in self.keys.values():
+                KEYS.pop(k, None)
+        if release_guard:
+            guard.release_room(self.id)
+
+    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None):
+        now = datetime.now()
+        with self.lock:
+            m = {"id": len(self.messages), "speaker": speaker, "text": text, "time": now.strftime("%H:%M:%S")}
+            if origin:
+                m["origin"] = origin   # 不显示；external = 会议室外的同名 AI 经 /api/post 发的
+            if attachments:
+                m["attachments"] = attachments
+            if to_user:
+                m["to_user"] = True
+            if quiet:
+                m["quiet"] = True
+            if step is not None:
+                m["step"] = step
+            if not_for:
+                m["not_for"] = not_for
+            if reply_to:
+                m["reply_to"] = reply_to
+            self.messages.append(m)
+            self.touched = time.time()
+            if not self.closed:
+                with open(os.path.join(self.dir, "log.md"), "a", encoding="utf-8") as f:
+                    f.write("### %s · %s%s\n%s\n" % (speaker, m["time"], "（→ 用户）" if to_user else "", text))
+                    for at in attachments or []:
+                        f.write("附件：%s\n" % at["path"])
+                    if reply_to:
+                        f.write("（回复 %s 的：%s）\n" % (reply_to["speaker"], reply_to["text"]))
+                    f.write("\n")
+                with open(os.path.join(self.dir, "log.jsonl"), "a", encoding="utf-8") as f:
+                    f.write(json.dumps(m, ensure_ascii=False) + "\n")
+        return m
+
+    def system_note(self, text):
+        self.add_message("系统", text, quiet=True)
+
+    # ---------- 附件 ----------
+    def files_dir(self):
+        return os.path.join(self.dir, "files")
+
+    def save_upload(self, name, reader, size):
+        """从 reader 读 size 字节，写进这场会议的 files/ 下，返回完整路径。"""
+        fd_ = self.files_dir()
+        os.makedirs(fd_, exist_ok=True)
+        root, ext = os.path.splitext("%s_%s" % (datetime.now().strftime("%H%M%S"), sanitize_name(name)))
+        full, i = os.path.join(fd_, root + ext), 1
+        while True:
+            if not in_dir(full, fd_):
+                raise ValueError("bad path")
+            try:
+                f = open(full, "xb")
+                break
+            except FileExistsError:
+                i += 1
+                full = os.path.join(fd_, "%s_%d%s" % (root, i, ext))
+        try:
+            with f:
+                left = size
+                while left > 0:
+                    chunk = reader(min(left, 1 << 20))
+                    if not chunk:
+                        raise IOError("short body")
+                    f.write(chunk)
+                    left -= len(chunk)
+        except Exception:
+            try:
+                os.remove(full)
+            except OSError as cleanup_err:
+                logger.debug("Cleanup partial attachment %s failed: %s", full, cleanup_err)
+            raise
+        return full
+
+    def clean_attachments(self, raw):
+        """校验客户端传来的附件：只认这场会议 files 目录里真实存在的文件，其余信息由服务端重算。"""
+        out: list[dict[str, Any]] = []
+        fd_ = self.files_dir()
+        if not isinstance(raw, list):
+            return out
+        for a in raw[:MAX_ATTACH]:
+            if not isinstance(a, dict):
+                continue
+            full = os.path.normpath(os.path.join(ATT_BASE, str(a.get("path", ""))))
+            if in_dir(full, fd_) and os.path.isfile(full):
+                out.append(make_attachment(full))
+        return out
+
+    def send_path(self, path):
+        """AI 写的路径 → 本机完整路径（去引号、展开 ~ 和环境变量、相对路径按工作目录）。"""
+        p = path.strip().strip("`'\"“”‘’<>").strip()
+        if not p:
+            return ""
+        p = os.path.expandvars(os.path.expanduser(p))
+        if not os.path.isabs(p):
+            p = os.path.join(self.workdir(), p)
+        return os.path.normpath(p)
+
+    def allow_send_paths(self, paths):
+        """登记本轮内部工具生成的可外发路径（如 Codex 生图输出目录），仅允许通过 send_file 发送一次。"""
+        with self.lock:
+            allow = getattr(self, "_send_allow", None)
+            if allow is None:
+                allow = self._send_allow = set()
+            for path in paths or ():
+                p = self.send_path(str(path))
+                if p:
+                    allow.add(os.path.normcase(os.path.realpath(p)))
+
+    def _consume_send_allow(self, path):
+        key = os.path.normcase(os.path.realpath(path))
+        with self.lock:
+            allow = getattr(self, "_send_allow", None)
+            if allow and key in allow:
+                allow.discard(key)
+                return True
+        return False
+
+    def send_file(self, path):
+        """把 AI 指名的本机文件复制进这场会议 files/，返回附件；不行就抛 ValueError（原因给人看）。"""
+        p = self.send_path(path)
+        if not p:
+            raise ValueError("没写路径")
+        if not os.path.isfile(p):
+            raise ValueError("找不到文件 %s" % p)
+        wd = self.workdir()
+        fd_ = self.files_dir()
+        if not in_dir(p, fd_) and not in_dir(p, wd) and not self._consume_send_allow(p):
+            raise ValueError("安全拦截：不允许发送工作目录外的文件（%s）" % p)
+        size = os.path.getsize(p)
+        if size > MAX_UPLOAD:
+            raise ValueError("%s 太大（%.1f MB，上限 %d MB）" % (p, size / 1048576, MAX_UPLOAD // 1048576))
+        if in_dir(p, fd_):   # 本来就是会议附件，不用再复制一份
+            return make_attachment(p)
+        with open(p, "rb") as f:
+            full = self.save_upload(os.path.basename(p), f.read, size)
+        return make_attachment(full)
+
+    def apply_send_cmds(self, text):
+        """把 AI 回复里的【发送】路径行收走、复制文件；正文里指向本机路径的 markdown 图片 ![](路径) 也当发送（它们习惯这么写，网页又显示不了本地路径）。
+        返回 (剩下的正文, [附件], [没发成的原因])。代码块里的不算。"""
+        keep: list[str] = []
+        atts: list[dict[str, Any]] = []
+        errs: list[str] = []
+        fence = False
+        seen: set[str] = set()
+
+        def send(path, label):
+            key = os.path.normcase(self.send_path(path))
+            if key and key in seen:
+                return True   # 同一个文件写了两遍（比如 codex 自己写了【发送】，会议室又按生图结果补了一行），只发一次
+            if len(atts) >= MAX_ATTACH:
+                errs.append("一次最多发 %d 个，%s 没发" % (MAX_ATTACH, label))
+                return False
+            try:
+                atts.append(self.send_file(path))
+                seen.add(key)
+                return True
+            except Exception as e:
+                errs.append(str(e) if isinstance(e, ValueError) else "%s 复制失败：%s" % (label, e))
+                return False
+
+        def md_img(m):
+            if m.string[:m.start()].count("`") % 2:   # 在行内代码里
+                return m.group(0)
+            path = md_local_path(m.group(2))
+            if path is None:
+                return m.group(0)
+            return "" if send(path, path) else m.group(0)   # 没发成就留着原文，至少看得到路径
+
+        for line in text.split("\n"):
+            if line.lstrip().startswith("```"):
+                fence = not fence
+            if fence:
+                keep.append(line)
+                continue
+            m = SEND_CMD.match(line)
+            if m:
+                send(m.group(1), m.group(1))
+                continue
+            if "![" in line:
+                new = MD_IMAGE.sub(md_img, line)
+                if new != line and not new.strip():
+                    continue   # 整行只有图片，收走后不留空行
+                line = new.rstrip() if new != line else line
+            keep.append(line)
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(keep)).strip(), atts, errs
+
+    def send_note(self, by, errs):
+        if errs:
+            self.add_message("系统", "%s 的文件没发成：%s" % (by, "；".join(errs)))   # 不 quiet：发的人下一轮能看到
+
+    # ---------- 目标（原来的"公告"）----------
+    def write_announcement(self, text):
+        with self.lock:
+            self.meta["announcement"] = text
+            self.meta["ann_ver"] += 1
+            self.save_meta()
+        self.add_message("系统", "会议目标改了", quiet=True)
+
+    # ---------- 看板（公告 + 待办），用户和两个 AI 都能写 ----------
+    def board_text(self):
+        items = self.meta.get("board") or []
+        if not items:
+            return "（看板是空的）"
+        out = []
+        for it in items:
+            tag = "已完成" if it.get("done") else KIND_CN.get(it["kind"], "公告")
+            out.append("#%d [%s] %s（%s）" % (it["id"], tag, it["text"], it["by"]))
+        return "\n".join(out)
+
+    def board_op(
+        self, by: str, op: str, kind: str | None = None, text: str = "", ids: Sequence[int] = ()
+    ) -> str | None:
+        """改看板，返回给人看的一句话（没改成返回 None）。调用方负责发消息。"""
+        with self.lock:
+            board = self.meta["board"]
+            if op == "add":
+                text = (text or "").strip()[:MAX_BOARD_TEXT]
+                if not text or kind not in KIND_CN or len(board) >= MAX_BOARD:
+                    return None
+                self.meta["board_seq"] += 1
+                board.append({"id": self.meta["board_seq"], "kind": kind, "text": text, "by": by,
+                              "done": False, "time": now_str()})
+                self.save_meta()
+                return "加了%s #%d：%s" % (KIND_CN[kind], self.meta["board_seq"], text)
+            hit = [it for it in board if it["id"] in ids]
+            if not hit:
+                return None
+            if op in ("done", "undone"):
+                for it in hit:
+                    it["done"] = op == "done"
+                word = "勾掉了" if op == "done" else "取消勾选了"
+            elif op == "del":
+                self.meta["board"] = [it for it in board if it["id"] not in ids]
+                word = "删了"
+            else:
+                return None
+            self.save_meta()
+            return word + "、".join("#%d" % it["id"] for it in hit)
+
+    def apply_board_cmds(self, speaker, text):
+        """把 AI 回复里的【公告】【待办】【完成】【删】行收走、改看板。返回 (剩下的正文, [改动描述])。代码块里的不算。"""
+        keep, changes, fence = [], [], False
+        for line in text.split("\n"):
+            if line.lstrip().startswith("```"):
+                fence = not fence
+            m = None if fence else BOARD_CMD.match(line)
+            if not m:
+                keep.append(line)
+                continue
+            word, body = m.group(1), m.group(2)
+            if word in BOARD_KIND:
+                r = self.board_op(speaker, "add", BOARD_KIND[word], body)
+            else:
+                ids = [int(x) for x in re.findall(r"\d+", body)]
+                r = self.board_op(speaker, "done" if word == "完成" else "del", ids=ids)
+            changes.append(r or "（没改成：%s）" % line.strip())
+        return "\n".join(keep).strip(), changes
+
+    def board_note(self, by, changes, not_for=None):
+        if changes:
+            self.add_message("系统", "看板：%s %s" % (by, "；".join(changes)), not_for=not_for)
+
+    # ---------- 上下文用量 ----------
+    def note_ctx(self, ai, res):
+        used, win = res.get("ctx_used"), res.get("ctx_win")
+        if used:
+            self.last_ctx[ai] = {"used": int(used), "window": int(win) if win else None, "time": now_str()}
+
+    # ---------- 给 AI 的提示 ----------
+    def system_instructions(self, ai, mode=None):
+        mode = mode or self.mode()
+        return ("你在本会话中的身份是 @%s。\n" % ai +
+                preamble(mode, self.execution_workdir(ai), self.ais, current=ai) +
+                "\n本会话授予你的权限：" + json.dumps(access.permissions(self, ai), ensure_ascii=False) +
+                "。false 表示禁止，不得绕过；具体工具和文件操作仍受服务端权限及文件护栏约束。")
+
+    def instruction_signature(self, ai, mode=None):
+        import hashlib
+        return hashlib.sha256(self.system_instructions(ai, mode).encode("utf-8")).hexdigest()
+
+    def delta_for(self, ai):
+        """自 last_seen 之后、别人说的新消息（不含它自己、不含 quiet 的系统记号）。返回 (消息列表, 截止 id)。"""
+        with self.lock:
+            ls = self.meta["last_seen"][ai]
+            upto = len(self.messages) - 1
+            d = [m for m in self.messages[ls + 1:]
+                 if (m["speaker"] != ai or m.get("origin") == "external") and not m.get("quiet") and not _hidden_from(m, ai)]
+        return d, upto
+
+    def build_prompt(self, ai, mode=None, fresh=False):
+        """返回 (prompt, upto, ann_ver, images)。会话还没建 = 第一次叫，带前言和目标；否则只递增量。
+        配置里 context = full 的（没有会话概念的 CLI：gemini、crush 之类）每轮都递整份会议记录，它自己没有记忆。
+        fresh=True：会话刚失效、要按第一次叫重来，即使旧会话还在也带前言并递整份记录。"""
+        with self.lock:
+            spec = registry.get(ai) or {}
+            full = spec.get("context") == "full"
+            cp = (self.meta.get("compact_checkpoints") or {}).get(ai)
+            cp = cp if isinstance(cp, dict) and cp.get("summary") else None
+            cp_upto = int(cp.get("upto", -1)) if cp is not None else -1
+            first = fresh or not self.meta.get(ai + "_session")
+            d, upto = self.delta_for(ai)
+            if full:                      # 没会话的：给整份记录（或压缩检查点之后的记录），太长的截掉前面
+                tail = self.messages[cp_upto + 1:] if cp is not None else self.messages
+                d = [m for m in tail if not m.get("quiet") and not _hidden_from(m, ai)][-MAX_CONTEXT:]
+                first = True
+            elif fresh or (first and cp is not None):
+                tail = self.messages[cp_upto + 1:] if cp is not None else self.messages
+                d = [m for m in tail
+                     if (m["speaker"] != ai or m.get("origin") == "external") and not m.get("quiet") and not _hidden_from(m, ai)]
+            ver = self.meta["ann_ver"]
+            parts = []
+            mode = mode or self.mode()
+            native = (registry.get(ai) or {}).get("driver") in ("claude", "codex") and execution.local(self, ai)
+            changed = self.meta.get("instruction_seen", {}).get(ai) != self.instruction_signature(ai, mode)
+            if not native and (first or changed):
+                allowed = [label for key, label in {"read":"读消息", "post":"发言", "trigger":"唤起成员", "board":"改看板", "files":"发文件", "work":"修改文件/执行命令"}.items() if access.permissions(self, ai)[key] and (key != "work" or mode == "work")]
+                parts.append("【合拍】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
+                             (ai, self.execution_workdir(ai), "讨论模式，只读" if mode != "work" else "干活模式", "、".join(allowed) or "无"))
+            elif native and not first and changed:
+                perms = access.permissions(self, ai)
+                allowed = [label for key, label in {"read":"读消息", "post":"发言", "trigger":"唤起成员", "board":"改看板", "files":"发文件", "work":"修改文件/执行命令"}.items() if perms[key] and (key != "work" or mode == "work")]
+                parts.append("【合拍模式与权限已更新】当前为%s；最新允许：%s（最新权限：%s）。以此为准，覆盖此前会话中的旧模式/旧权限。" %
+                             ("干活模式" if mode == "work" else "讨论模式，只读", "、".join(allowed) or "无",
+                              json.dumps(perms, ensure_ascii=False)))
+            if first:
+                if self.goal():
+                    parts.append("这场会议的目标：\n" + self.goal_text())
+                if self.meta.get("board"):
+                    parts.append("看板：\n" + self.board_text())
+                if cp is not None:
+                    parts.append("此前会议摘要：\n" + cp["summary"])
+            else:
+                if self.meta["announcement_seen"][ai] != ver:
+                    parts.append("会议目标改了，新的目标：\n" + self.goal_text())
+                if self.meta["returned"][ai]:
+                    parts.append("（你刚才在终端里跟用户单独干了一段活，那段你自己记得；下面是这期间会议室里的新消息）")
+            body = "\n\n".join(fmt_message(m) for m in d) or "（没有新消息）"
+            head = "会议记录：" if full else ("会议记录：" if first else "新消息：")
+            parts.append(head + "\n" + body)
+        return "\n\n".join(parts), upto, ver, delta_images(d)
+
+    # ---------- 模型 / effort ----------
+    def own_models(self, ai):
+        mo = (self.meta.get("models") or {}).get(ai) or {}
+        return (mo.get("model") or "").strip(), (mo.get("effort") or "").strip()
+
+    def effective_models(self, ai):
+        """实际生效的 (模型, effort)：会议自己设了用自己的，没设用会议室默认 ROOM_DEFAULTS。"""
+        m, e = self.own_models(ai)
+        dm, de = agents.ROOM_DEFAULTS[ai]
+        options = model_catalog.capabilities(self, ai).get("efforts_by_model", {})
+        if m and de and de not in options.get(m, agents.effort_options(ai, m)):
+            de = ""
+        return (m or dm), (e or de)
+
+    def model_label(self, ai, model_labels=None):
+        m, e = self.effective_models(ai)
+        if model_labels is None:
+            model_labels = model_catalog.capabilities(self, ai).get("model_labels")
+        shown = model_catalog.display_model_name(m, model_labels) if m else ""
+        return "%s · %s" % (shown or "默认", e or "默认")
+
+    def model_info(self, ai):
+        m, e = self.own_models(ai)
+        capabilities = model_catalog.capabilities(self, ai)
+        model_labels = capabilities.get("model_labels")
+        effective_model = self.effective_models(ai)[0]
+        if capabilities["effort_supported"]:
+            capabilities["efforts_by_model"].setdefault(effective_model, agents.effort_options(ai, effective_model))
+        label = self.model_label(ai, model_labels=model_labels) if capabilities["model_supported"] or capabilities["effort_supported"] else "模型未回报"
+        actual = capabilities.get("observed")
+        if actual and actual.get("model"):
+            actual_name = model_catalog.display_model_name(actual["model"], model_labels)
+            label = actual_name + (" · " + actual["effort"] if actual.get("effort") else "")
+        return {"model": m, "effort": e, "label": label, "default": " · ".join(agents.ROOM_DEFAULTS[ai]),
+                "default_model": agents.ROOM_DEFAULTS[ai][0],
+                "default_effort": agents.ROOM_DEFAULTS[ai][1],
+                "efforts": capabilities["efforts_by_model"].get(effective_model, agents.effort_options(ai, effective_model)) if capabilities["effort_supported"] else [],
+                **capabilities, **model_catalog.state(self, ai), **({"observed": actual} if actual else {})}
+
+    def set_models(self, ai, model, effort):
+        """改某个 AI 在这场会议的模型 / effort（空 = 用会议室默认）。返回 (ok, 错误, 是否换了模型)。"""
+        if ai not in self.ais:
+            return False, "未知 AI", False
+        model, effort = (model or "").strip(), (effort or "").strip()
+        capabilities = model_catalog.capabilities(self, ai)
+        if model and not capabilities["model_supported"]:
+            return False, "当前执行端没有模型写入接口，会议室不能修改其模型", False
+        if effort and not capabilities["effort_supported"]:
+            return False, "此 Agent 的接入方式尚不支持设置思考强度", False
+        if model and not agents.MODEL_RE.match(model):
+            return False, "模型名不合法", False
+        cur_model = model or agents.ROOM_DEFAULTS[ai][0]
+        if effort and (not agents.EFFORT_RE.match(effort) or effort not in capabilities["efforts_by_model"].get(cur_model, agents.effort_options(ai, cur_model))):
+            return False, "effort 不在可选范围内", False
+        with self.lock:
+            if self.busy_for(ai):
+                return False, "%s 还在回复，等它说完再改" % ai, False
+            if execution.binding(self, ai)["phase"] != "ready":
+                return False, "执行端正在交接，结束后再修改模型", False
+            if (model or effort) and execution.binding(self, ai)["endpoint"] == "desktop":
+                return False, "当前桌面接入没有模型写入接口", False
+            old_m, old_e = self.own_models(ai)
+            if (old_m, old_e) == (model, effort):
+                return True, "", False
+            self.meta["models"][ai] = {"model": model, "effort": effort}
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta["models"][ai] = {"model": old_m, "effort": old_e}
+                raise
+            self.add_message("系统", "%s 换成了 %s" % (ai, self.model_label(ai)), quiet=True)
+        return True, "", old_m != model
+
+    # ---------- MCP / 技能 / 插件 ----------
+    def tools_info(self, ai):
+        return agents.tools_info(ai, self.meta["tools"][ai], self.workdir())
+
+    def set_tools(self, ai, cfg):
+        """改这场会议里某个 AI 的 MCP / 技能 / 插件开关。返回 (ok, 错误)。"""
+        if ai not in self.ais:
+            return False, "未知 AI"
+        new = agents.fix_tools(ai, cfg)
+        with self.lock:
+            if self.busy_for(ai):
+                return False, "%s 还在回复，等它说完再改" % ai
+            if new == self.meta["tools"][ai]:
+                return True, ""
+            self.meta["tools"][ai] = new
+            self.save_meta()
+            self.add_message("系统", "%s 的工具换了：%s" % (ai, agents.tools_summary(ai, new)), quiet=True)
+        if ai == "codex":
+            agents.stop_codex(self)   # 下一轮按新配置重起
+        return True, ""
+
+    # ---------- 谁参加这场会议 ----------
+    def _ensure_meta_for(self, ids):
+        """把一个新 agent 在这场比赛里要用的那些字段补上（老会议里没有它）。"""
+        for a in ids:
+            for k, empty in PER_AI_EMPTY.items():
+                self.meta.setdefault(k, {})
+                self.meta[k].setdefault(a, list() if isinstance(empty, list) else empty)
+            self.meta.setdefault("models", {}).setdefault(a, {"model": "", "effort": ""})
+            self.meta.setdefault("tools", {}).setdefault(a, agents.default_tools(a))
+            if a not in self.keys:
+                with keys_lock:
+                    self.keys[a] = secrets.token_urlsafe(18)
+                    KEYS[self.keys[a]] = (self.id, a)
+
+    def set_participants(self, ids, member_permissions=None):
+        """Change members and optional permissions in one metadata save; an empty room is valid."""
+        ok_ids = registry.enabled_ids()
+        if not isinstance(ids, list):
+            return False, "成员必须是联系人 ID 列表"
+        want = [a for a in ids if isinstance(a, str)]
+        bad = [a for a in want if a not in ok_ids]
+        if bad:
+            return False, "没装或没启用：%s" % "、".join(bad)
+        want = [a for a in ok_ids if a in want]      # 按注册表的顺序
+        with self.lock:
+            if self.busy_for():
+                return False, "AI 还在回复，等它们说完再改"
+            old = list(self.ais)
+            if want == old and member_permissions is None:
+                return True, ""
+            previous = copy.deepcopy(self.meta)
+            self._ensure_meta_for(want)
+            self.meta["participants"] = want
+            self.meta["tools"] = {a: self.meta["tools"].get(a) or agents.default_tools(a) for a in AIS}
+            if member_permissions is not None:
+                self.meta["permissions"] = {pid: dict(access.PERMISSIONS, **member_permissions.get(pid, {})) for pid in want}
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta = previous
+                raise
+            if want == old:
+                return True, ""
+            added = [a for a in want if a not in old]
+            gone = [a for a in old if a not in want]
+            bits = ["这场会议现在有：" + "、".join(want)]
+            if added:
+                bits.append("新加入：" + "、".join(added))
+            if gone:
+                bits.append("退出：" + "、".join(gone) + "（它的会话还留着，重新勾上就能接上）")
+            self.add_message("系统", "；".join(bits), quiet=True)
+        return True, ""
+
+    def set_members(self, ids, permissions):
+        if not isinstance(ids, list) or any(not isinstance(pid, str) for pid in ids):
+            return False, "成员必须是联系人 ID 列表"
+        if not isinstance(permissions, dict):
+            return False, "权限必须是对象"
+        for pid, value in permissions.items():
+            if pid not in (ids or []) or not isinstance(value, dict):
+                return False, "权限只能配置给已选择的联系人"
+            if any(k not in access.PERMISSIONS or not isinstance(v, bool) for k, v in value.items()):
+                return False, "未知权限或权限值不是布尔值"
+        ok, msg = self.set_participants(ids, permissions)
+        if not ok:
+            return ok, msg
+        agents.stop_codex(self)
+        return True, ""
+
+    def member_mode(self, ai, requested=None):
+        allowed = access.permissions(self, ai)["work"]
+        if (registry.get(ai) or {}).get("driver") == "external":
+            from .members import broker
+            allowed = allowed and broker.status(ai)["allow_work"]
+        return (requested or self.mode()) if allowed else "discuss"
+
+    def execution_workdir(self, ai):
+        if (registry.get(ai) or {}).get("driver") == "external":
+            from .members import broker
+            return broker.status(ai)["workdir"] or "该成员设备上配置的工作文件夹"
+        return self.workdir()
+
+    # ---------- 模式 ----------
+    def set_mode(self, mode):
+        """切模式。返回 (ok, 错误)。"""
+        if mode not in MODES:
+            return False, "未知模式"
+        with self.lock:
+            if self.meta.get("mode") == mode:
+                return True, ""
+            if self.busy_for():
+                return False, "AI 还在回复，等它们说完再切模式"
+            self.meta["mode"] = mode
+            self.state["chain"] = 0
+            self.save_meta()
+            if mode == "work":
+                blocked = [a for a in self.ais if (registry.get(a) or {}).get("kind") != "user" and not access.permissions(self, a)["work"]]
+                note = "切到干活模式" + ("（注意：%s 未开启「允许干活」权限，仍将只读；可在「成员与权限」中勾选）" % "、".join(blocked) if blocked else "")
+            else:
+                note = "切回讨论模式"
+            self.add_message("系统", note)
+        agents.stop_codex(self)   # 两种模式加载的工具不一样，下一轮按新模式重起
+        return True, ""
+
+    # ---------- 干活模式：一步一步的改动记录、撤回 ----------
+    def record_step(self, ai, pre_tree, edits, t0, t1):
+        """AI 跑完后，按它自己的操作记录生成这一步的改动清单（只有记录里出现的文件才算）。有改动就记一步、插系统消息。"""
+        ncmd = sum(1 for e in edits or [] if e.get("op") == "command")
+        wd = self.workdir()
+        try:
+            top, _ = ws.git_dirs(wd)
+            inside, outside = ws.split_edits(edits, top, wd)
+            files = ws.build_files(wd, pre_tree, inside) if inside else []
+        except Exception as e:
+            self.add_message("系统", "改动记录生成失败：%s。%s 这一步改了什么看不到，也撤不回" % (e, ai))
+            return None
+        if not files and not outside and not ncmd:
+            return None
+        seq = None
+        mine = {f["path"] for f in files}
+        clash: dict[str, str] = {}
+        for who, o in steps_in_repo(top):   # 时间上重叠、又改了同一个文件（这场会议的另一个 AI，或别的会议里的 AI）
+            if (who == self.id and o["ai"] == ai) or o.get("undone") or o.get("t0") is None:
+                continue
+            if o["t0"] < t1 and t0 < o["t1"]:
+                for f in o["files"]:
+                    if f["path"] in mine:
+                        clash.setdefault(f["path"], o["ai"] if who == self.id else "%s（会议「%s」）" % (o["ai"], room_title_of(who)))
+        with self.lock:
+            if files:
+                self.meta["step_seq"] += 1
+                seq = self.meta["step_seq"]
+                ref = None
+                try:
+                    ref = ws.save_checkpoint(wd, self.ref_name(), seq, pre_tree)
+                except Exception as e:
+                    self.add_message("系统", "存档点引用没存上（%s），撤回仍可用，但 git gc 后可能失效" % e)
+                self.meta["steps"][str(seq)] = {"v": 2, "ai": ai, "pre_tree": pre_tree, "ref": ref, "files": files,
+                                                "outside": outside, "undone": False, "time": now_str(), "t0": t0, "t1": t1}
+                self.save_meta()
+        self.add_message("系统", ws.files_text(ai, files, outside, clash, ncmd), step=seq, not_for=ai)
+        return seq
+
+    def undo_plan(self, seq):
+        """算出撤回这一步要动哪些文件（不动磁盘）。调用方持有 lock。返回 (ok, 错误, 计划)。
+        冲突检查：记录里每个文件现在的 sha256 必须等于这一步记下的"改后"；对不上整步拒绝。"""
+        st = self.meta["steps"].get(str(seq))
+        if not st:
+            return False, "没有这一步", None
+        if st.get("undone"):
+            return False, "这一步已经撤回过了", None
+        if self.busy_for():
+            return False, "AI 还在回复，等它们说完再撤回", None
+        wd = self.workdir()
+        try:
+            top, _ = ws.git_dirs(wd)
+        except Exception as e:
+            return False, "撤回出错：%s" % e, None
+        # 别的 AI（这场会议的另一个，或别的会议里的）时间上重叠、改了同一个文件：这一步的"改前"是自己开工那一刻拍的，
+        # 不含对方同时写进去的东西，撤回会把对方的改动一起抹掉。不管哪一步先记下，只要对方那步还没撤，就整步拒绝
+        mine = {f["path"] for f in st["files"] if not f.get("nb")}
+        shared, who_set = [], set()
+        if st.get("t0") is not None:
+            for who, o in steps_in_repo(top):
+                if o is st or (who == self.id and o["ai"] == st["ai"]) or o.get("undone") or o.get("t0") is None:
+                    continue
+                if o["t0"] < st["t1"] and st["t0"] < o["t1"]:
+                    for f in o["files"]:
+                        if f["path"] in mine and f["path"] not in shared:
+                            shared.append(f["path"])
+                            who_set.add(o["ai"] if who == self.id else "%s（会议「%s」）" % (o["ai"], room_title_of(who)))
+        if shared:
+            return False, "%s 同时也改过这些文件，撤回会把它的改动一起抹掉，不能撤：" % "、".join(sorted(who_set)) \
+                + "、".join(shared[:8]) + ("…" if len(shared) > 8 else ""), None
+        legacy = st.get("v") != 2   # 旧版（整体快照差异）的步：改后用 git blob sha1 比
+        try:
+            items, conflicts = [], []
+            for f in st["files"]:
+                full = ws.full_of(top, f["path"])
+                if f.get("nb"):
+                    items.append({"path": f["path"], "act": "撤不回"})
+                    continue
+                if f["post"] is None:
+                    ok = not os.path.lexists(full)
+                else:
+                    ok = False
+                    if os.path.isfile(full):
+                        with open(full, "rb") as fh:
+                            data = fh.read()
+                        ok = (ws.blob_sha(data) if legacy else ws.sha256_of(data)) == f["post"]
+                if not ok:
+                    conflicts.append(f["path"])
+                items.append({"path": f["path"], "act": "删除" if f["pre"] is None else "还原"})
+        except Exception as e:
+            return False, "撤回出错：%s" % e, None
+        if conflicts:
+            return False, "这些文件在这一步之后又被改过（不是这个 AI 这一步的结果了），不能撤：" + "、".join(conflicts[:8]) + ("…" if len(conflicts) > 8 else ""), None
+        if not any(i["act"] != "撤不回" for i in items):
+            return False, "这一步的文件都撤不回（被 git 忽略或不在存档范围）", None
+        return True, "", {"ai": st["ai"], "items": items, "outside": st.get("outside") or []}
+
+    def undo_preview(self, seq):
+        """给确认框用：返回 (ok, 错误, 清单)。"""
+        with self.lock:
+            return self.undo_plan(seq)
+
+    def undo_step(self, seq):
+        """撤回某一步：只动这个 AI 这一步记录里的文件。返回 (ok, 错误)。"""
+        with self.lock:
+            ok, err, plan = self.undo_plan(seq)
+            if not ok:
+                return False, err
+            st = self.meta["steps"][str(seq)]
+            ai = st["ai"]
+            wd = self.workdir()
+            applied = []
+            try:
+                top, _ = ws.git_dirs(wd)
+                todo = [f for f in st["files"] if not f.get("nb")]
+                olds = {}
+                for f in todo:
+                    if f["pre"] is not None:
+                        olds[f["path"]] = ws.git(["cat-file", "blob", f["pre"]], wd)
+                for f in todo:
+                    full = ws.full_of(top, f["path"])
+                    existed = os.path.lexists(full)
+                    backup = None
+                    if existed:
+                        if os.path.islink(full):
+                            backup = ("link", os.readlink(full))
+                        else:
+                            with open(full, "rb") as fh:
+                                backup = ("file", fh.read())
+                    if f["pre"] is None:
+                        if existed:
+                            os.remove(full)
+                        ws.remove_empty_dirs(full, top)
+                    else:
+                        os.makedirs(os.path.dirname(full), exist_ok=True)
+                        tmp = full + ".rt_undo.tmp"
+                        try:
+                            with open(tmp, "wb") as fh:
+                                fh.write(olds[f["path"]])
+                            os.replace(tmp, full)
+                        finally:
+                            if os.path.lexists(tmp):
+                                try:
+                                    os.remove(tmp)
+                                except OSError as cleanup_err:
+                                    logger.debug("Undo temp file remove failed (%s): %s", tmp, cleanup_err)
+                    applied.append((full, backup))
+            except Exception as e:
+                for full, backup in reversed(applied):
+                    try:
+                        if backup is None:
+                            if os.path.lexists(full):
+                                os.remove(full)
+                            ws.remove_empty_dirs(full, top)
+                        elif backup[0] == "link":
+                            os.makedirs(os.path.dirname(full), exist_ok=True)
+                            if os.path.lexists(full):
+                                os.remove(full)
+                            os.symlink(backup[1], full)
+                        else:
+                            os.makedirs(os.path.dirname(full), exist_ok=True)
+                            tmp = full + ".rt_undo_rb.tmp"
+                            try:
+                                with open(tmp, "wb") as fh:
+                                    fh.write(backup[1])
+                                os.replace(tmp, full)
+                            finally:
+                                if os.path.lexists(tmp):
+                                    try:
+                                        os.remove(tmp)
+                                    except OSError as cleanup_err:
+                                        logger.debug("Rollback temp file remove failed (%s): %s", tmp, cleanup_err)
+                    except Exception as rb_err:
+                        logger.warning("Undo rollback failed for %s: %s", self.id, rb_err, exc_info=True)
+                return False, "撤回出错：%s" % e
+            st["undone"] = True
+            self.save_meta()
+            nb = len(st["files"]) - len(todo)
+        self.add_message("系统", "已撤回 %s 的这一步（%d 个文件%s）" % (ai, len(todo), "，另有 %d 个撤不回" % nb if nb else ""))
+        return True, ""
+
+    # ---------- 发言、排队、叫 AI ----------
+    def ai_lock(self, ai):
+        with self._locks_guard:
+            lk = self.ai_locks.get(ai)
+            if lk is None:
+                lk = self.ai_locks[ai] = threading.RLock()
+            return lk
+
+    def job_tag(self, ai):
+        return "%s#%d" % (self.id, self.state["epoch"].get(ai, 0))
+
+    def busy_for(self, ai=None):
+        with self.lock:
+            if ai is None:
+                return bool(self.state["running"] or self.pending or self.state["compacting"])
+            return ai in self.state["running"] or ai in self.pending or ai in self.state["compacting"]
+
+    def queued_count(self):
+        """排着还没开始的：等着回话的 AI + 等着压缩的 AI。"""
+        return len(self.pending) + len([a for a in self.state["compacting"] if "compact:" + a not in self.state["running"]])
+
+    def enqueue(self, ai, user=False):
+        """排上一个 AI 的回复。已排上还没开始的不重复排（它开始时才取增量，自然会看到新消息）。
+        user=True（用户发言触发）：立刻开线程，和另一个 AI 并行；
+        user=False（AI 之间的对话）：进这场会议的串行队列，一个跑完下一个才开始。两种都要等自己 AI 的锁（同一个 AI 永远串行）。"""
+        with self.lock:
+            # 用户发话不能被串行队列挡住：它已经排在 AI 之间的队列里（前面可能是别人的长活）时，照样马上另开一个并行的。
+            # 队列里那份轮到时发现该看的都看过了，会自己跳过。
+            if ai in self.pending and not user:
+                return
+            self.pending.append(ai)
+            tag = self.job_tag(ai)
+            if user:
+                threading.Thread(target=self.run_job, args=(ai, tag, True), daemon=True).start()
+            else:
+                self.jobs.put((tag, "reply", ai))
+
+    def make_reply(self, mid, part=None):
+        """用户引用的那条：只认会议里真有的、人或 AI 说的话；摘一段原文（太长截断）。part = 用户在那条里选中的一段（右键引用），有就只引这段。"""
+        try:
+            mid = int(mid)
+        except (TypeError, ValueError):
+            return None
+        with self.lock:
+            if not 0 <= mid < len(self.messages):
+                return None
+            m = self.messages[mid]
+        if m["speaker"] not in ("你",) + tuple(AIS):
+            return None
+        t = re.sub(r"(\*\*|__|~~|`+|^#+\s*|^\s*[-*>]\s+)", "", m.get("text") or "", flags=re.M)   # 摘要里不要 markdown 符号
+        t = " ".join(t.split())
+        part = " ".join(str(part or "").split())
+        if part:
+            return {"id": mid, "speaker": m["speaker"], "part": True,
+                    "text": part[:QUOTE_LEN] + ("…" if len(part) > QUOTE_LEN else "")}
+        if not t:
+            t = "（附件）" if m.get("attachments") else ""
+        return {"id": mid, "speaker": m["speaker"], "text": t[:QUOTE_LEN] + ("…" if len(t) > QUOTE_LEN else "")}
+
+    def handle_message(self, speaker, text, attachments=None, origin="room", reply_to=None):
+        """记录一条消息并按 @ 路由。origin：room = 用户或会议室自己叫起来的 AI；external = 会议室外的 claude/codex（/api/post、MCP）。"""
+        external = origin == "external"
+        with self.lock:
+            if self.closed:
+                return False
+            cmd = text.strip().lower().split()
+            if speaker == "你" and not attachments and cmd and cmd[0] == "/compact" and len(cmd) <= 2 and set(cmd[1:]) <= set(AIS):
+                self.request_compact(cmd[1:] or self.ais)
+                return True
+            human = speaker == "你" or (registry.get(speaker) or {}).get("kind") == "user"
+            if human:
+                names = mentions(text)
+                # 没 @ 人、引用的是某个 AI 的话：就是回它，只叫它
+                quoted = reply_to["speaker"] if reply_to and reply_to["speaker"] in self.ais else None
+                want = [n for n in names if n not in ("用户",)]
+                targets = [n for n in want if n in self.ais]
+                if not want:                      # 没 @ 任何 AI（只 @ 了用户或什么都没 @）：叫会里的全部
+                    targets = [quoted] if quoted else list(self.ais)
+                elif not targets:                 # @ 了一个不在会里的 AI：别顺手把别人叫起来
+                    self.system_note("%s 不在这场会议里（现在有：%s）" % ("、".join(want), "、".join(self.ais)))
+                to_user = False
+            elif speaker in self.ais:
+                # external 的 @自己 也要叫会议室里的同名 AI，所以不排除
+                names = mentions(text, exclude=None if external else speaker)
+                targets = [n for n in names if n in self.ais]
+                to_user = "用户" in names
+            else:
+                targets, to_user = [], False
+            changes, send_errs = [], []
+            if speaker in self.ais:
+                if access.permissions(self, speaker)["board"]:
+                    text, changes = self.apply_board_cmds(speaker, text)
+                if access.permissions(self, speaker)["files"] and not execution.remote(self, speaker):
+                    text, sent, send_errs = self.apply_send_cmds(text)
+                    attachments = (attachments or []) + sent
+                if not access.permissions(self, speaker)["trigger"]:
+                    targets = []
+            if text or attachments or not (changes or send_errs):
+                self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to)
+            self.board_note(speaker, changes, not_for=None if external else speaker)
+            self.send_note(speaker, send_errs)
+            if speaker == "你":
+                self.state["chain"] = 0
+            for t in targets:
+                if not access.allowed(self, t, "read") or not access.allowed(self, t, "post"):
+                    continue
+                if t not in self.ais:
+                    continue
+                if self.is_guest(t) or (registry.get(t) or {}).get("kind") == "user":
+                    continue
+                if self.meta["handed_off"][t]:
+                    self.system_note("%s 现在在终端里，回来后会补看" % t)
+                else:
+                    self.enqueue(t, user=human)
+        return True
+
+    def post_progress(self, ai, text, atts):
+        """AI 一轮中途经 bridge 发进来的一句进度 / 文件：照登，但里面的 @ 不叫人（它这一轮还没说完）。"""
+        text = (text or "").strip()
+        if not text and not atts:
+            return None
+        return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai))
+
+    def push_live(self, ai, res):
+        """AI 一轮里中途说的话（claude 的文字块、codex 的 commentary）放进 live，页面状态行显示最近一句；不进会议记录。"""
+        t = res.pop("live", None)
+        if t and ai in self.live:
+            t = t.strip()
+            self.live[ai]["text"] = t if len(t) <= 400 else t[:400] + "…"
+            self.live[ai]["time"] = datetime.now().strftime("%H:%M:%S")
+
+    def run_job(self, ai, tag, user):
+        try:
+            self.process_job(ai, tag, user)
+        except Exception as e:
+            self.add_message("系统", "内部错误：%s" % e)
+
+    def _worker(self):
+        while True:
+            item = self.jobs.get()
+            if item is None:
+                return
+            tag, kind, ai = item
+            try:
+                self.process_job(ai, tag, False)
+            except Exception as e:
+                self.add_message("系统", "内部错误：%s" % e)
+
+    def process_job(self, ai, tag, user=False):
+        """叫一次 AI。整个过程持有这个 AI 自己的锁（同一个 AI 永远串行）；增量在拿到锁之后才取快照。"""
+        with self.ai_lock(ai):
+            with self.lock:
+                if ai in self.pending:
+                    self.pending.remove(ai)
+                forced = ai in self.state["force_work"]   # 先取走：下面提前返回时也不能留到下一轮
+                self.state["force_work"].discard(ai)
+                if self.closed or ai not in self.ais or not access.allowed(self, ai, "read") or not access.allowed(self, ai, "post") or tag != self.job_tag(ai) or self.meta.get("handed_off", {}).get(ai):
+                    return
+                if execution.binding(self, ai)["phase"] != "ready":
+                    self.system_note("%s 正在交接执行端，本条消息已保留；接管完成后再 @ 它处理" % ai)
+                    return
+                if not user and self.meta.get(ai + "_session") and not self.delta_for(ai)[0]:
+                    return   # AI 之间的对话排到它时，该看的它已经看过了，不白叫
+                self.state["running"].append(ai)
+                self.live[ai] = {"text": "", "time": "", "since": time.time()}
+            try:
+                mode = self.member_mode(ai, "work" if forced else self.mode())
+                wd = self.workdir()
+                remote = execution.remote(self, ai)
+                pre = None
+                t0 = time.time()
+                if mode == "work" and not remote and not ws.in_git(wd):
+                    with self.lock:
+                        warn = not self.meta.get("nogit_warned")
+                        self.meta["nogit_warned"] = True
+                        self.save_meta()
+                    if warn:
+                        self.add_message("系统", "工作文件夹 %s 不是 git 仓库：干活模式照常改，但改了什么记不下来，也撤不回" % wd)
+                elif mode == "work" and not remote:
+                    try:
+                        pre = ws.snapshot_tree(wd)   # 只用来取"改前"原文件；改了哪些文件以 AI 自己的操作记录为准
+                    except Exception as e:
+                        self.add_message("系统", "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai))
+                        return
+                prompt, upto, ver, imgs = self.build_prompt(ai, mode)
+                sid = self.meta.get(ai + "_session")
+                model_revision = model_catalog.request_id(self, ai)
+                if detached_jobs.should_detach(self, ai, ai_caller):
+                    job_path = detached_jobs.spawn_job(
+                        self, ai, prompt, sid, imgs, mode,
+                        upto=upto, ver=ver, pre_tree=pre, t0=t0, model_revision=model_revision,
+                    )
+                    jstate, jdata = detached_jobs.wait_for_job(
+                        job_path,
+                        on_live=lambda rr: self.push_live(ai, rr),
+                        is_cancelled=lambda: ai in self.state["stopped"],
+                    )
+                    if jstate == "detached":
+                        # Cojam is shutting down; leave the detached CLI worker running to be collected on reopen.
+                        return
+                    if jstate == "done" and isinstance(jdata, dict):
+                        with self.lock:
+                            was_stopped = ai in self.state["stopped"]
+                            self.state["stopped"].discard(ai)
+                        detached_jobs.apply_job_result(self, job_path, jdata, was_stopped=was_stopped)
+                        return
+                    if jstate == "cancelled":
+                        with self.lock:
+                            self.state["stopped"].discard(ai)
+                        self.add_message("系统", "%s 被你打断了" % ai)
+                        return
+                    self.add_message("系统", "%s 后台任务意外退出，未返回结果。" % ai)
+                    return
+                try:
+                    res = ai_caller(ai, prompt, sid, imgs, mode, self)   # 明着传：落盘那一轮是强制干活模式，跟会议的模式不一样
+                except BaseException:
+                    if pre is not None:
+                        self.add_message("系统", "%s 调用中途崩了，这一步改了什么没能记录" % ai)
+                    raise
+                ok, out, new_sid = res[0], res[1], res[2]
+                model_catalog.result(self, ai, model_revision, ok, out, new_sid)
+                with self.lock:
+                    was_stopped = ai in self.state["stopped"]
+                    self.state["stopped"].discard(ai)
+                if was_stopped and not ok:
+                    ok, out = False, "%s 被你打断了" % ai
+                edits = res[3] if len(res) > 3 else []
+                if not ok and not was_stopped and (registry.get(ai) or {}).get("driver") == "acp" and new_sid is None:
+                    # ACP 会话已失效（欠费、过期等）：丢掉旧会话，按"第一次叫"带完整上下文重试一次。
+                    # 只认这个结构化信号；CLI / HTTP / external 驱动出错时仍走下面的原逻辑。
+                    with self.lock:
+                        self.meta.pop(ai + "_session", None)
+                        self.meta["last_seen"][ai] = -1   # 新会话没看过任何东西，下次也要给整份记录
+                        self.save_meta()
+                    prompt, upto, ver, imgs = self.build_prompt(ai, mode, fresh=True)
+                    res = ai_caller(ai, prompt, None, imgs, mode, self)
+                    ok, out, new_sid = res[0], res[1], res[2]
+                    edits = res[3] if len(res) > 3 else []
+                if ok:
+                    with self.lock:
+                        self.meta[ai + "_session"] = new_sid
+                        self.meta["last_seen"][ai] = upto
+                        self.meta["announcement_seen"][ai] = ver
+                        self.meta["mode_seen"][ai] = mode_key(mode)
+                        self.meta.setdefault("instruction_seen", {})[ai] = self.instruction_signature(ai, mode)
+                        self.meta["returned"][ai] = False
+                        if ai in self.last_ctx:
+                            self.meta["ctx"][ai] = self.last_ctx.pop(ai)
+                        self.save_meta()
+                        self.state["chain"] += 1
+                    if was_stopped and remote:
+                        self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai))
+                    elif was_stopped:   # 刚好在"停"的时候说完：话照登，但里面的 @ 不再叫人
+                        rest, ch = self.apply_board_cmds(ai, out)
+                        rest, sent, errs = self.apply_send_cmds(rest)
+                        if rest or sent or not (ch or errs):
+                            self.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai))
+                        self.board_note(ai, ch, not_for=ai)
+                        self.send_note(ai, errs)
+                    else:
+                        self.handle_message(ai, out)
+                else:
+                    if new_sid and new_sid != sid:   # 会话建好了但回复出错（比如额度不足）：记下会话 id，下轮接着用，不再开新的
+                        with self.lock:
+                            self.meta[ai + "_session"] = new_sid
+                            self.save_meta()
+                    self.add_message("系统", out)
+                if pre is not None:
+                    self.record_step(ai, pre, edits, t0, time.time())
+            finally:
+                with self.lock:
+                    if ai in self.state["running"]:
+                        self.state["running"].remove(ai)
+                    self.live.pop(ai, None)
+                guard.release_turn((self.id, ai))
+
+    # ---------- 压缩 ----------
+    def _can_compact_locked(self, ai):
+        spec = registry.get(ai) or {}
+        if spec.get("kind") == "user":
+            return False, "%s 是人工联系人，不用压" % ai
+        bound = execution.binding(self, ai)
+        if bound["endpoint"] == "desktop" or bound["phase"] != "ready":
+            return False, "%s 当前不由 CLI 执行，请在当前执行端压缩" % ai
+        if self.meta["handed_off"][ai]:
+            return False, "%s 在终端里，没压" % ai
+        sid = self.meta.get(ai + "_session")
+        if sid:
+            return True, ""
+        full = spec.get("context") == "full"
+        if spec.get("driver") in ("claude", "codex", "acp") and not full:
+            return False, "%s 还没建会话，不用压" % ai
+        cp = (self.meta.get("compact_checkpoints") or {}).get(ai)
+        cp_upto = int(cp.get("upto", -1)) if isinstance(cp, dict) and cp.get("summary") else -1
+        has_msgs = any(not m.get("quiet") and not _hidden_from(m, ai) for m in self.messages[cp_upto + 1:])
+        if not has_msgs:
+            return False, "%s 暂无可压缩的新记录" % ai
+        return True, ""
+
+    def _compact_head(self, ai, mode):
+        spec = registry.get(ai) or {}
+        if spec.get("driver") in ("claude", "codex") and execution.local(self, ai):
+            return preamble(mode, self.workdir())
+        allowed = [label for key, label in {"read": "读消息", "post": "发言", "trigger": "唤起成员", "board": "改看板",
+                                            "files": "发文件", "work": "修改文件/执行命令"}.items()
+                   if access.permissions(self, ai)[key] and (key != "work" or mode == "work")]
+        return ("【合拍】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
+                (ai, self.execution_workdir(ai), "讨论模式，只读" if mode != "work" else "干活模式", "、".join(allowed) or "无"))
+
+    def request_compact(self, targets=None):
+        """每个 AI 各压各的：各开一个线程，只等它自己的锁，另一个 AI 照常能叫。返回这次排上的 AI（已在压的不重复排）。"""
+        targets = self.ais if targets is None else targets
+        with self.lock:
+            todo = [a for a in self.ais if a in targets and a not in self.state["compacting"]
+                    and (registry.get(a) or {}).get("kind") != "user"]
+            self.state["compacting"].update(todo)
+            if todo:
+                self.system_note("开始压缩：" + "、".join(todo))
+        for a in todo:
+            threading.Thread(target=self.process_compact, args=(a,), daemon=True).start()
+        return todo
+
+    def compact_one(self, ai):
+        """压缩一个 AI 的会话。返回给人看的结果描述。"""
+        with self.lock:
+            ok_can, reason = self._can_compact_locked(ai)
+            if not ok_can:
+                return reason
+            spec = registry.get(ai) or {}
+            full = spec.get("context") == "full"
+            sid = self.meta.get(ai + "_session")
+            cp = (self.meta.get("compact_checkpoints") or {}).get(ai)
+            cp = cp if isinstance(cp, dict) and cp.get("summary") else None
+            cp_upto = int(cp.get("upto", -1)) if cp is not None else -1
+        if sid and ai_native_compact(ai, sid, self):
+            with self.lock:
+                self.meta["ctx"][ai] = None   # 压完多少不知道，下一轮回话后再显示
+                if isinstance(self.meta.get("compact_checkpoints"), dict):
+                    self.meta["compact_checkpoints"].pop(ai, None)
+                self.save_meta()
+            return "%s 压缩好了" % ai
+        if ai == "codex":   # codex 不走"摘要换新会话"：压不了就直说，它快满时自己也会自动压
+            if agents.CODEX_BACKEND == "exec":
+                return "codex（exec 方式）不支持手动压缩，它快装不下时会自己压"
+            return "codex 没压成（没看到压缩记录），会话没动"
+        if sid and not full:
+            # 退化：让它写摘要，再新建会话，第一条消息是前言 + 目标 + 摘要
+            d, upto = self.delta_for(ai)
+            body = "\n\n".join(fmt_message(m) for m in d)
+            ask = ("会议室要压缩上下文了。请把这场会议到目前为止的要点写成一份摘要："
+                   "已定的结论、没解决的问题、各人的立场、谁答应了要做什么、重要的文件路径。"
+                   "不要 @ 任何人，直接输出摘要。\n\n" + ("还没递给你的新消息：\n" + body if body else "（没有新消息）"))
+            r = ai_caller(ai, ask, sid, (), None, self)
+            ok, summary = r[0], r[1]
+            if not ok:
+                return "%s 压缩失败（写摘要出错：%s）" % (ai, summary.splitlines()[0] if summary else "")
+            if not (summary or "").strip():
+                return "%s 压缩失败（摘要为空）" % ai
+            with self.lock:
+                ver = self.meta["ann_ver"]
+                mode = self.mode()
+                head_inst = self._compact_head(ai, mode)
+            first = "\n\n".join([head_inst, "这场会议的目标：\n" + self.goal_text(), "看板：\n" + self.board_text(),
+                                 "这场会议到目前为止的摘要：\n" + summary.strip() + "\n\n以上是这场会议之前的摘要。",
+                                 "收到后只回复“收到”两个字。"])
+            r2 = ai_caller(ai, first, None, (), None, self)
+            ok2, new_sid = r2[0], r2[2]
+            if not ok2:
+                return "%s 压缩失败（新建会话出错）" % ai
+            with self.lock:
+                if sid and sid != new_sid:
+                    self.meta["old_sessions"][ai].append(sid)   # 摘要续接换了新会话；旧的留着记录，删会议时一起删
+                if new_sid:
+                    self.meta[ai + "_session"] = new_sid
+                    if isinstance(self.meta.get("compact_checkpoints"), dict):
+                        self.meta["compact_checkpoints"].pop(ai, None)
+                    msg = "%s 续接（摘要 + 新会话）" % ai
+                else:
+                    self.meta[ai + "_session"] = None
+                    self.meta.setdefault("compact_checkpoints", {})[ai] = {
+                        "summary": summary.strip(), "upto": upto, "time": now_str()}
+                    msg = "%s 压缩好了（摘要检查点）" % ai
+                self.meta["last_seen"][ai] = upto
+                self.meta["announcement_seen"][ai] = ver
+                self.meta["mode_seen"][ai] = mode_key(mode)
+                self.meta.setdefault("instruction_seen", {})[ai] = self.instruction_signature(ai, mode)
+                self.meta["returned"][ai] = False
+                self.meta["ctx"][ai] = self.last_ctx.pop(ai, None)
+                self.save_meta()
+            return msg
+        with self.lock:
+            upto = len(self.messages) - 1
+            tail = self.messages[cp_upto + 1:] if cp is not None else self.messages
+            d = [m for m in tail if not m.get("quiet") and not _hidden_from(m, ai)][-MAX_CONTEXT:]
+            prev_sum = cp["summary"] if cp is not None else ""
+            ver = self.meta["ann_ver"]
+            mode = self.mode()
+        sections = []
+        if prev_sum:
+            sections.append("此前会议摘要：\n" + prev_sum)
+        body = "\n\n".join(fmt_message(m) for m in d)
+        if body:
+            sections.append("需要压缩的会议记录：\n" + body)
+        ask = ("会议室要压缩上下文了。请把这场会议到目前为止的要点写成一份精炼摘要："
+               "已定的结论、没解决的问题、各人的立场、谁答应了要做什么、重要的文件路径。"
+               "不要 @ 任何人，直接输出摘要。\n\n" + "\n\n".join(sections))
+        r = ai_caller(ai, ask, None, (), None, self)
+        ok, summary = r[0], r[1]
+        if not ok:
+            return "%s 压缩失败（写摘要出错：%s）" % (ai, summary.splitlines()[0] if summary else "")
+        if not (summary or "").strip():
+            return "%s 压缩失败（摘要为空）" % ai
+        with self.lock:
+            if sid:
+                self.meta["old_sessions"][ai].append(sid)
+                self.meta[ai + "_session"] = None
+            self.meta.setdefault("compact_checkpoints", {})[ai] = {
+                "summary": summary.strip(), "upto": upto, "time": now_str()}
+            self.meta["last_seen"][ai] = upto
+            self.meta["announcement_seen"][ai] = ver
+            self.meta["mode_seen"][ai] = mode_key(mode)
+            self.meta.setdefault("instruction_seen", {})[ai] = self.instruction_signature(ai, mode)
+            self.meta["returned"][ai] = False
+            self.meta["ctx"][ai] = self.last_ctx.pop(ai, None)
+            self.save_meta()
+        return "%s 压缩好了（摘要检查点）" % ai
+
+    def process_compact(self, ai):
+        """压一个 AI：等它手上的活干完（它自己的锁），压完插一条系统消息。"""
+        try:
+            with self.ai_lock(ai):
+                with self.lock:
+                    if self.closed:
+                        return
+                    self.state["running"].append("compact:" + ai)
+                try:
+                    r = self.compact_one(ai)
+                except Exception as e:
+                    r = "%s 压缩出错：%s" % (ai, e)
+                finally:
+                    with self.lock:
+                        if "compact:" + ai in self.state["running"]:
+                            self.state["running"].remove("compact:" + ai)
+            self.system_note(r)
+        finally:
+            with self.lock:
+                self.state["compacting"].discard(ai)
+
+    # ---------- 落盘 ----------
+    def _wrapup_target(self):
+        ais = self.ais
+        candidates = [a for a in ("claude", "codex") if a in ais] + [a for a in ais if a not in ("claude", "codex")]
+        for a in candidates:
+            if (registry.get(a) or {}).get("kind") != "user" and access.allowed(self, a, "work"):
+                return a
+        return None
+
+    def wrapup_text(self, target="claude"):
+        if os.path.isfile(os.path.join(self.workdir(), ".claude", "skills", "wrapup", "SKILL.md")):
+            text = WRAPUP_TEXT
+        else:
+            text = WRAPUP_GENERIC.replace("{wd}", self.workdir())
+        return text if target == "claude" else text.replace("@claude", "@" + target)
+
+    def request_wrapup(self):
+        """叫负责落盘的 AI（优先 claude，无则选本场可用的 AI）按 wrapup 落盘并提交推送；这一轮强制干活模式。返回 (ok, 错误)。"""
+        with self.lock:
+            target = self._wrapup_target()
+            if not target:
+                return False, "没有可用来落盘（且有干活权限）的 AI 参与者"
+            if self.meta.get("handed_off", {}).get(target):
+                return False, "%s 现在在终端里，先收回再落盘" % target
+            if self.busy_for(target):
+                return False, "%s 还在回复或排队，等它说完再落盘" % target
+            self.state["force_work"].add(target)
+            others = [a for a in self.ais if a != target]
+            not_for = others[0] if len(others) == 1 else (others if others else None)
+            self.add_message("系统", self.wrapup_text(target), not_for=not_for)
+            self.enqueue(target, user=True)
+        return True, ""
+
+    # ---------- 停 ----------
+    def stop_ais(self, targets=None):
+        """用户按"停"：targets 里正在跑的 AI 连同它起的命令（git push 之类）一起杀掉，它们排着的全部作废；别的 AI、别的会议不受影响。
+        返回给人看的描述。"""
+        targets = [a for a in (self.ais if targets is None else targets) if a in self.ais]
+        with self.lock:
+            for a in targets:
+                self.state["epoch"][a] = self.state["epoch"].get(a, 0) + 1     # 已经排上的（队列里、等锁的）开跑时对不上计数，自己放弃
+            self.pending[:] = [a for a in self.pending if a not in targets]
+            keep = []
+            while True:
+                try:
+                    item = self.jobs.get_nowait()
+                except queue.Empty:
+                    break
+                if item is None or item[1] != "reply" or item[2] not in targets:
+                    keep.append(item)       # 压缩、别的 AI 的不归这次"停"管
+            for item in keep:
+                self.jobs.put(item)
+            running = [a for a in self.state["running"] if a in targets]
+            self.state["stopped"].update(running)
+            for a in targets:
+                self.state["force_work"].discard(a)
+        from .members import broker
+        broker.cancel(self.id, targets)
+        detached_jobs.cancel_jobs(self, targets)
+        from . import acp
+        for a in running:
+            p = self.procs.get(a)
+            if p is not None and p.poll() is None:
+                kill_tree(p)
+            if a == "codex":
+                agents.stop_codex(self)   # 杀掉这场会议的 app-server 进程树；下一轮自动重起，会话从记录里接上
+            acp.stop(self, a)
+        who = "、".join(targets)
+        if running:
+            msg = "你强行打断了：%s。%s排着的也清掉了。" % ("、".join(running), who)
+            msg += "已经改了的文件不会自动还原，干活模式下可以按步骤撤回；起的命令（比如 git push）也一起停了，可能只做了一半。"
+        else:
+            msg = "你按了停（%s）：排着的都清掉了。" % who
+        self.add_message("系统", msg)
+        return msg
+
+    # ---------- 交给终端 ----------
+    def set_handoff(self, ai, on):
+        """返回 (ok, 错误或提示)。"""
+        if ai not in self.ais:
+            return False, "未知 AI"
+        with self.lock:
+            if on == self.meta["handed_off"][ai]:
+                return True, ""
+            if on:
+                if not execution.local(self, ai):
+                    return False, "当前执行端不是 CLI，不能再交给终端"
+                if not (registry.get(ai) or {}).get("caps", {}).get("handoff"):
+                    return False, "这个 AI 不支持交给终端"
+                if not self.meta.get(ai + "_session"):
+                    return False, "还没叫过它，先在会议里 @ 它一次"
+                if self.busy_for(ai):
+                    return False, "它正在跑或排着队，等它说完再交"
+                self.meta["handed_off"][ai] = True
+                self.save_meta()
+                self.system_note("%s 去终端了" % ai)
+            else:
+                self.meta["handed_off"][ai] = False
+                self.meta["returned"][ai] = True
+                self.save_meta()
+                self.system_note("%s 回到会议室" % ai)
+        return True, ""
+
+    def can_handoff(self, ai):
+        """这个 AI 能不能"交给终端"：得有会话，而且驱动支持（配置里给了 handoff 命令模板）。"""
+        spec = registry.get(ai) or {}
+        return execution.local(self, ai) and bool(self.meta.get(ai + "_session")) and bool((spec.get("caps") or {}).get("handoff"))
+
+    def handoff_cmd(self, ai):
+        """在终端里接着聊这个会话的命令；不支持返回 None。"""
+        sid = self.meta.get(ai + "_session")
+        spec = registry.get(ai) or {}
+        if not sid or not (spec.get("caps") or {}).get("handoff"):
+            return None
+        if ai == "claude":
+            line = "claude --resume " + sid
+        elif ai == "codex":
+            line = "codex resume " + sid
+        else:
+            tpl = spec.get("handoff") or ""
+            if not tpl:
+                return None
+            line = tpl.replace("{session}", sid)
+        return "cd \"%s\"; %s" % (self.workdir(), line)
+
+    # ---------- 给页面 ----------
+    def summary(self):
+        """会议列表里一行：标题、状态、谁在跑、消息数、最后一条 → 用户 的编号。"""
+        with self.lock:
+            last_tu = next((m["id"] for m in reversed(self.messages) if m.get("to_user")), -1)
+            return {"id": self.id, "title": self.meta["title"], "created": self.meta.get("created", ""),
+                    "status": self.meta.get("status", "open"), "archived": is_archived(self.meta.get("status")),
+                    "workdir": self.workdir(), "project": self.meta.get("project", ""), "participants": list(self.ais), "mode": self.mode(), "loaded": True,
+                    "running": [a for a in self.state["running"]], "queued": self.queued_count(),
+                    "count": len(self.messages), "last_to_user": last_tu,
+                    "last_time": self.messages[-1]["time"] if self.messages else ""}
+
+    def api_state(self):
+        from .members import broker
+        gi = ws.git_info(self.workdir())   # 锁外跑 git
+        with self.lock:
+            cps = self.meta.get("compact_checkpoints") or {}
+            ais = {}
+            for a in self.ais:
+                cp = cps.get(a) if isinstance(cps, dict) else None
+                cp_at = cp.get("time", "") if isinstance(cp, dict) and cp.get("summary") else ""
+                ais[a] = {"session": bool(self.meta.get(a + "_session")), "handed_off": self.meta["handed_off"][a],
+                          "busy": self.busy_for(a), "compacting": a in self.state["compacting"],
+                          "can_compact": self._can_compact_locked(a)[0] and a not in self.state["compacting"],
+                          "compact_at": cp_at, "cmd": self.handoff_cmd(a),
+                          "caps": dict((registry.get(a) or {}).get("caps") or {}), "handoff": self.can_handoff(a),
+                          "model": self.model_info(a), "ctx": self.meta["ctx"].get(a),
+                          "tools": agents.tools_summary(a, self.meta["tools"][a])}
+            return {"meeting": self.id, "title": self.meta["title"], "status": self.meta["status"],
+                    "participants": list(self.ais), "agents": registry.catalog()["agents"],
+                    "execution": {a: execution.describe(self, a) for a in self.ais if (registry.get(a) or {}).get("kind") != "user"},
+                    "members": {a: dict(broker.status(a, self.id if execution.binding(self, a)["endpoint"] == "desktop" else None), transport="desktop" if execution.binding(self, a)["endpoint"] == "desktop" else "member") if execution.remote(self, a) and (registry.get(a) or {}).get("kind") != "user" else {"automatic": (registry.get(a) or {}).get("kind") != "user", "transport": "human" if (registry.get(a) or {}).get("kind") == "user" else "http" if (registry.get(a) or {}).get("driver") == "http" else "local"} for a in self.ais},
+                    "project": self.meta.get("project", ""), "permissions": {a: access.permissions(self, a) for a in self.ais},
+                    "archived": is_archived(self.meta["status"]),
+                    "announcement": self.meta["announcement"], "ann_ver": self.meta["ann_ver"], "ais": ais,
+                    "board": self.meta["board"], "workdir": self.workdir(), "default_workdir": PROJECT, "stop_each": True,
+                    "mode": self.mode(),
+                    "steps_undone": [int(k) for k, v in self.meta["steps"].items() if v.get("undone")],
+                    "steps": [{"seq": int(k), "ai": v.get("ai", "?"), "time": v.get("time", ""), "undone": bool(v.get("undone")),
+                               "files": [{"path": f.get("path", ""), "st": f.get("st", "M")} for f in v.get("files") or []]}
+                              for k, v in sorted(self.meta["steps"].items(), key=lambda kv: int(kv[0]))[-40:]],
+                    "git": gi,
+                    "running": list(self.state["running"]), "queued": self.queued_count(),
+                    "claims": [c for c in guard.listing() if c["room"] == self.id or in_dir(c["shown"], self.workdir())],
+                    "live": {a: {"text": v["text"], "time": v["time"], "secs": int(time.time() - v["since"])} for a, v in list(self.live.items())}}
+
+    def messages_since(self, since):
+        with self.lock:
+            return {"meeting": self.id, "messages": self.messages[since:], "next": len(self.messages),
+                    "running": list(self.state["running"]), "queued": self.queued_count()}
+
+
+# ===================== 会议目录的增删 =====================
+_scan_lock = threading.Lock()
+_scan_cache: dict[tuple[str, str], tuple[tuple[int, int], dict[str, Any] | None]] = {}   # (norm(base), name) -> ((大小, 修改时间纳秒), 条目字典或 None)
+
+
+def scan(base):
+    out: list[dict[str, Any]] = []
+    if not os.path.isdir(base):
+        return out
+    base_key = norm(base)
+    seen = set()
+    for name in os.listdir(base):
+        p = os.path.join(base, name, "meeting.json")
+        try:
+            st_res = os.stat(p)
+        except OSError:
+            continue
+        if not stat.S_ISREG(st_res.st_mode):
+            continue
+        seen.add(name)
+        sig = (st_res.st_size, st_res.st_mtime_ns)
+        ckey = (base_key, name)
+        with _scan_lock:
+            hit = _scan_cache.get(ckey)
+        if hit is not None and hit[0] == sig:
+            entry = hit[1]
+        else:
+            m = read_json(p)
+            if not isinstance(m, dict):
+                entry = None
+            else:
+                st = m.get("status", "closed")
+                entry = {"id": name, "title": m.get("title", name), "created": m.get("created", ""),
+                         "status": st, "archived": is_archived(st), "workdir": m.get("workdir") or PROJECT,
+                         "project": m.get("project", ""), "participants": m.get("participants", ["claude", "codex"]),
+                         "mode": m.get("mode", "discuss")}
+            with _scan_lock:
+                _scan_cache[ckey] = (sig, entry)
+        if entry is not None:
+            item = dict(entry)
+            if isinstance(item.get("participants"), list):
+                item["participants"] = list(item["participants"])
+            out.append(item)
+    with _scan_lock:
+        for k in [k for k in _scan_cache if k[0] == base_key and k[1] not in seen]:
+            del _scan_cache[k]
+    return out
+
+
+_log_cache: dict[str, tuple[tuple[int, float], int, int, str]] = {}   # 会议目录 -> ((大小, 修改时间), 条数, 最后一条 → 用户 的编号, 最后一条的时间)
+
+
+def log_stats(d):
+    p = os.path.join(d, "log.jsonl")
+    try:
+        st = os.stat(p)
+    except OSError:
+        return 0, -1, ""
+    sig = (st.st_size, st.st_mtime)
+    hit = _log_cache.get(d)
+    if hit and hit[0] == sig:
+        return hit[1:]
+    n, last_tu, last_t = 0, -1, ""
+    with open(p, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                x = json.loads(line)
+            except Exception:
+                continue
+            if x.get("to_user"):
+                last_tu = n
+            last_t = x.get("time", "")
+            n += 1
+    _log_cache[d] = (sig, n, last_tu, last_t)
+    return n, last_tu, last_t
+
+
+def unique_name(base_dir, name):
+    new, i = name, 1
+    while os.path.exists(os.path.join(base_dir, new)):
+        i += 1
+        new = "%s_%d" % (name, i)
+    return new
+
+
+def meeting_sessions(m):
+    """一场会议用过的全部会话 id：{ai: [id, ...]}（当前的 + 压缩续接换下来的旧的）。"""
+    out: dict[str, list[str]] = {}
+    if not isinstance(m, dict):
+        return out
+    keys = list(AIS)
+    for k in m:
+        if isinstance(k, str) and k.endswith("_session"):
+            aid = k[:-8]
+            if aid and aid not in keys:
+                keys.append(aid)
+    old = m.get("old_sessions")
+    if isinstance(old, dict):
+        for aid in old:
+            if isinstance(aid, str) and aid and aid not in keys:
+                keys.append(aid)
+    for a in keys:
+        ss = [m.get(a + "_session")] + list(((old or {}).get(a)) or [])
+        ids = [v for i, v in enumerate(ss) if isinstance(v, str) and SID_RE.match(v) and v not in ss[:i]]
+        if ids or (a + "_session") in m:     # 这场会议用过的才列（老会议没有新 agent 的字段）
+            out[a] = ids
+    return out
+
+
+MAX_LOADED_ROOMS = 24
+
+
+class Rooms:
+    """读进内存的会议（打开过的、外部发过言的）。会议在这里才会跑 AI；没读进来的只是磁盘上的目录。"""
+
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.loaded = {}
+        self.max_loaded = MAX_LOADED_ROOMS
+
+    def _collect_evict(self, keep=None):
+        """需在持有 self.lock 时调用；挑选超限的最久未用空闲会议并从 loaded 移除，由调用方在锁外关闭。"""
+        cap = max(1, int(getattr(self, "max_loaded", MAX_LOADED_ROOMS)))
+        evicted: list[Room] = []
+        if len(self.loaded) <= cap:
+            return evicted
+        for k, cand in sorted(self.loaded.items(), key=lambda kv: kv[1].touched):
+            if len(self.loaded) <= cap:
+                break
+            if k == keep:
+                continue
+            if cand.busy_for() or not cand.jobs.empty():
+                continue
+            self.loaded.pop(k, None)
+            evicted.append(cand)
+        return evicted
+
+    def get(self, rid: str) -> Room | None:
+        """读进来（已经在就直接给）。没有这场会议返回 None。"""
+        if not rid or not ROOM_RE.match(rid) or os.path.basename(rid) != rid or rid in (".", ".."):
+            return None
+        evicted = []
+        with self.lock:
+            r = self.loaded.get(rid)
+            if r is not None and not r.closed:
+                r.touched = time.time()
+                return r
+            d = os.path.join(MEET_DIR, rid)
+            m = read_json(os.path.join(d, "meeting.json"))
+            if not isinstance(m, dict):
+                return None
+            msgs: list[dict[str, Any]] = []
+            jl = os.path.join(d, "log.jsonl")
+            if os.path.exists(jl):
+                with open(jl, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                x = json.loads(line)
+                                x["id"] = len(msgs)
+                                msgs.append(x)
+                            except Exception as error:
+                                logger.warning("Skipping corrupt message line in %s: %s", jl, error)
+            r = Room(rid, d, fix_meta(m), msgs)
+            self.loaded[rid] = r
+            evicted = self._collect_evict(keep=rid)
+        for cand in evicted:
+            cand.close(release_guard=False)
+        return r
+
+    def all(self) -> list[Room]:
+        with self.lock:
+            return list(self.loaded.values())
+
+    def create(self, title, ann="", wd=None, project="", participants=None):
+        """建一场新的。别的会议照常跑，不受影响。返回 Room。"""
+        now = datetime.now()
+        title = (title or "").strip() or "会议"
+        evicted = []
+        with self.lock:
+            os.makedirs(MEET_DIR, exist_ok=True)
+            name = unique_name(MEET_DIR, "%s_%s" % (now.strftime("%Y-%m-%d_%H%M"), safe_title(title)))
+            d = os.path.join(MEET_DIR, name)
+            os.makedirs(os.path.join(d, "files"))
+            meta = default_meta(title, ann, wd)
+            meta["project"] = project
+            if participants is not None:
+                meta["participants"] = list(participants)
+            if participants is not None or any((registry.get(a) or {}).get("default_permissions") for a in meta["participants"]):
+                meta["permissions"] = {a: dict(access.PERMISSIONS, **((registry.get(a) or {}).get("default_permissions") or {}))
+                                       for a in meta["participants"]}
+            write_json(os.path.join(d, "meeting.json"), meta)
+            with open(os.path.join(d, "log.md"), "w", encoding="utf-8") as f:
+                f.write("# %s\n\n创建于 %s\n\n" % (title, meta["created"]))
+            open(os.path.join(d, "log.jsonl"), "a").close()
+            r = Room(name, d, meta, [])
+            self.loaded[name] = r
+            evicted = self._collect_evict(keep=name)
+        for cand in evicted:
+            cand.close(release_guard=False)
+        set_last(name)
+        return r
+
+    def unload(self, rid):
+        with self.lock:
+            r = self.loaded.pop(rid, None)
+        if r is not None:
+            r.close()
+        return r
+
+    def listing(self):
+        """全部会议（不含回收站），带状态。归档的沉到底部。"""
+        with self.lock:
+            loaded = dict(self.loaded)
+        out = []
+        for x in scan(MEET_DIR):
+            r = loaded.get(x["id"])
+            if r is not None:
+                out.append(r.summary())
+                continue
+            n, last_tu, last_t = log_stats(os.path.join(MEET_DIR, x["id"]))
+            x.update({"loaded": False, "running": [], "queued": 0, "count": n, "last_to_user": last_tu, "last_time": last_t})
+            out.append(x)
+        out.sort(key=lambda x: (x["created"], x["id"]), reverse=True)
+        out.sort(key=lambda x: x["archived"])   # 稳定排序：归档的沉到底部
+        return out
+
+    def busy_rooms(self):
+        return [r for r in self.all() if r.busy_for()]
+
+
+rooms = Rooms()
+
+
+def room_title_of(rid):
+    r = rooms.loaded.get(rid)
+    if r is not None:
+        return r.title()
+    m = read_json(os.path.join(MEET_DIR, rid, "meeting.json")) or {}
+    return m.get("title") or rid
+
+
+def steps_in_repo(top):
+    """同一个仓库里所有会议记下的步（读进内存的用内存里的，别的读 meeting.json）。返回 [(会议号, 步)]。"""
+    out, seen = [], set()
+    for r in rooms.all():
+        seen.add(r.id)
+        if in_dir(r.workdir(), top):
+            with r.lock:
+                out += [(r.id, s) for s in r.meta["steps"].values()]
+    for x in scan(MEET_DIR):
+        if x["id"] in seen or not in_dir(x["workdir"], top):
+            continue
+        m = read_json(os.path.join(MEET_DIR, x["id"], "meeting.json")) or {}
+        out += [(x["id"], s) for s in (m.get("steps") or {}).values() if isinstance(s, dict)]
+    return out
+
+
+def last_room():
+    try:
+        with open(LAST_FILE, encoding="utf-8") as f:
+            rid = f.read().strip()
+    except OSError:
+        return None
+    return rid if rid and os.path.isfile(os.path.join(MEET_DIR, rid, "meeting.json")) else None
+
+
+def set_last(rid):
+    try:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        with open(LAST_FILE, "w", encoding="utf-8") as f:
+            f.write(rid or "")
+    except OSError as error:
+        logger.warning("Failed writing last room marker %s: %s", LAST_FILE, error)
+
+
+def set_archived(rid, on):
+    """归档 / 取消归档：只改标记。返回 (ok, 错误)。"""
+    if rid not in [x["id"] for x in scan(MEET_DIR)]:
+        return False, "没有这场会议"
+    st = "archived" if on else "open"
+    r = rooms.loaded.get(rid)
+    if r is not None:
+        with r.lock:
+            r.meta["status"] = st
+            r.save_meta()
+    else:
+        p = os.path.join(MEET_DIR, rid, "meeting.json")
+        m = read_json(p) or {}
+        m["status"] = st
+        write_json(p, m)
+    return True, ""
+
+
+def _tag_ref_name(d, orig):
+    """目录改名前，把存档点引用用的名字记在 meeting.json 里，彻底删除时才找得到。"""
+    p = os.path.join(d, "meeting.json")
+    m = read_json(p) or {}
+    if not m.get("ref_name"):
+        m["ref_name"] = ref_safe(orig)
+        write_json(p, m)
+
+
+def _move_meeting(src_base, dst_base, name):
+    """name 必须是 src_base 服务端列表里的目录名；两头都要落在各自目录内。返回新目录名。"""
+    if os.path.basename(name or "") != name or name not in [x["id"] for x in scan(src_base)]:
+        raise ValueError("没有这场会议")
+    src = os.path.join(src_base, name)
+    if not in_dir(src, src_base) or norm(os.path.dirname(src)) != norm(src_base):
+        raise ValueError("路径不安全")
+    os.makedirs(dst_base, exist_ok=True)
+    new = unique_name(dst_base, name)
+    dst = os.path.join(dst_base, new)
+    if not in_dir(dst, dst_base):
+        raise ValueError("路径不安全")
+    _tag_ref_name(src, name)
+    shutil.move(src, dst)
+    return new
+
+
+def remove_contact(pid):
+    """Detach a contact everywhere before removing it; keep historical messages."""
+    from . import acp, connections, members
+    with rooms.lock, ExitStack() as locks:
+        affected = [r for r in rooms.loaded.values() if pid in r.meta.get("participants", [])]
+        for r in sorted(affected, key=lambda item: item.id):
+            locks.enter_context(r.lock)
+        locks.enter_context(access.LOCK)
+        busy = [r.title() for r in affected if r.busy_for(pid) or r.meta.get("handed_off", {}).get(pid) or
+                r.meta.get("execution", {}).get(pid, {}).get("phase", "ready") != "ready"]
+        if busy:
+            return False, "此联系人还有任务或会话交接未结束：" + "、".join(busy)
+        spec = registry.get(pid)
+        if not spec or spec.get("builtin"):
+            return False, "内置联系人不能删除" if spec else "联系人不存在"
+        updates = []
+        for base in (MEET_DIR, TRASH_DIR):
+            for row in scan(base):
+                path = os.path.join(base, row["id"], "meeting.json")
+                loaded = rooms.loaded.get(row["id"]) if base == MEET_DIR else None
+                old = copy.deepcopy(loaded.meta if loaded is not None else read_json(path) or {})
+                if pid not in old.get("participants", []):
+                    continue
+                new = copy.deepcopy(old)
+                new["participants"] = [member for member in old["participants"] if member != pid]
+                for key in ("permissions", "execution", "instruction_seen"):
+                    if isinstance(new.get(key), dict):
+                        new[key].pop(pid, None)
+                updates.append((path, old, new, loaded))
+        key_path = os.path.join(LOG_DIR, "contact_keys.json")
+        old_keys = read_json(key_path) or {}
+        if pid in old_keys:
+            new_keys = dict(old_keys)
+            new_keys.pop(pid)
+            updates.append((key_path, old_keys, new_keys, None))
+        written = []
+        try:
+            for path, old, new, loaded in updates:
+                write_json(path, new)
+                written.append((path, old))
+            ok, message = registry.remove_agent(pid)
+            if not ok:
+                for path, old in reversed(written):
+                    write_json(path, old)
+                return False, message
+        except OSError:
+            for path, old in reversed(written):
+                write_json(path, old)
+            raise
+        for path, old, new, loaded in updates:
+            if loaded is not None:
+                loaded.meta = new
+                with keys_lock:
+                    KEYS.pop(loaded.keys.pop(pid, ""), None)
+                try:
+                    guard.release((loaded.id, pid))
+                except OSError as error:
+                    logger.warning("Contact %s removed but claim persistence failed: %s", pid, error)
+                try:
+                    acp.stop(loaded, pid)
+                except OSError as error:
+                    logger.warning("Contact %s removed but ACP cleanup failed: %s", pid, error)
+    # Broker operations must run after room/credential locks are released.
+    members.broker.stop_standby(pid)
+    try:
+        connections.forget(pid)
+    except OSError as error:
+        logger.warning("Contact %s removed but connection cache cleanup failed: %s", pid, error)
+    return True, ""
+
+
+def trash_meeting(rid):
+    """移进回收站。这场会议的 AI 在跑时不行（别的会议在跑没关系）。返回 (ok, 错误)。"""
+    with rooms.lock:
+        r = rooms.loaded.get(rid)
+        if r is not None and r.busy_for():
+            return False, "这场会议的 AI 还在回复，等它们说完再删"
+        if rid not in [x["id"] for x in scan(MEET_DIR)]:
+            return False, "没有这场会议"
+        if r is not None:
+            rooms.unload(rid)
+        else:
+            guard.release_room(rid)
+        try:
+            _move_meeting(MEET_DIR, TRASH_DIR, rid)
+        except Exception as e:
+            return False, str(e)
+    if last_room() is None:
+        set_last("")
+    return True, ""
+
+
+def list_trash():
+    out = scan(TRASH_DIR)
+    out.sort(key=lambda x: (x["created"], x["id"]), reverse=True)
+    return out
+
+
+def restore_meeting(name):
+    with rooms.lock:
+        try:
+            new = _move_meeting(TRASH_DIR, MEET_DIR, name)
+        except Exception as e:
+            return False, str(e), None
+    return True, "", new
+
+
+def purge_all():
+    """清空回收站。返回 (ok, 错误)。"""
+    for n in [x["id"] for x in scan(TRASH_DIR)]:
+        ok, msg = purge_meeting(n)
+        if not ok:
+            return False, msg
+    return True, ""
+
+
+def purge_meeting(name):
+    """彻底删除回收站里的一场。返回 (ok, 错误)。"""
+    with rooms.lock:
+        item = next((x for x in scan(TRASH_DIR) if x["id"] == name), None)
+        if os.path.basename(name or "") != name or not item:
+            return False, "回收站里没有这场会议"
+        d = os.path.join(TRASH_DIR, name)
+        if not in_dir(d, TRASH_DIR) or norm(os.path.dirname(d)) != norm(TRASH_DIR):
+            return False, "路径不安全"
+        m = read_json(os.path.join(d, "meeting.json")) or {}
+        ref_name = m.get("ref_name") or ref_safe(name)
+        wd = m.get("workdir") or PROJECT
+        sids = meeting_sessions(m)
+        shutil.rmtree(d)
+        try:
+            if os.path.isdir(wd):
+                ws.purge_refs(ref_name, wd)
+        except Exception as error:
+            logger.debug("purge_refs failed for room %s (%s): %s", ref_name, wd, error)
+        # 别的会议（还在的、回收站里剩下的）也在用的会话不删
+        used: set[tuple[str, str]] = set()
+        for base in (MEET_DIR, TRASH_DIR):
+            for x in scan(base):
+                mm = read_json(os.path.join(base, x["id"], "meeting.json")) or {}
+                for a, ss in meeting_sessions(mm).items():
+                    used.update((a, v) for v in ss)
+        sids = {a: [v for v in ss if (a, v) not in used] for a, ss in sids.items()}
+    if any(sids.values()):
+        threading.Thread(target=delete_sessions, args=(m.get("title") or name, sids), daemon=True).start()
+    return True, ""
+
+
+def delete_sessions(title, sids):
+    """彻底删除会议后在后台删各 AI 的会话，结果记一条系统消息（记在最近打开的那场会议里，只给人看）。"""
+    parts = []
+    for agent_id, ids in (sids or {}).items():
+        if not ids:
+            continue
+        spec = registry.get(agent_id) or {}
+        drv = spec.get("driver") or agent_id
+        for sid in ids:
+            if drv == "claude" or agent_id == "claude":
+                n = agents.delete_claude_session(sid)
+                parts.append("%s 会话 %s…：%s" % (agent_id, sid[:8], "删了 %d 项" % n if n else "本机没找到"))
+            elif drv == "codex" or agent_id == "codex":
+                ok, why = agents.delete_codex_thread(sid)
+                parts.append("%s 会话 %s…：%s" % (agent_id, sid[:8], ("删了" + ("（%s）" % why if why else "")) if ok else "没删成（%s）" % why))
+            else:
+                parts.append("%s 会话 %s…：外部/通用驱动无本机清理接口（已从会议记录移除）" % (agent_id, sid[:8]))
+    if not parts:
+        return
+    lr = last_room()
+    r = rooms.get(lr) if lr else None
+    if r is not None:
+        r.system_note("彻底删除「%s」：%s" % (title, "；".join(parts)))

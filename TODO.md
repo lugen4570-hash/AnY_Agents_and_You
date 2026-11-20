@@ -1,0 +1,35 @@
+# 待办
+
+只记没做完的事。用法和实现细节在 [README](README.md)。
+
+## 还没在真会议室里用过
+
+单元测试和测试用的会议室都过了，真会议里还没按过。用到时留意：
+
+- [ ] **落盘按钮**：claude 按收工清单落盘，再提交推送。
+- [ ] **单独停**："停 claude""停 codex""全停"三个按钮。
+- [ ] **粘贴图片**：Ctrl+V 粘截图，拖文件进页面。
+- [ ] **清空回收站时连两个 AI 的会话一起删**：codex 删除失败时报的话（"找不到"之类）是猜的，没对着真的报错核过。
+
+## 手机
+
+- [ ] **手机真机试一遍**：☰ 菜单、传相册照片、iPhone 的 HEIC 照片 codex 认不认，都只测过后端。
+- [ ] **开机自启没建**：现在靠桌面快捷方式手动开。想出门用手机，得登录 Windows 后自动开起来（计划任务），出门前还要关掉电脑睡眠。
+- [ ] **关机时远程开机**：要先确认 Tailscale 的出口节点是不是在家、跟电脑同一个网络。
+
+## 已知的坑
+
+- [ ] **codex 用命令行写的文件撤不回**：撤回清单只认它打补丁（apply_patch）改的文件。现在靠规矩提醒它尽量用补丁改。
+- [ ] **讨论模式下 codex 读不了只对本人账户开放的文件夹**：只读沙箱的限制。实测 `AppData\Local\Temp` 下读不了，`D:\` 下的普通文件夹没问题；桌面、文档可能也一样。干活模式不受影响。
+- [ ] **codex 沙箱再卡住**：先退出 Codex 桌面应用再试。病根是桌面应用攒下的 node_repl 进程占着文件；反复出现就去 Codex 的 GitHub 报问题。
+
+
+## 多厂商接入（2026-11-03）
+
+框架和内置预置都做完了，下面是还没验到的：
+
+- [ ] **预置与目录表实测**：gemini / qwen / crush / aider / cursor / copilot / kiro / goose / kimi / qoder / codebuddy / iflow / amp / droid 的 CLI 或 ACP 预置是照公开文档写的，本机目前仅实测了 claude / codex / opencode 及 Antigravity MCP 配置。装上对应工具后用 `python -m bridge.doctor <id>` 跑一次，验完把 `verified` 改成 true。
+- [ ] **opencode 的文本事件**：会话 id 已经验到了（`--format json` 每行都有 `sessionID`），但回复文本的 `part.text` 没跑通（免费额度用完）。`python -m bridge.doctor opencode` 跑一次，按实际输出调 `parse.text`。
+- [ ] **http 驱动只在测试里验过**：拿本地假服务验了请求 / 回复格式，还没接过真的 harness。
+- [ ] **三个以上 AI 的会议没在真会议上跑过**：界面上 3 个胶囊的冒烟截图正常，实际让 3-4 个一起回话、一起改文件的场面还没试。
+- [ ] **exe 没打过**：`build_exe.ps1` 写好了，没装 PyInstaller 试。

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cojam-choose-workdir"
+description = "Enables the cojam_choose_workdir command without any pre-configured scope."
+commands.allow = ["cojam_choose_workdir"]
+
+[[permission]]
+identifier = "deny-cojam-choose-workdir"
+description = "Denies the cojam_choose_workdir command without any pre-configured scope."
+commands.deny = ["cojam_choose_workdir"]

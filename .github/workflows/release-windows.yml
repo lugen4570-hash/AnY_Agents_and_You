@@ -1,0 +1,129 @@
+name: Release Cojam (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Python build and check tools
+        run: python -m pip install pyinstaller pillow mypy ruff
+
+      - name: Run Rust desktop shell tests
+        working-directory: desktop_tauri/src-tauri
+        run: cargo test --locked
+
+      - name: Run static checks and core Python regression suites
+        run: |
+          node --check static/workspace.js
+          node --check static/agent-settings.js
+          node --check static/app-core.js
+          node --check static/connections.js
+          python -m mypy bridge
+          python -m ruff check bridge tests/test_headless.py packaging/build_release.py
+          python tests/run_all.py
+
+      - name: Resolve version and verify tag parity
+        id: meta
+        run: |
+          $ver = (python -c "from bridge.version import VERSION; print(VERSION)").Trim()
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$ver") {
+            throw "Git tag ${{ github.ref_name }} does not match bridge/version.py ($ver)"
+          }
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build Windows core (onefile + onedir) and Tauri 2 desktop shell
+        run: |
+          .\build_exe.ps1
+          .\build_desktop.ps1
+          python packaging/build_release.py
+
+      - name: Compile TEST_BUILD and production installers and sign before hashing
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup 6 missing" }
+          & $iscc /Q /DTEST_BUILD packaging/cojam-desktop.iss
+          if ($LASTEXITCODE -ne 0) { throw "TEST_BUILD ISCC failed" }
+          & $iscc /Q packaging/cojam-desktop.iss
+          if ($LASTEXITCODE -ne 0) { throw "Production ISCC failed" }
+          $ver = "${{ steps.meta.outputs.version }}"
+          .\sign_exe.ps1 -ExePath "dist/Cojam-Setup-$ver.exe"
+
+      - name: Verify TEST_BUILD install, _internal cleanup, and data retention
+        run: |
+          $ver = "${{ steps.meta.outputs.version }}"
+          $testDir = Join-Path $env:RUNNER_TEMP "cojam-ci-test"
+          New-Item -ItemType Directory -Force -Path (Join-Path $testDir "data") | Out-Null
+          Set-Content -LiteralPath (Join-Path $testDir "data/sentinel.txt") -Value "keep" -Encoding utf8
+          $setup = (Resolve-Path "dist/Cojam-Setup-$ver-test.exe").Path
+          $p = Start-Process -FilePath $setup -ArgumentList @("/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$testDir") -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "TEST_BUILD install failed: $($p.ExitCode)" }
+          if ((Get-FileHash "$testDir/Cojam.exe").Hash -ne (Get-FileHash "dist/CojamDesktop.exe").Hash) { throw "Desktop shell mismatch" }
+          if ((Get-FileHash "$testDir/CojamCore.exe").Hash -ne (Get-FileHash "dist/CojamCore/CojamCore.exe").Hash) { throw "Core mismatch" }
+          if (-not (Test-Path "$testDir/_internal/index.html")) { throw "Missing _internal payload" }
+          if (-not (Test-Path "$testDir/data/sentinel.txt")) { throw "Data lost on install" }
+          # A running image may be renamed on Windows. Guard against deleting its runtime.
+          $env:ROUNDTABLE_PORT = "19565"
+          $env:ROUNDTABLE_NO_BROWSER = "1"
+          $env:ROUNDTABLE_OWNER_LIFECYCLE = "0"
+          $core = Start-Process -FilePath "$testDir/CojamCore.exe" -WorkingDirectory $testDir -WindowStyle Hidden -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              try { $null = Invoke-RestMethod "http://127.0.0.1:19565/api/server/info" -TimeoutSec 1; $ready = $true; break } catch { Start-Sleep -Milliseconds 250 }
+            }
+            if (-not $ready) { throw "Core did not start for installer lock test" }
+            $sentinel = Join-Path $testDir "_internal/install-must-not-delete.txt"
+            Set-Content -LiteralPath $sentinel -Value "runtime must survive blocked install"
+            $blocked = Start-Process -FilePath $setup -ArgumentList @("/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/NOCLOSEAPPLICATIONS","/DIR=$testDir") -Wait -PassThru -WindowStyle Hidden
+            if ($blocked.ExitCode -eq 0 -or $core.HasExited -or -not (Test-Path -LiteralPath $sentinel)) { throw "Running-core install protection failed" }
+            $blockedUninstall = Start-Process -FilePath "$testDir/unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru -WindowStyle Hidden
+            if ($blockedUninstall.ExitCode -eq 0 -or $core.HasExited -or -not (Test-Path -LiteralPath $sentinel)) { throw "Running-core uninstall protection failed" }
+          } finally {
+            if (-not $core.HasExited) { $core.Kill(); $core.WaitForExit() }
+          }
+          $u = Start-Process -FilePath "$testDir/unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru -WindowStyle Hidden
+          if ($u.ExitCode -ne 0 -or (Test-Path "$testDir/_internal") -or -not (Test-Path "$testDir/data/sentinel.txt")) {
+            throw "Uninstall failed or data lost"
+          }
+
+      - name: Generate final report and hashes after signing and validation
+        run: |
+          '{"rust_tests":true,"python_regression":true,"static_checks":true,"installer_data_retention":true,"running_core_install_protection":true,"native_interaction_smoke":"requires desktop verification"}' | Set-Content -LiteralPath "$env:RUNNER_TEMP/cojam-validation.json" -Encoding utf8NoBOM
+          python packaging/build_report.py --validation "$env:RUNNER_TEMP/cojam-validation.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cojam-${{ steps.meta.outputs.version }}-windows
+          path: |
+            dist/Cojam-Setup-${{ steps.meta.outputs.version }}.exe
+            dist/Cojam-Desktop-${{ steps.meta.outputs.version }}-win64.zip
+            dist/Cojam-${{ steps.meta.outputs.version }}-win64.zip
+            dist/Cojam-Member-${{ steps.meta.outputs.version }}.zip
+            dist/Cojam-Portable-${{ steps.meta.outputs.version }}.exe
+            dist/SHA256SUMS-${{ steps.meta.outputs.version }}.txt
+            dist/build-report-${{ steps.meta.outputs.version }}.json
+          if-no-files-found: error

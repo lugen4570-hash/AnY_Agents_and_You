@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>接入我的设备 · 合拍 Cojam</title>
+<link rel="icon" href="/static/icon-192.png?v=cojam-262"><link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-262">
+<meta name="theme-color" content="#6022e8">
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:light dark;background:#151517;color:#ececf1}
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px}
+main{width:min(440px,100%);background:#1b1b1e;border:1px solid #333;border-radius:16px;padding:24px}
+h1{font-size:22px;margin:0 0 8px}p{color:#aaa;line-height:1.6}label{display:block;margin:18px 0 6px;font-size:14px}
+input{width:100%;font:inherit;padding:12px;border:1px solid #444;border-radius:8px;background:#232328;color:inherit}
+button{width:100%;margin-top:16px;font:inherit;padding:12px;border:0;border-radius:8px;background:#6022e8;color:#fff;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}#error{color:#fca5a5;min-height:1.5em}#address{font-size:13px}
+</style>
+<main>
+  <h1>接入我的设备</h1>
+  <p>这台设备将获得与你相同的完整界面和「我」的身份。只接入你信任的设备。</p>
+  <label for="name">设备名称</label>
+  <input id="name" maxlength="40" autocomplete="off">
+  <button id="join">接入</button>
+  <button id="enter" hidden>直接进入合拍</button>
+  <p id="error" role="alert"></p>
+  <p id="address" class="hint"></p>
+</main>
+<script>
+const params = new URLSearchParams(location.hash.slice(1));
+const code = params.get('code') || '';
+const deviceLink = params.get('device') || '';
+const el = id => document.getElementById(id);
+function defaultName() {
+  const ua = navigator.userAgent;
+  return /iPhone/i.test(ua) ? 'iPhone' : /iPad/i.test(ua) ? 'iPad' : /Android/i.test(ua) ? 'Android'
+    : /Macintosh|Mac OS X/i.test(ua) ? 'Mac' : /Windows/i.test(ua) ? 'Windows' : '新设备';
+}
+function clientId() {
+  // 同一浏览器的持久设备号：重复接入时主机端覆盖旧记录，不新增一条设备
+  try {
+    let v = localStorage.getItem('cojam_device_id');
+    if (!v) { v = 'dc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12); localStorage.setItem('cojam_device_id', v); }
+    return v;
+  } catch (e) { return ''; }
+}
+el('name').value = defaultName();
+el('address').textContent = '当前地址：' + location.origin + '。以后请固定用这个地址打开；换地址需要重新生成接入码。';
+if (!code && !deviceLink) {
+  el('join').disabled = true;
+  el('error').textContent = '接入码无效，请让主机重新生成。';
+}
+history.replaceState(null, '', location.pathname + location.search);
+
+// 这台设备可能早就接入过了（cookie 或本地凭证还在）：
+// 重新点开旧接入链接时不用再要新码，直接进。
+async function alreadyEnrolled() {
+  try {
+    const page = await (await fetch('/', {cache: 'no-store'})).text();
+    if (page.includes('name="rt-token"')) return true;   // cookie 仍有效，首页直接给了完整界面
+  } catch (e) {}
+  let own = '';
+  try { own = localStorage.getItem('cojam_owner_device_token') || ''; } catch (e) {}
+  if (!own) return false;
+  try {
+    const response = await fetch('/api/devices/restore', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({token: own})});
+    if (response.ok) return true;
+    if (response.status === 401) { try { localStorage.removeItem('cojam_owner_device_token'); } catch (e) {} }
+  } catch (e) {}
+  return false;
+}
+(async () => {
+  if (deviceLink) {
+    el('join').disabled = true;
+    el('address').textContent = '正在接入…';
+    try {
+      const response = await fetch('/api/devices/restore', {method:'POST',
+        headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:deviceLink})});
+      if (!response.ok) throw Error(response.status === 401 ? '此设备链接已撤销，请联系屋主。' : '接入失败，请稍后重试。');
+      try { localStorage.setItem('cojam_owner_device_token', deviceLink); } catch(e) {}
+      location.replace('/');
+    } catch(e) { el('error').textContent=e.message; el('address').textContent=''; }
+    return;
+  }
+  if (!await alreadyEnrolled()) return;
+  if (code) {
+    el('error').textContent = '';
+    el('address').textContent = '当前浏览器已经接入过，不需要新的接入码。';
+    const enter = el('enter');
+    enter.hidden = false;
+    enter.onclick = () => location.replace('/');
+  } else {
+    el('error').textContent = '';
+    el('address').textContent = '当前浏览器已经接入过，正在进入…';
+    location.replace('/');
+  }
+})();
+el('join').onclick = async () => {
+  const label = el('name').value.trim() || defaultName();
+  el('join').disabled = true;
+  el('error').textContent = '';
+  try {
+    const response = await fetch('/api/devices/enroll', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({code, label, client_id: clientId()})
+    });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error || '接入失败');
+    try { localStorage.setItem('cojam_owner_device_token', data.token); } catch (e) {}
+    location.replace('/');
+  } catch (error) {
+    el('error').textContent = error.message;
+    el('join').disabled = false;
+  }
+};
+</script></html>

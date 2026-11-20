@@ -1,0 +1,59 @@
+{
+  "id": "cursor",
+  "label": "Cursor Agent",
+  "color": "#7c3aed",
+  "driver": "cli",
+  "bin": [
+    "cursor-agent",
+    "%LOCALAPPDATA%\\cursor-agent\\cursor-agent.cmd",
+    "%LOCALAPPDATA%\\cursor-agent\\cursor-agent.exe",
+    "%LOCALAPPDATA%\\cursor-agent\\agent.cmd",
+    "~/.local/bin/cursor-agent"
+  ],
+  "verified": false,
+  "note": "参数照 cursor-agent --help 抄的。--output-format json 的 JSON 形状已实测（result / session_id）；模型清单来自本机 cursor-agent --list-models，也可自定义模型 ID。",
+  "args": {
+    "base": [],
+    "model": [
+      "--model",
+      "{model}"
+    ],
+    "read": [
+      "--mode",
+      "plan"
+    ],
+    "work": [
+      "--force"
+    ],
+    "new": [
+      "-p",
+      "--output-format",
+      "json"
+    ],
+    "resume": [
+      "-p",
+      "--output-format",
+      "json",
+      "--resume",
+      "{session}"
+    ]
+  },
+  "prompt": "stdin",
+  "parse": {
+    "type": "json",
+    "text": "result",
+    "session": "session_id"
+  },
+  "context": "full",
+  "models": [],
+  "efforts": [],
+  "default": [
+    "",
+    ""
+  ],
+  "caps": {
+    "images": false,
+    "handoff": false,
+    "tools": false
+  }
+}

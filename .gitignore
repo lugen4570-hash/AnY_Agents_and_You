@@ -1,0 +1,13 @@
+data/
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+.test-tmp/
+static/member-connector.zip
+website/downloads/
+
+experiments/tauri/src-tauri/target/
+desktop_tauri/src-tauri/target/
+desktop_tauri/src-tauri/gen/

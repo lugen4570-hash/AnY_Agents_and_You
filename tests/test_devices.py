@@ -1,0 +1,331 @@
+"""Own-device account, one-time codes, revocable credentials and routing."""
+import json
+import os
+import re
+import sys
+import tempfile
+import threading
+import time
+import unittest
+import urllib.error
+import urllib.request
+from pathlib import Path
+from unittest.mock import patch
+
+DATA = tempfile.mkdtemp(prefix="cojam_devices_")
+os.environ["ROUNDTABLE_LOG_DIR"] = DATA
+os.environ["ROUNDTABLE_NO_PRESETS"] = "1"
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from bridge import common, devices, registry, web
+
+registry.load()
+
+srv = web.ExclusiveServer(("127.0.0.1", 0), web.Handler)
+srv.lan_url = None
+srv.tailscale_url = None
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+BASE = "http://127.0.0.1:%s" % srv.server_address[1]
+
+
+def call(path, obj=None, token=None, cookie=None, headers=None):
+    h = {"Content-Type": "application/json"}
+    if token:
+        h["X-RT-Token"] = token
+    if cookie:
+        h["Cookie"] = cookie
+    h.update(headers or {})
+    req = urllib.request.Request(BASE + path, data=json.dumps(obj).encode() if obj is not None else None, headers=h)
+    try:
+        with urllib.request.urlopen(req) as response:
+            return response.status, response.read(), dict(response.headers)
+    except urllib.error.HTTPError as error:
+        return error.code, error.read(), dict(error.headers)
+
+
+def body_json(body):
+    return json.loads(body.decode("utf-8"))
+
+
+def page(headers=None):
+    request = urllib.request.Request(BASE + "/", headers=headers or {})
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return response.read().decode("utf-8")
+
+
+def injected_token(html):
+    match = re.search(r'name="rt-token" content="([^"]+)"', html)
+    return match.group(1) if match else ""
+
+
+class DeviceCredentials(unittest.TestCase):
+    def setUp(self):
+        for name in ("account.json", "devices.json", "device_codes.json"):
+            try:
+                os.remove(os.path.join(DATA, name))
+            except FileNotFoundError:
+                pass
+
+    def test_account_is_created_once(self):
+        first = devices.account()
+        second = devices.account()
+        self.assertTrue(first["id"].startswith("acct_"))
+        self.assertEqual(first, second)
+        saved = json.loads(Path(DATA, "account.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["id"], first["id"])
+
+    def test_reusable_device_link_survives_time_and_is_revocable(self):
+        with patch.object(devices.time, 'time', return_value=100000):
+            link = devices.create_link('iPhone')
+        token, device = link['token'], link['device']
+        self.assertNotIn(token, Path(DATA, 'devices.json').read_text(encoding='utf-8'))
+        with patch.object(devices.time, 'time', return_value=100000 + 86400 * 60):
+            self.assertEqual(devices.verify(token)['id'], device['id'])
+            self.assertEqual(devices.verify(token)['id'], device['id'])
+        devices.revoke(device['id'])
+        self.assertIsNone(devices.verify(token))
+
+    def test_code_is_one_time_and_creates_a_device(self):
+        code = devices.create_code("我的手机")
+        self.assertRegex(code["token"], r"^code_[0-9a-f]{24}\.")
+        enrolled = devices.enroll(code["token"], "我的手机")
+        self.assertTrue(enrolled["token"].startswith("dev_"))
+        self.assertEqual(enrolled["device"]["label"], "我的手机")
+        self.assertIsNotNone(devices.verify(enrolled["token"]))
+        with self.assertRaises(devices.DeviceError) as caught:
+            devices.enroll(code["token"], "再来一次")
+        self.assertEqual(caught.exception.code, 410)
+        saved = json.loads(Path(DATA, "devices.json").read_text(encoding="utf-8"))
+        self.assertNotIn(enrolled["token"], json.dumps(saved))
+        self.assertEqual(len(saved["devices"]), 1)
+
+    def test_unknown_and_expired_codes(self):
+        with self.assertRaises(devices.DeviceError) as caught:
+            devices.enroll("code_ffffffffffffffffffffffff.nope", "x")
+        self.assertEqual(caught.exception.code, 401)
+        code = devices.create_code("旧手机")
+        path = Path(DATA, "device_codes.json")
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        saved["codes"][0]["expires"] = int(time.time()) - 1
+        path.write_text(json.dumps(saved), encoding="utf-8")
+        with self.assertRaises(devices.DeviceError) as caught:
+            devices.enroll(code["token"], "旧手机")
+        self.assertEqual(caught.exception.code, 410)
+
+    def test_revoke_invalidates_the_token(self):
+        code = devices.create_code("平板")
+        enrolled = devices.enroll(code["token"], "平板")
+        devices.revoke(enrolled["device"]["id"])
+        self.assertIsNone(devices.verify(enrolled["token"]))
+        self.assertEqual(devices.listing(), [])
+
+    def test_reenroll_same_client_replaces_record(self):
+        first = devices.enroll(devices.create_code("iPhone")["token"], "iPhone", "dc_same")
+        second = devices.enroll(devices.create_code("iPhone 新")["token"], "iPhone 新", "dc_same")
+        self.assertEqual(first["device"]["id"], second["device"]["id"])
+        self.assertIsNone(devices.verify(first["token"]))            # 旧凭证立即换新
+        self.assertIsNotNone(devices.verify(second["token"]))
+        saved = json.loads(Path(DATA, "devices.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(saved["devices"]), 1)                    # 同一台设备只有一条记录
+        self.assertEqual(saved["devices"][0]["label"], "iPhone 新")
+        self.assertEqual(devices.listing()[0]["label"], "iPhone 新")
+
+    def test_reenroll_same_client_revives_revoked_record(self):
+        first = devices.enroll(devices.create_code("iPad")["token"], "iPad", "dc_pad")
+        devices.revoke(first["device"]["id"])
+        second = devices.enroll(devices.create_code("iPad")["token"], "iPad", "dc_pad")
+        self.assertEqual(first["device"]["id"], second["device"]["id"])
+        self.assertEqual([d["id"] for d in devices.listing()], [first["device"]["id"]])
+
+    def test_different_clients_are_separate_devices(self):
+        devices.enroll(devices.create_code("iPhone")["token"], "iPhone", "dc_a")
+        devices.enroll(devices.create_code("Windows")["token"], "Windows", "dc_b")
+        self.assertEqual(len(devices.listing()), 2)
+
+    def test_enroll_without_client_id_appends(self):
+        devices.enroll(devices.create_code("a")["token"], "a")
+        devices.enroll(devices.create_code("b")["token"], "b")
+        self.assertEqual(len(devices.listing()), 2)
+
+
+class DeviceHTTP(unittest.TestCase):
+    def test_reusable_link_across_two_browsers_and_revocation(self):
+        from urllib.parse import urlsplit, parse_qs
+        self.assertEqual(call('/api/devices/link', {'label':'iPhone', 'base':'http://192.168.1.9:8766'})[0], 403)
+        status, body, _ = call('/api/devices/link', {'label':'iPhone', 'base':'http://192.168.1.9:8766'}, token=web.RT_TOKEN)
+        self.assertEqual(status, 200)
+        link = body_json(body)
+        token = parse_qs(urlsplit(link['url']).fragment)['device'][0]
+        for _ in range(2):
+            status, _, headers = call('/api/devices/restore', {'token':token})
+            self.assertEqual(status, 200)
+            self.assertIn('cojam_device=', headers['Set-Cookie'])
+            self.assertEqual(call('/api/rooms', token=token)[0], 200)
+        self.assertEqual(call('/api/devices/revoke', {'id':link['id']}, token=web.RT_TOKEN)[0], 200)
+        self.assertEqual(call('/api/devices/restore', {'token':token})[0], 401)
+        self.assertEqual(call('/api/rooms', token=token)[0], 403)
+
+    def make_device(self, label="我的手机"):
+        status, body, _ = call("/api/devices/code", {"label": label, "base": "http://192.168.1.9:8766"}, token=web.RT_TOKEN)
+        self.assertEqual(status, 200)
+        code = body_json(body)["code"]
+        status, body, headers = call("/api/devices/enroll", {"code": code, "label": label})
+        self.assertEqual(status, 200)
+        return body_json(body)["token"], body_json(body)["device"], headers
+
+    def test_enroll_route_dedupes_by_client_id(self):
+        ids = []
+        for _ in range(2):
+            status, body, _ = call("/api/devices/code", {"label": "iPhone", "base": "http://192.168.1.9:8766"}, token=web.RT_TOKEN)
+            self.assertEqual(status, 200)
+            code = body_json(body)["code"]
+            status, body, _ = call("/api/devices/enroll", {"code": code, "label": "iPhone", "client_id": "dc_http"})
+            self.assertEqual(status, 200)
+            ids.append(body_json(body)["device"]["id"])
+        self.assertEqual(ids[0], ids[1])
+
+    def test_code_and_device_routes(self):
+        token, device, headers = self.make_device()
+        self.assertIn("cojam_device=" + token, headers.get("Set-Cookie", ""))
+        status, body, _ = call("/api/devices", token=token)
+        self.assertEqual(status, 200)
+        data = body_json(body)
+        self.assertTrue(data["account"]["id"].startswith("acct_"))
+        self.assertEqual([row["id"] for row in data["devices"]], [device["id"]])
+        self.assertTrue(data["devices"][0]["current"])
+        self.assertEqual(call("/api/rooms", token=token)[0], 200)
+        status, catalog_body, _ = call("/api/agents", token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(body_json(catalog_body)["owner_devices"][0]["id"], device["id"])
+        self.assertNotIn(token, catalog_body.decode('utf-8'))
+        self.assertEqual(call("/api/agents")[0], 403)
+
+    def test_code_status_and_restore_respect_revocation(self):
+        status, body, _ = call("/api/devices/code", {"label": "手机"}, token=web.RT_TOKEN)
+        issued = body_json(body)
+        status, body, _ = call('/api/devices/code/status?id=' + issued['id'], token=web.RT_TOKEN)
+        self.assertFalse(body_json(body)['used'])
+        _, body, _ = call('/api/devices/enroll', {'code': issued['code']})
+        enrolled = body_json(body)
+        _, body, _ = call('/api/devices/code/status?id=' + issued['id'], token=web.RT_TOKEN)
+        self.assertTrue(body_json(body)['used'])
+        status, _, headers = call('/api/devices/restore', {'token': enrolled['token']})
+        self.assertEqual(status, 200)
+        self.assertIn('HttpOnly', headers['Set-Cookie'])
+        call('/api/devices/revoke', {'id': enrolled['device']['id']}, token=web.RT_TOKEN)
+        self.assertEqual(call('/api/devices/restore', {'token': enrolled['token']})[0], 401)
+
+    def test_revoked_device_cannot_call_admin_api(self):
+        token, device, _ = self.make_device("旧手机")
+        self.assertEqual(call("/api/devices/revoke", {"id": device["id"]}, token=web.RT_TOKEN)[0], 200)
+        self.assertEqual(call("/api/rooms", token=token)[0], 403)
+        self.assertIsNone(devices.verify(token))
+
+    def test_root_routing_uses_credentials(self):
+        owner = page()
+        self.assertEqual(injected_token(owner), web.RT_TOKEN)
+        remote = page({"Host": "192.168.1.9"})
+        self.assertIn("联系人接入密钥", remote)
+        self.assertEqual(injected_token(remote), "")
+        token, device, _ = self.make_device("手机")
+        with_cookie = page({"Host": "192.168.1.9", "Cookie": "cojam_device=" + token})
+        self.assertEqual(injected_token(with_cookie), token)
+        forwarded = page({"Host": "192.168.1.9", "X-Forwarded-For": "1.2.3.4",
+                          "Cookie": "cojam_device=" + token})
+        self.assertEqual(injected_token(forwarded), token)
+        revoked = call("/api/devices/revoke", {"id": device["id"]}, token=web.RT_TOKEN)
+        self.assertEqual(revoked[0], 200)
+        after = page({"Host": "192.168.1.9", "Cookie": "cojam_device=" + token})
+        self.assertIn("联系人接入密钥", after)
+
+    def test_cookie_is_only_for_pages_and_files(self):
+        token, _, _ = self.make_device("手机")
+        self.assertEqual(call("/api/devices/code", {"label": "x"}, cookie="cojam_device=" + token)[0], 403)
+        files = Path(DATA, "meetings", "room-1", "files")
+        files.mkdir(parents=True, exist_ok=True)
+        (files / "note.txt").write_text("hello", encoding="utf-8")
+        status, body, _ = call("/files/room-1/files/note.txt", cookie="cojam_device=" + token)
+        self.assertEqual((status, body), (200, b"hello"))
+
+    def test_remote_device_cannot_set_host_project_path(self):
+        token, _, _ = self.make_device("手机")
+        status, body, _ = call('/api/projects/new', {'name': 'remote', 'workdir': DATA}, token=token)
+        self.assertEqual(status, 403)
+        self.assertIn('不能从其他设备', body_json(body)['error'])
+        status, _, _ = call('/api/rooms/new', {'title': 'remote', 'workdir': DATA}, token=token)
+        self.assertEqual(status, 403)
+
+    def test_device_session_does_not_drive_owner_lifecycle(self):
+        token, _, _ = self.make_device("手机")
+        status, body, _ = call("/api/ui/session", {"tab": "t", "action": "open"}, token=token)
+        self.assertEqual(status, 200)
+        self.assertEqual(body_json(body), {"ok": True, "tracked": False})
+
+    def test_info_reports_device_support(self):
+        status, body, _ = call("/api/server/info")
+        data = body_json(body)
+        self.assertEqual(status, 200)
+        self.assertTrue(data["owner_devices_supported"])
+        self.assertIn("tailscale_url", data)
+
+    def test_enroll_page_is_public_and_remembers_own_device(self):
+        request = urllib.request.Request(BASE + "/enroll", headers={"Host": "192.168.1.9"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            html = response.read().decode("utf-8")
+        self.assertIn("接入我的设备", html)
+        self.assertIn("/api/devices/enroll", html)
+        self.assertIn("location.replace('/')", html)
+        self.assertIn("cojam_owner_device_token", html)
+
+    def test_enroll_page_redirects_already_enrolled_devices(self):
+        request = urllib.request.Request(BASE + "/enroll", headers={"Host": "192.168.1.9"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            html = response.read().decode("utf-8")
+        # 重开旧接入链接的设备：先认已有凭证（cookie 或本地备份），不再逼着要新码
+        self.assertIn("alreadyEnrolled", html)
+        self.assertIn("/api/devices/restore", html)
+        self.assertIn('name="rt-token"', html)
+        self.assertIn('id="enter"', html)
+        self.assertIn("不需要新的接入码", html)
+
+    def test_remote_device_agent_restrictions(self):
+        from bridge import registry
+        token, _, _ = self.make_device("手机")
+        # 远程设备禁止添加 cli / acp / http 等本地命令或服务端请求驱动
+        for spec in (
+            {"id": "remote-cli", "driver": "cli", "bin": ["cmd"], "args": {"new": ["cmd"]}},
+            {"id": "remote-acp", "driver": "acp", "bin": ["cmd"]},
+            {"id": "remote-http", "driver": "http", "url": "http://127.0.0.1:9"},
+            {"id": "remote-default"},
+        ):
+            status, body, _ = call("/api/agents/add", {"spec": spec}, token=token)
+            self.assertEqual(status, 403, f"driver {spec.get('driver')} must be blocked remotely: {body}")
+            self.assertIsNone(registry.get(spec["id"]))
+        # 远程设备禁止恢复本机预设或安装本机宿主配置
+        self.assertEqual(call("/api/agents/restore", {"id": "claude"}, token=token)[0], 403)
+        self.assertEqual(call("/api/agents/install", {"host": "claude"}, token=token)[0], 403)
+        # 远程设备允许添加和删除 external 外部联系人
+        status, body, _ = call(
+            "/api/agents/add",
+            {"spec": {"id": "remote-ext", "label": "外部帮手", "driver": "external"}},
+            token=token,
+        )
+        self.assertEqual(status, 200, body_json(body))
+        self.assertIsNotNone(registry.get("remote-ext"))
+        # 本地非 external 代理不允许远程删除或覆盖
+        status_cli, _, _ = call(
+            "/api/agents/add",
+            {"spec": {"id": "local-cli-1", "driver": "cli", "bin": [sys.executable], "args": {"new": [sys.executable]}}},
+            token=web.RT_TOKEN,
+        )
+        self.assertEqual(status_cli, 200)
+        self.addCleanup(lambda: registry.remove_agent("local-cli-1"))
+        self.assertEqual(call("/api/agents/remove", {"id": "local-cli-1"}, token=token)[0], 403)
+        self.assertEqual(
+            call("/api/agents/add", {"spec": {"id": "local-cli-1", "driver": "external"}}, token=token)[0],
+            403,
+        )
+        self.assertEqual(call("/api/agents/remove", {"id": "remote-ext"}, token=token)[0], 200)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cojam-choose-agent-file"
+description = "Enables the cojam_choose_agent_file command without any pre-configured scope."
+commands.allow = ["cojam_choose_agent_file"]
+
+[[permission]]
+identifier = "deny-cojam-choose-agent-file"
+description = "Denies the cojam_choose_agent_file command without any pre-configured scope."
+commands.deny = ["cojam_choose_agent_file"]

@@ -1,0 +1,62 @@
+{
+  "id": "grok",
+  "label": "Grok CLI",
+  "color": "#111827",
+  "driver": "cli",
+  "bin": [
+    "grok",
+    "~/.grok/bin/grok",
+    "~/.grok/bin/grok.exe"
+  ],
+  "verified": false,
+  "note": "支持 xAI Grok CLI；使用 --prompt-file 传递长提示词以避免 Windows 命令行长度限制。",
+  "args": {
+    "read": [
+      "--permission-mode",
+      "plan"
+    ],
+    "work": [
+      "--permission-mode",
+      "acceptEdits"
+    ],
+    "model": [
+      "--model",
+      "{model}"
+    ],
+    "effort": [
+      "--reasoning-effort",
+      "{effort}"
+    ],
+    "new": [
+      "--prompt-file",
+      "{prompt_file}"
+    ],
+    "resume": [
+      "--resume",
+      "{session}",
+      "--prompt-file",
+      "{prompt_file}"
+    ]
+  },
+  "prompt": "arg",
+  "parse": {
+    "type": "text"
+  },
+  "context": "full",
+  "models": [],
+  "efforts": [
+    "low",
+    "medium",
+    "high",
+    "xhigh"
+  ],
+  "default": [
+    "",
+    ""
+  ],
+  "caps": {
+    "images": false,
+    "handoff": false,
+    "tools": false
+  }
+}
