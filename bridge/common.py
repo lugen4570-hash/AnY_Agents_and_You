@@ -260,20 +260,22 @@ def pick_lan_ip(candidates: Iterable[str | None]) -> str | None:
 
 def lan_ipv4() -> str | None:
     """这台电脑在局域网里的 IPv4；没有就 None。绝不返回公网地址。"""
-    candidates: list[str] = []
     try:
         probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             probe.connect(("8.8.8.8", 80))   # 只看默认路由选哪块网卡，不发包
-            candidates.append(str(probe.getsockname()[0]))
+            address = str(probe.getsockname()[0])
+            if _lan_usable(address):
+                return address
         finally:
             probe.close()
     except OSError as error:
         _logger.debug("LAN UDP route probe failed: %s", error)
     try:
-        candidates += [str(row[4][0]) for row in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
+        candidates = [str(row[4][0]) for row in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)]
     except OSError as error:
         _logger.debug("LAN getaddrinfo lookup failed: %s", error)
+        return None
     return pick_lan_ip(candidates)
 
 

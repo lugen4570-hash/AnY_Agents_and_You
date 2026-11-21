@@ -39,6 +39,7 @@ jobs:
           name: Cojam-GUI-${{ matrix.runner }}
           path: |
             ${{ runner.temp }}/cojam-gui/*.png
+            ${{ runner.temp }}/cojam-gui/core-*.txt
             ${{ runner.temp }}/cojam-gui/desktop.log
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}

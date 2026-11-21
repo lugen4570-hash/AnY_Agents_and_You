@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import socket
 import subprocess
+import threading
 import time
 import urllib.request
 import zipfile
@@ -104,6 +105,20 @@ def ready(base):
         return None
 
 
+def sample_slow_start(parent_pid, base, output):
+    if ready(base):
+        return
+    processes = subprocess.check_output(["/bin/ps", "-axo", "pid=,ppid=,comm="], text=True)
+    descendants = {parent_pid}
+    for line in processes.splitlines():
+        pid, parent, command = line.split(maxsplit=2)
+        if int(parent) in descendants and Path(command).name == "CojamCore":
+            descendants.add(int(pid))
+    for pid in descendants - {parent_pid}:
+        subprocess.run(["/usr/bin/sample", str(pid), "1", "1", "-file", str(output / f"core-{pid}.txt")],
+                       capture_output=True, timeout=8, check=False)
+
+
 def close_window(pid):
     apple_script("""
 on run argv
@@ -131,6 +146,9 @@ def verify_gui(app, output):
     with (output / "desktop.log").open("wb") as log:
         app_process = subprocess.Popen([str(app / "Contents/MacOS/Cojam")], env=env,
                                        stdout=log, stderr=log)
+        diagnostic = threading.Timer(12, sample_slow_start, (app_process.pid, base, output))
+        diagnostic.daemon = True
+        diagnostic.start()
         try:
             wait_until("packaged Cojam backend", lambda: ready(base), timeout=50)
             page = request(base, "/").decode("utf-8")
@@ -189,6 +207,7 @@ def verify_gui(app, output):
             capture(output, "failure")
             raise
         finally:
+            diagnostic.cancel()
             if app_process.poll() is None:
                 app_process.terminate()
                 app_process.wait(timeout=10)

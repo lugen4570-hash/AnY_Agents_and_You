@@ -22,6 +22,12 @@ class LanAddress(unittest.TestCase):
         self.assertEqual(common.pick_lan_ip(['10.0.0.7', '192.168.1.23']), '10.0.0.7')
         self.assertEqual(common.pick_lan_ip(['172.16.4.9']), '172.16.4.9')
 
+    def test_usable_default_route_bypasses_hostname_resolution(self):
+        with patch.object(common.socket, 'socket') as udp, patch.object(common.socket, 'getaddrinfo') as resolve:
+            udp.return_value.getsockname.return_value = ('192.168.1.23', 43210)
+            self.assertEqual(common.lan_ipv4(), '192.168.1.23')
+            resolve.assert_not_called()
+
     def test_tailscale_address_is_detected_separately(self):
         import subprocess
         completed = subprocess.CompletedProcess([], 0, stdout='100.64.0.5\nfd7a:115c:a1e0::1\n', stderr='')
