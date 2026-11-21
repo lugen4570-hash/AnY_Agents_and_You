@@ -19,10 +19,21 @@ function agentModelRow(id, efforts) {
   const levels = [...new Set([...AGENT_EFFORTS,...efforts])];
   return '<div class="agent-model-row"><div class="agent-value-row"><input data-agent-model-id value="'+esc(id)+'" placeholder="模型 ID"><button type="button" data-agent-remove-model aria-label="删除模型">×</button></div><div class="agent-efforts">'+levels.map(e=>'<label><input type="checkbox" data-agent-model-effort="'+esc(e)+'"'+(efforts.includes(e)?' checked':'')+'>'+esc(e)+'</label>').join('')+'</div></div>';
 }
+function agentDefaultModelOptions(caps, models, current, custom = false) {
+  const choices = [...new Set([...(caps.models || []), ...models])];
+  const showCustom = custom || (!!current && !choices.includes(current));
+  const options = '<option value="">使用程序默认模型</option>'
+    +choices.map(id=>{
+      const label = Object.prototype.hasOwnProperty.call(caps.model_labels || {}, id) ? caps.model_labels[id] : id;
+      return '<option value="'+esc(id)+'"'+(!showCustom && id===current?' selected':'')+'>'+esc(label)+'</option>';
+    }).join('')
+    +'<option value="__custom__"'+(showCustom?' selected':'')+'>自定义模型 ID…</option>';
+  return {options, showCustom};
+}
 function agentSettingsMarkup(config) {
   const v = config.values, caps = config.capabilities || {}, desktop = v.desktop || {};
   const local = ['cli','acp','claude','codex'].includes(config.driver), builtin = ['claude','codex'].includes(config.driver);
-  const models = [...new Set([...(caps.models || []),...(v.models || []),...(v.default[0]?[v.default[0]]:[])])];
+  const defaultModel = agentDefaultModelOptions(caps, v.models || [], v.default[0]);
   const modelMap = v.model_efforts || {};
   let html = '<div id="agentSettings" class="agent-settings"><div class="connection-heading"><button type="button" id="agentSettingsBack">返回</button><span class="eyebrow">高级设置</span><button type="button" id="agentSettingsClose" aria-label="关闭设置">×</button></div>'
     +'<h3>'+esc(v.label)+'</h3><p class="hint">@'+esc(config.id)+' · '+esc(AG_DRV[config.driver] || config.driver)+' · '+(config.enabled?'已检测到':'程序未找到或未启用')+'</p>'
@@ -43,7 +54,8 @@ function agentSettingsMarkup(config) {
     +(config.connection.has_key?'<label class="agent-check"><input type="checkbox" id="agentReplaceKey">应用时更换已有接入密钥（旧客户端需重新接入）</label>':'')
     +'<button type="button" id="agentApplyMcp">保存并应用 MCP 配置</button><button type="button" id="agentStopStandby">停止待命</button></section>';
   html += '<section data-agent-panel="models" hidden><p class="hint">这里设置此 Agent 的默认值；会议室里仍可为每场会议单独选择模型和 effort。</p>'
-    +agentInput('agentDefaultModel','默认模型',v.default[0],'list="agentModelOptions" placeholder="选择或输入模型 ID"')+'<datalist id="agentModelOptions">'+models.map(m=>'<option value="'+esc(m)+'"></option>').join('')+'</datalist>'
+    +'<label for="agentDefaultModelChoice">默认模型</label><select id="agentDefaultModelChoice">'+defaultModel.options+'</select>'
+    +'<div id="agentCustomModel"'+(defaultModel.showCustom?'':' hidden')+'>'+agentInput('agentDefaultModel','自定义模型 ID',v.default[0],'placeholder="填写此 Agent 支持的模型 ID"')+'</div>'
     +'<label for="agentDefaultEffort">默认 effort</label><select id="agentDefaultEffort"></select><p class="hint" id="agentEffortHint"></p>'
     +'<details><summary>编辑可选模型和 effort</summary><p class="hint">可补充当前接入支持的模型。勾选该模型可用的 effort；此索引不改变账户权限，也不会让不支持切换的客户端获得切换能力。</p><div id="agentModelRows">'
     +(v.models || []).map(m=>agentModelRow(m,modelMap[m] || v.efforts || [])).join('')+'</div><button type="button" id="agentAddModel">＋ 添加模型</button></details>'
@@ -148,7 +160,7 @@ function bindAgentSettings(config) {
   root.onclick=event=>{
     const remove=event.target.closest('[data-agent-remove]');if(remove)remove.closest('.agent-value-row').remove();
     const add=event.target.closest('[data-agent-add]');if(add){const rows=add.closest('[data-agent-list]').querySelector('[data-agent-rows]');rows.insertAdjacentHTML('beforeend',agentListRow(''));rows.lastElementChild.querySelector('input').focus();}
-    const model=event.target.closest('[data-agent-remove-model]');if(model){model.closest('.agent-model-row').remove();refreshEfforts();}
+    const model=event.target.closest('[data-agent-remove-model]');if(model){model.closest('.agent-model-row').remove();refreshModelChoices();refreshEfforts();}
   };
   get('agentAddModel').onclick=()=>{get('agentModelRows').insertAdjacentHTML('beforeend',agentModelRow('',[]));get('agentModelRows').lastElementChild.querySelector('input').focus();};
   const refreshEfforts=()=>{
@@ -163,7 +175,21 @@ function bindAgentSettings(config) {
     select.value=options.includes(previous)?previous:'';select.dataset.initialized='true';
     get('agentEffortHint').textContent=options.length?'可选 effort 随模型变化。':'当前索引没有此模型的 effort 选项，可在下方补充。';
   };
-  get('agentDefaultModel').oninput=refreshEfforts;get('agentModelRows').onchange=refreshEfforts;refreshEfforts();
+  const modelChoice=get('agentDefaultModelChoice'),modelInput=get('agentDefaultModel'),customModel=get('agentCustomModel');
+  const refreshModelChoices=()=>{
+    const models=[...root.querySelectorAll('[data-agent-model-id]')].map(input=>input.value.trim()).filter(Boolean);
+    const choices=agentDefaultModelOptions(config.capabilities || {},models,modelInput.value.trim(),modelChoice.value==='__custom__');
+    modelChoice.innerHTML=choices.options;customModel.hidden=!choices.showCustom;
+  };
+  modelChoice.onchange=()=>{
+    customModel.hidden=modelChoice.value!=='__custom__';
+    modelInput.value=customModel.hidden?modelChoice.value:'';
+    refreshEfforts();
+    if(!customModel.hidden)modelInput.focus();
+  };
+  modelInput.oninput=refreshEfforts;
+  get('agentModelRows').onchange=event=>{if(event.target.matches('[data-agent-model-id]'))refreshModelChoices();refreshEfforts();};
+  refreshEfforts();
   const hostChanged=()=>{const host=config.hosts.find(h=>h.id===get('agentDesktopHost').value);get('agentMcpPath').disabled=!!host && host.kind==='claude';get('agentMcpPathHint').textContent=host && host.kind==='claude'?'此宿主通过 Claude 命令管理 MCP，无需指定保存位置。':'应用会保留其他 MCP 项目，并备份原文件。';};
   get('agentDesktopHost').onchange=()=>{const host=config.hosts.find(h=>h.id===get('agentDesktopHost').value);get('agentMcpPath').value=host?host.path:'';hostChanged();};hostChanged();
   const fileButtons=[...root.querySelectorAll('[data-agent-file]')];

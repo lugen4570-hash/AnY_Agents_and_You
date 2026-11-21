@@ -53,6 +53,13 @@ jobs:
           if ($macArchive.Name -notmatch '^Cojam-(?<version>\d+\.\d+\.\d+)-macOS-Python\.zip$') {
             throw "Invalid macOS archive name: $($macArchive.Name)"
           }
+          @{
+            app = 'Cojam'
+            version = $Matches.version
+            url = "https://lugen4570-hash.github.io/Cojam/downloads/$($macArchive.Name)"
+            sha256 = (Get-FileHash -LiteralPath $macBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+            size = $macArchive.Length
+          } | ConvertTo-Json | Set-Content _site/macos-update.json -Encoding utf8NoBOM
           Copy-Item -LiteralPath $macBundle -Destination _site/downloads/
           Copy-Item -LiteralPath $macBundle -Destination _site/downloads/Cojam-macOS-Python.zip
           $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json

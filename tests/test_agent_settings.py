@@ -197,6 +197,27 @@ class AgentSettings(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which('node'),'Node is needed for form regression')
 class AgentSettingsForm(unittest.TestCase):
+    def test_default_model_lists_every_known_option_with_a_custom_choice(self):
+        code = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const ctx=vm.createContext({esc:String});
+vm.runInContext(fs.readFileSync('static/agent-settings.js','utf8'),ctx);
+const catalog={models:['gemini-4-hydrogen','another-model'],model_labels:{'another-model':'Another model'}};
+const known=ctx.agentDefaultModelOptions(catalog,['another-model','configured-model'],'gemini-4-hydrogen');
+assert.equal(known.showCustom,false);
+assert.match(known.options,/<option value="gemini-4-hydrogen" selected>/);
+assert.match(known.options,/<option value="another-model">Another model<\/option>/);
+assert.equal((known.options.match(/value="another-model"/g)||[]).length,1);
+assert.match(known.options,/<option value="configured-model">/);
+const custom=ctx.agentDefaultModelOptions(catalog,[],'manual-model');
+assert.equal(custom.showCustom,true);
+assert.match(custom.options,/<option value="__custom__" selected>/);
+assert.match(custom.options,/<option value="another-model">/);
+assert.match(ctx.agentDefaultModelOptions(catalog,[],'').options,/<option value="">使用程序默认模型/);
+'''
+        result = subprocess.run(['node','-e',code],cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,timeout=20)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_collect_unchanged_and_structured_edits(self):
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');

@@ -2,6 +2,7 @@
 (function(){
   const entry=document.getElementById('updateApp');
   if(!entry)return;
+  const officialDownloads='https://lugen4570-hash.github.io/Cojam/download.html#desktop';
   const VISIBLE_STATES=new Set(['available','downloading','downloaded','installing','installed']);
   let timer=null, bgTimer=null, latest=null;
   function syncEntry(data){
@@ -38,7 +39,7 @@
     else if(data.state==='installed')body+='<p>安装完成。如果合拍没有自动重新打开，请退出后重新打开。</p>';
     else if(data.state==='current')body+='<p>当前已是最新发布版本（'+esc(data.latest)+'）。</p>';
     else body+='<p role="alert">'+esc(data.error||'正在检查更新…')+'</p>';
-    box.innerHTML=body;
+    box.innerHTML=body+'<p><a href="'+officialDownloads+'" target="_blank" rel="noopener noreferrer">打开官网下载页</a></p>';
     const button=document.getElementById('updateDownload');
     if(button)button.onclick=async()=>{if(data.can_install&&!confirm('更新时会关闭并重新打开合拍。请确认当前没有未完成的操作。继续吗？'))return;button.disabled=true;try{const [ok,result]=await post('/api/update/download',data.can_install?{auto_install:true}:{});if(!ok)throw Error(result.error||'下载失败');render(result);poll()}catch(e){box.insertAdjacentHTML('beforeend','<p role="alert">'+esc(e.message)+'</p>');button.disabled=false}};
     const install=document.getElementById('updateInstall');
