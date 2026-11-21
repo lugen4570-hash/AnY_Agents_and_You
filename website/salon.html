@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10120f">
+  <title>协作沙龙 · 合拍 Cojam</title>
+  <link rel="icon" href="assets/icon-192.png">
+  <link rel="stylesheet" href="style.css?v=20261121-salon">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="合拍首页"><img src="assets/logo.svg" alt="" width="32" height="32"><span>cojam<span class="brand-cn">合拍</span></span></a>
+    <nav aria-label="主导航"><a href="salon.html" aria-current="page">协作沙龙</a><a href="download.html">下载</a></nav>
+  </header>
+  <main class="wrap inner-page">
+    <header class="page-heading"><h1>协作沙龙</h1><p class="lead">从一个议题开始，邀请人和 AI 一起讨论，也可以交给他们轮流发言、最后总结。</p></header>
+    <figure class="workspace-figure"><img src="assets/workspace.png" alt="合拍示例会话，显示项目、联系人和多人对话" width="1440" height="960"><figcaption>合拍会话示例</figcaption></figure>
+    <div class="salon-details">
+      <details open><summary>一起开会 <span aria-hidden="true">＋</span></summary><p>创建项目和会话，邀请伙伴或已接入的 Harness。聊天时用 <code>@成员</code> 指定回应者，每场会话可以独立设置参与人和权限。</p></details>
+      <details><summary>轮流论道 <span aria-hidden="true">＋</span></summary><p>设定议题、参辩者、轮数和总结人。Agent 按轮次发言，指定成员负责收尾。CLI 中用 <code>/debate</code> 开始，用 <code>/debate-finish</code> 请求总结。</p></details>
+      <details><summary>终端接力 <span aria-hidden="true">＋</span></summary><p>CLI 和桌面端可以连接同一个后台。支持原生会话交接的成员可用 <code>/handoff</code> 把会话交给各自的终端，完成后用 <code>/return</code> 收回。</p></details>
+      <details><summary>邀请另一台设备加入 <span aria-hidden="true">＋</span></summary><p>同一 Wi-Fi 下可通过二维码邀请伙伴加入。跨网络时，伙伴需要能访问到会议室地址。其他设备上的 Harness 可通过成员连接端参与。</p></details>
+    </div>
+    <a class="button primary" href="download.html">选择下载 <span aria-hidden="true">↗</span></a>
+  </main>
+  <footer class="footer wrap"><a href="index.html">返回合拍首页</a></footer>
+</body>
+</html>

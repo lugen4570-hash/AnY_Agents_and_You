@@ -37,8 +37,16 @@ jobs:
             'bridge', 'static', 'index.html', 'roundtable.py', 'pyproject.toml', 'README.md', 'LICENSE', 'docs/CLI.md',
             'packaging/member-readme.md', 'packaging/start-member.bat', 'packaging/start-member.command'
           )
-          git archive --format=zip --prefix=Cojam-CLI/ --output=_site/downloads/Cojam-CLI-Python.zip HEAD -- @cliSources
+          New-Item -ItemType Directory -Force -Path _site/cli | Out-Null
+          $commit = git rev-parse HEAD
+          $cliArchive = "_site/cli/cojam-cli-$commit.tar.gz"
+          git archive --format=tar.gz --prefix=Cojam-CLI/ --output=$cliArchive HEAD -- @cliSources
           if ($LASTEXITCODE -ne 0) { throw "CLI source bundle build failed" }
+          @{
+            commit = $commit
+            sha256 = (Get-FileHash -LiteralPath $cliArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+            size = (Get-Item -LiteralPath $cliArchive).Length
+          } | ConvertTo-Json | Set-Content _site/cli/current.json -Encoding utf8NoBOM
           $macBundle = python packaging/build_macos_python.py
           if ($LASTEXITCODE -ne 0) { throw "macOS source bundle build failed" }
           $macArchive = Get-Item -LiteralPath $macBundle
