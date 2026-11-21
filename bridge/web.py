@@ -10,7 +10,7 @@ from subprocess import SubprocessError
 from typing import Any, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from . import access, acp, agent_settings, agents, common, conn_settings, connections, devices, discovery, execution, extensions, install, invites, mcp, members, model_catalog, pal, projects, registry, room as R
+from . import access, acp, agent_settings, agents, common, conn_settings, connections, debate, devices, discovery, execution, extensions, install, invites, mcp, members, model_catalog, pal, projects, registry, room as R
 from .common import (HERE, HOST, MAX_ANN, MAX_BODY, MAX_UPLOAD, MEET_DIR, PORT, PROJECT,
                      in_dir, kind_of)
 from .guard import USER, guard
@@ -723,7 +723,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200 if ok else 409, {"ok": ok, "error": msg})
 
     def _room_post(self, r, act, qs):
-        if act in ('send', 'compact', 'wrapup'):
+        if act in ('send', 'compact', 'wrapup', 'debate/start'):
             from . import updater
             if updater.status().get('state') == 'installing':
                 return self._json(409, {"error": "合拍正在更新，请重新打开后再操作"})
@@ -754,6 +754,14 @@ class Handler(BaseHTTPRequestHandler):
             R.set_last(r.id)
             r.handle_message("你", text, atts, reply_to=reply)
             return self._json(200, {"ok": True})
+        if act in ("debate/start", "debate/finish"):
+            try:
+                state = debate.start(r, data) if act == "debate/start" else debate.finish(r)
+            except ValueError as error:
+                return self._json(409, {"ok": False, "error": str(error)})
+            except OSError:
+                return self._json(500, {"ok": False, "error": "无法保存论道状态"})
+            return self._json(200, {"ok": True, "debate": state})
         if act == "announcement":
             text = str(data.get("text", ""))
             if len(text.encode("utf-8")) > MAX_ANN:
@@ -974,7 +982,7 @@ class ExclusiveServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def stop_application(server: Any) -> None:
+def _stop_runtime() -> None:
     """Stop Cojam web service without killing detached CLI jobs (collected on reopen)."""
     from . import detached_jobs
     detached_jobs.begin_shutdown()
@@ -992,6 +1000,10 @@ def stop_application(server: Any) -> None:
         acp.stop()
     except Exception as error:
         logger.warning("退出时停止 ACP 会话失败: %s", error, exc_info=True)
+
+
+def stop_application(server: Any) -> None:
+    _stop_runtime()
     server.shutdown()
 
 
@@ -1053,7 +1065,7 @@ def owner_lifecycle_enabled(env: Mapping[str, str] | None = None) -> bool:
     return env.get("ROUNDTABLE_NO_BROWSER") != "1" or env.get("ROUNDTABLE_OWNER_LIFECYCLE") == "1"
 
 
-def main() -> None:
+def main(*, headless: bool = False) -> None:
     common.setup_logging()
     url = "http://%s:%d/" % (HOST, PORT)
     try:
@@ -1066,11 +1078,17 @@ def main() -> None:
                 webbrowser.open(url)
             return
         if action != "stopped":
+            if headless:
+                print(message, file=sys.stderr)
+                raise SystemExit(1)
             show_startup_error(message)
             return
         try:
             srv = ExclusiveServer((HOST, PORT), Handler)
         except OSError:
+            if headless:
+                print("旧后台尚未退出，请稍后重新启动 Cojam。", file=sys.stderr)
+                raise SystemExit(1)
             show_startup_error("旧后台尚未退出，请稍后重新打开 AI Bridge。")
             return
     lan_srv, lan_url = start_lan_listener()
@@ -1106,8 +1124,8 @@ def main() -> None:
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        # Expected: clean shutdown when interrupted from console.
-        pass
+        if headless:
+            _stop_runtime()
     finally:
         srv.server_close()
         for extra in (lan_srv, ts_srv):

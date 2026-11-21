@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Sequence
 from urllib.parse import quote
 
-from . import access, agents, detached_jobs, drivers, execution, model_catalog, registry, workspace as ws
+from . import access, agents, debate, detached_jobs, drivers, execution, model_catalog, registry, workspace as ws
 from .common import (AIS, ATT_BASE, LAST_FILE, LOG_DIR, MAX_ATTACH, MAX_IMAGES, MAX_UPLOAD, MEET_DIR, MODES, PROJECT,
                      ROOM_RE, SID_RE, TRASH_DIR, get_logger, in_dir, is_archived, kill_tree, kind_of, mentions, mode_key,
                      norm, now_str, preamble, read_json, ref_safe, safe_title, sanitize_name, write_json)
@@ -1036,7 +1036,7 @@ class Room:
     def busy_for(self, ai=None):
         with self.lock:
             if ai is None:
-                return bool(self.state["running"] or self.pending or self.state["compacting"])
+                return bool(self.state["running"] or self.pending or self.state["compacting"] or self.state.get("debate_active"))
             return ai in self.state["running"] or ai in self.pending or ai in self.state["compacting"]
 
     def queued_count(self):
@@ -1125,6 +1125,8 @@ class Room:
             self.send_note(speaker, send_errs)
             if speaker == "你":
                 self.state["chain"] = 0
+            if self.state.get("debate_active"):
+                return True
             for t in targets:
                 if not access.allowed(self, t, "read") or not access.allowed(self, t, "post"):
                     continue
@@ -1170,7 +1172,7 @@ class Room:
             except Exception as e:
                 self.add_message("系统", "内部错误：%s" % e)
 
-    def process_job(self, ai, tag, user=False):
+    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False):
         """叫一次 AI。整个过程持有这个 AI 自己的锁（同一个 AI 永远串行）；增量在拿到锁之后才取快照。"""
         with self.ai_lock(ai):
             with self.lock:
@@ -1183,12 +1185,14 @@ class Room:
                 if execution.binding(self, ai)["phase"] != "ready":
                     self.system_note("%s 正在交接执行端，本条消息已保留；接管完成后再 @ 它处理" % ai)
                     return
-                if not user and self.meta.get(ai + "_session") and not self.delta_for(ai)[0]:
+                if debate_prompt and self.state.get("debate_cancelled"):
+                    return
+                if not user and not debate_prompt and self.meta.get(ai + "_session") and not self.delta_for(ai)[0]:
                     return   # AI 之间的对话排到它时，该看的它已经看过了，不白叫
                 self.state["running"].append(ai)
                 self.live[ai] = {"text": "", "time": "", "since": time.time()}
             try:
-                mode = self.member_mode(ai, "work" if forced else self.mode())
+                mode = self.member_mode(ai, "discuss" if debate_prompt else "work" if forced else self.mode())
                 wd = self.workdir()
                 remote = execution.remote(self, ai)
                 pre = None
@@ -1207,9 +1211,11 @@ class Room:
                         self.add_message("系统", "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai))
                         return
                 prompt, upto, ver, imgs = self.build_prompt(ai, mode)
+                if debate_prompt:
+                    prompt += "\n\n" + debate_prompt
                 sid = self.meta.get(ai + "_session")
                 model_revision = model_catalog.request_id(self, ai)
-                if detached_jobs.should_detach(self, ai, ai_caller):
+                if not debate_prompt and detached_jobs.should_detach(self, ai, ai_caller):
                     job_path = detached_jobs.spawn_job(
                         self, ai, prompt, sid, imgs, mode,
                         upto=upto, ver=ver, pre_tree=pre, t0=t0, model_revision=model_revision,
@@ -1271,8 +1277,17 @@ class Room:
                         if ai in self.last_ctx:
                             self.meta["ctx"][ai] = self.last_ctx.pop(ai)
                         self.save_meta()
-                        self.state["chain"] += 1
-                    if was_stopped and remote:
+                        if not debate_prompt:
+                            self.state["chain"] += 1
+                    if debate_prompt:
+                        if was_stopped or self.state.get("debate_cancelled"):
+                            return
+                        text = out if debate_summary else out.rstrip().removesuffix(debate.READY).rstrip()
+                        if not text.strip():
+                            return
+                        self.add_message(ai, text, to_user=debate_summary, origin="debate-summary" if debate_summary else "debate")
+                        return out
+                    elif was_stopped and remote:
                         self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai))
                     elif was_stopped:   # 刚好在"停"的时候说完：话照登，但里面的 @ 不再叫人
                         rest, ch = self.apply_board_cmds(ai, out)
@@ -1335,6 +1350,8 @@ class Room:
         """每个 AI 各压各的：各开一个线程，只等它自己的锁，另一个 AI 照常能叫。返回这次排上的 AI（已在压的不重复排）。"""
         targets = self.ais if targets is None else targets
         with self.lock:
+            if self.state.get("debate_active"):
+                return []
             todo = [a for a in self.ais if a in targets and a not in self.state["compacting"]
                     and (registry.get(a) or {}).get("kind") != "user"]
             self.state["compacting"].update(todo)
@@ -1489,6 +1506,8 @@ class Room:
     def request_wrapup(self):
         """叫负责落盘的 AI（优先 claude，无则选本场可用的 AI）按 wrapup 落盘并提交推送；这一轮强制干活模式。返回 (ok, 错误)。"""
         with self.lock:
+            if self.state.get("debate_active"):
+                return False, "请先结束论道"
             target = self._wrapup_target()
             if not target:
                 return False, "没有可用来落盘（且有干活权限）的 AI 参与者"
@@ -1509,6 +1528,8 @@ class Room:
         返回给人看的描述。"""
         targets = [a for a in (self.ais if targets is None else targets) if a in self.ais]
         with self.lock:
+            if self.state.get("debate_active") and set(targets).intersection(self.meta["debate"]["participants"]):
+                self.state["debate_cancelled"] = True
             for a in targets:
                 self.state["epoch"][a] = self.state["epoch"].get(a, 0) + 1     # 已经排上的（队列里、等锁的）开跑时对不上计数，自己放弃
             self.pending[:] = [a for a in self.pending if a not in targets]
@@ -1632,6 +1653,7 @@ class Room:
                     "announcement": self.meta["announcement"], "ann_ver": self.meta["ann_ver"], "ais": ais,
                     "board": self.meta["board"], "workdir": self.workdir(), "default_workdir": PROJECT, "stop_each": True,
                     "mode": self.mode(),
+                    "debate": debate.snapshot(self),
                     "steps_undone": [int(k) for k, v in self.meta["steps"].items() if v.get("undone")],
                     "steps": [{"seq": int(k), "ai": v.get("ai", "?"), "time": v.get("time", ""), "undone": bool(v.get("undone")),
                                "files": [{"path": f.get("path", ""), "st": f.get("st", "M")} for f in v.get("files") or []]}

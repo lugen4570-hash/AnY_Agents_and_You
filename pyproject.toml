@@ -20,10 +20,12 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+cli = ["textual>=8,<9", "rich>=14.2"]
 desktop = ["pywebview>=5.3"]
 dev = ["mypy>=1.11", "ruff>=0.6"]
 
 [project.scripts]
+cojam = "bridge.cli:main"
 ai-bridge = "bridge.web:main"
 ai-bridge-doctor = "bridge.doctor:cli"
 
