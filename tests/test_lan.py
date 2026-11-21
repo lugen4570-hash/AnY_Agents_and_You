@@ -46,6 +46,13 @@ class LanAddress(unittest.TestCase):
 
 
 class LanListener(unittest.TestCase):
+    def test_binding_a_numeric_address_does_not_resolve_its_hostname(self):
+        with patch.object(common.socket, 'getfqdn') as resolve, \
+             web.ExclusiveServer(('127.0.0.1', 0), web.Handler) as server:
+            self.assertEqual(server.server_name, '127.0.0.1')
+            self.assertEqual(server.server_port, server.server_address[1])
+            resolve.assert_not_called()
+
     def test_no_private_address_means_no_listener(self):
         with patch.object(common, 'lan_ipv4', return_value=None):
             self.assertEqual(web.start_lan_listener(0), (None, None))

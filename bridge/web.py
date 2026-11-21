@@ -6,6 +6,7 @@
 外部程序用 /api/post 或 /mcp；钩子用 /api/guard/*（带钥匙）。"""
 import hmac, json, mimetypes, os, re, secrets, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from subprocess import SubprocessError
 from typing import Any, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -971,7 +972,10 @@ class ExclusiveServer(ThreadingHTTPServer):
 
     def server_bind(self):
         pal.apply_exclusive_socket(self.socket)
-        super().server_bind()
+        # HTTPServer.server_bind performs reverse DNS, which can stall startup
+        # before the desktop window can connect. The listener already has an IP.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def stop_application(server: Any) -> None:
