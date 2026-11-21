@@ -38,7 +38,9 @@ def activate(pid):
 on run argv
     set targetPID to item 1 of argv as integer
     tell application "System Events"
-        set targetApp to first application process whose unix id is targetPID
+        set matchingProcesses to application processes whose unix id is targetPID
+        if (count of matchingProcesses) is 0 then return ""
+        set targetApp to item 1 of matchingProcesses
         if not (exists window 1 of targetApp) then return ""
         set frontmost of targetApp to true
         return name of window 1 of targetApp
@@ -52,7 +54,7 @@ def web_button(pid, label, press=True):
 on run argv
     set targetPID to item 1 of argv as integer
     set targetLabel to item 2 of argv
-    set shouldPress to item 3 of argv is "press"
+    set shouldPress to ((item 3 of argv) is "press")
     tell application "System Events"
         tell (first application process whose unix id is targetPID)
             set primaryWindow to first window whose name is "合拍 Cojam"
