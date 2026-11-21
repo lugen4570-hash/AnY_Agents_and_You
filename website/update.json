@@ -1,8 +1,8 @@
 {
   "app": "Cojam",
-  "version": "2.8.7",
-  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.7.exe",
-  "sha256": "092c32e335bbfc8005af9157f077df0d942b8e00bfabf387094f19bde802c89d",
-  "size": 13318098,
-  "notes": "统一模型可读展示名称并消除重复显示；空闲 Agent 模型切换与配置修改完全隔离独立；更新入口按需动态显示；更新器升级 4 线程 HTTP Range 断点并发续传；全面迁移至 Tauri 桌面外壳。"
+  "version": "2.8.10",
+  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.10.exe",
+  "sha256": "18a834c006f38c0bc0437b5135a5b009a4ff854f0eec204b861d8f5bbfc62f99",
+  "size": 13542965,
+  "notes": "修复 Agent 默认模型下拉列表和桌面更新网址。旧版 2.8.7 请从官网下载最新版并手动安装一次。"
 }
