@@ -1,6 +1,19 @@
 # Cojam 交接摘要
 
-最近更新：2026-11-19。
+最近更新：2026-11-21。
+
+## Cojam 2.8.7 发布记录（新官网与 GitHub Release 已同步）
+
+- **发布完成**：已在 GitHub 仓库 [`lugen4570-hash/Cojam`](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.7) 发布正式 Release `v2.8.7`，并同步官网 `https://lugen4570-hash.github.io/Cojam/`。
+- **发布附件与校验**：
+  - `Cojam-Setup-2.8.7.exe`（`13318098` 字节，`092c32e335bbfc8005af9157f077df0d942b8e00bfabf387094f19bde802c89d`）
+  - `Cojam-Desktop-2.8.7-win64.zip`（`15827327` 字节，`02df404b967abb6fe07a396131c8b103612bb90437990123bb66a278d59664c1`）
+  - `Cojam-2.8.7-win64.zip`（`12960349` 字节，`ba2ad440d846fc842e3b1ced4e4e18ff46e12fd01bb8af0ea8c367c5cacc32d5`）
+  - `Cojam-Member-2.8.7.zip`（`211586` 字节，`d6d8a8c92e3a5e367a94665e7c9b6036276b736bbe9e383a7c75b2137f1a779a`）
+  - `Cojam-Portable-2.8.7.exe`（`13222934` 字节，`42be6c6ff60b7b823c7b5cb7da7fab9bfd10618e53487756e1f182c368627368`）
+  - `SHA256SUMS-2.8.7.txt`（`457` 字节）
+  - `build-report-2.8.7.json`（`3973` 字节）
+- **官网同步**：官网首页下载链接与 `website/update.json` 均已更新为 2.8.7，部署工作流自动拉取 Release 附件并校验大小与 SHA-256。
 
 ## macOS Python 浏览器分发包（2026-11-19）
 
