@@ -25,6 +25,8 @@
 
 ## 快速开始
 
+新账号仓库的安装包尚未发布，请先查看 [Releases](https://github.com/lugen4570-hash/Cojam/releases)；发布前可从源码运行。官网为 https://lugen4570-hash.github.io/Cojam/。
+
 ### 环境要求
 
 - **操作系统**：Windows 10/11（提供独立桌面安装包与便携版）或 macOS（参见 [macOS 使用说明](docs/MACOS.md)）。

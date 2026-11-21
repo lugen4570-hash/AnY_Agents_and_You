@@ -20,8 +20,8 @@ from .version import VERSION
 
 logger = get_logger(__name__)
 
-MANIFEST = 'https://jun-genyan.github.io/Cojam/update.json'
-DOWNLOAD_ROOT = 'https://jun-genyan.github.io/Cojam/downloads/'
+MANIFEST = 'https://lugen4570-hash.github.io/Cojam/update.json'
+DOWNLOAD_ROOT = 'https://lugen4570-hash.github.io/Cojam/downloads/'
 MAX_INSTALLER = 100 * 1024 * 1024
 CHUNK_SIZE = 128 * 1024
 RANGE_THRESHOLD = 1024 * 1024

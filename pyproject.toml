@@ -28,7 +28,9 @@ ai-bridge = "bridge.web:main"
 ai-bridge-doctor = "bridge.doctor:cli"
 
 [project.urls]
-Documentation = "https://github.com/"
+Homepage = "https://lugen4570-hash.github.io/Cojam/"
+Documentation = "https://github.com/lugen4570-hash/Cojam/tree/main/docs"
+Repository = "https://github.com/lugen4570-hash/Cojam"
 
 [tool.setuptools]
 packages = ["bridge", "bridge.pal"]
