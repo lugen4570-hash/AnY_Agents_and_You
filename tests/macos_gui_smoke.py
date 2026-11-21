@@ -47,11 +47,12 @@ end run
 """, pid)
 
 
-def press_web_button(pid, label):
+def web_button(pid, label, press=True):
     return apple_script("""
 on run argv
     set targetPID to item 1 of argv as integer
     set targetLabel to item 2 of argv
+    set shouldPress to item 3 of argv is "press"
     tell application "System Events"
         tell (first application process whose unix id is targetPID)
             set primaryWindow to first window whose name is "合拍 Cojam"
@@ -61,8 +62,8 @@ on run argv
                 if role of candidate is "AXButton" then
                     if (name of candidate is targetLabel) or (description of candidate is targetLabel) then
                         if enabled of candidate then
-                            perform action "AXPress" of candidate
-                            return "pressed"
+                            if shouldPress then perform action "AXPress" of candidate
+                            return "found"
                         end if
                     end if
                 end if
@@ -71,7 +72,7 @@ on run argv
     end tell
     return ""
 end run
-""", pid, label)
+""", pid, label, "press" if press else "check")
 
 
 def paste_text(text):
@@ -137,11 +138,12 @@ def verify_gui(app, output):
             title = wait_until("Cojam AppKit window", lambda: activate(app_process.pid))
             if title != "合拍 Cojam":
                 raise RuntimeError(f"Unexpected native window title: {title}")
+            wait_until("New Project button", lambda: web_button(app_process.pid, "新建项目", press=False))
             capture(output, "01-desktop")
             print("The packaged native window is visible.", flush=True)
 
-            wait_until("New Project button", lambda: press_web_button(app_process.pid, "新建项目"))
-            wait_until("folder picker button", lambda: press_web_button(app_process.pid, "选择文件夹"))
+            wait_until("New Project button", lambda: web_button(app_process.pid, "新建项目"))
+            wait_until("folder picker button", lambda: web_button(app_process.pid, "选择文件夹"))
             time.sleep(1)
             capture(output, "02-folder-picker")
             apple_script('tell application "System Events" to key code 53')
@@ -149,11 +151,11 @@ def verify_gui(app, output):
             print("Opened and cancelled the native folder panel.", flush=True)
 
             # Reopening the form focuses its project-name input.
-            wait_until("project cancel button", lambda: press_web_button(app_process.pid, "取消"))
-            wait_until("New Project button", lambda: press_web_button(app_process.pid, "新建项目"))
+            wait_until("project cancel button", lambda: web_button(app_process.pid, "取消"))
+            wait_until("New Project button", lambda: web_button(app_process.pid, "新建项目"))
             time.sleep(0.5)
             paste_text("Cojam GUI verification")
-            wait_until("folder picker button after cancel", lambda: press_web_button(app_process.pid, "选择文件夹"))
+            wait_until("folder picker button after cancel", lambda: web_button(app_process.pid, "选择文件夹"))
             time.sleep(1)
             apple_script('tell application "System Events" to keystroke "g" using {command down, shift down}')
             time.sleep(0.7)
@@ -162,7 +164,7 @@ def verify_gui(app, output):
             apple_script('tell application "System Events" to key code 36')
             time.sleep(0.8)
             apple_script('tell application "System Events" to key code 36')
-            wait_until("Create Project button", lambda: press_web_button(app_process.pid, "创建项目"))
+            wait_until("Create Project button", lambda: web_button(app_process.pid, "创建项目"))
 
             def selected_project():
                 projects = json.loads(request(base, "/api/rooms", token))["projects"]

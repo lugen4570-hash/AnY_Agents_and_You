@@ -116,7 +116,8 @@ function attachWorkspaceFolderPicker(inputId){
   if(catalog&&catalog.local_workspace===false)return;
   const macBrowserPicker=catalog&&catalog.macos_workspace_picker===true;
   const button=document.createElement('button');button.type='button';button.textContent='选择文件夹';button.hidden=true;
-  input.parentElement.append(button);
+  button.setAttribute('aria-label','选择文件夹');
+  input.parentElement.after(button);
   const bridge=(typeof window!=='undefined'&&window.cojamDesktop)||null;
   const legacy=()=>typeof window!=='undefined'&&window.pywebview&&window.pywebview.api&&typeof window.pywebview.api.choose_workdir==='function'?window.pywebview.api:null;
   const canPickNatively=()=>bridge?bridge.canChooseWorkdir():!!legacy();

@@ -85,8 +85,8 @@ assert.ok(connections.includes("attachWorkspaceFolderPicker('connWorkdir')"));
 const picker=workspace.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 const agCat={local_workspace:true,macos_workspace_picker:true};
 let next='/Users/demo/项目 A', events=0, button;
-const input={value:'old',parentElement:{append(b){button=b}},dispatchEvent(){events++}};
-const context=vm.createContext({agCat,document:{getElementById:()=>input,createElement:()=>({})},
+const input={value:'old',parentElement:{after(b){button=b}},dispatchEvent(){events++}};
+const context=vm.createContext({agCat,document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
   post:async url=>{assert.equal(url,'/api/projects/choose-workdir');return [true,{workdir:next}]},
   Event:function(){},alert:()=>{throw Error('unexpected alert')}});
 vm.runInContext(picker,context);
@@ -117,8 +117,8 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/workspace.js','utf8');
 const helper=source.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 let button, next='D:\\Project';
-const parent={append(b){button=b}}, input={value:'old',parentElement:parent,dispatchEvent(){}};
-const context=vm.createContext({document:{getElementById:()=>input,createElement:()=>({})},
+const parent={after(b){button=b}}, input={value:'old',parentElement:parent,dispatchEvent(){}};
+const context=vm.createContext({document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
  window:{pywebview:{api:{choose_workdir:async()=>next}},addEventListener(){}},Event:function(){},alert:()=>{throw Error('unexpected alert')}});
 vm.runInContext(helper,context);context.attachWorkspaceFolderPicker('pWd');
 (async()=>{assert.equal(button.hidden,false);await button.onclick();assert.equal(input.value,'D:\\Project');
@@ -137,9 +137,9 @@ const bridgeCode=ws.slice(ws.indexOf('function createCojamDesktop'),ws.indexOf('
 const pickerHelper=ws.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 const invocations=[];
 let button;
-const input={value:'old',parentElement:{append(b){button=b}},dispatchEvent(){}};
+const input={value:'old',parentElement:{after(b){button=b}},dispatchEvent(){}};
 const ctx=vm.createContext({
-  document:{getElementById:()=>input,createElement:()=>({})},
+  document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
   Event:function(){},
   alert:()=>{throw Error('unexpected alert')},
   addEventListener(){},
