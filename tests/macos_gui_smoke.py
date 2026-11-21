@@ -1,6 +1,7 @@
 """Exercise the packaged AppKit/WKWebView window on a macOS Actions runner."""
 
 import argparse
+import io
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import socket
 import subprocess
 import time
 import urllib.request
+import zipfile
 
 
 def wait_until(description, predicate, timeout=30):
@@ -53,11 +55,15 @@ on run argv
     tell application "System Events"
         tell (first application process whose unix id is targetPID)
             set primaryWindow to first window whose name is "合拍 Cojam"
-            repeat with elementRef in (entire contents of primaryWindow)
-                if (role of elementRef is "AXButton") and (enabled of elementRef) then
-                    if (name of elementRef is targetLabel) or (description of elementRef is targetLabel) then
-                        perform action "AXPress" of elementRef
-                        return "pressed"
+            set windowElements to entire contents of primaryWindow
+            repeat with elementRef in windowElements
+                set candidate to contents of elementRef
+                if role of candidate is "AXButton" then
+                    if (name of candidate is targetLabel) or (description of candidate is targetLabel) then
+                        if enabled of candidate then
+                            perform action "AXPress" of candidate
+                            return "pressed"
+                        end if
                     end if
                 end if
             end repeat
@@ -115,12 +121,19 @@ def verify_gui(app, output):
         port = listener.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     env = dict(os.environ, ROUNDTABLE_PORT=str(port), ROUNDTABLE_LOG_DIR=str(output / "data"),
-               ROUNDTABLE_DEFAULT_DIR=str(output), ROUNDTABLE_NO_PRESETS="1")
+               ROUNDTABLE_DEFAULT_DIR=str(output), ROUNDTABLE_NO_PRESETS="1", PYTHONUNBUFFERED="1")
     with (output / "desktop.log").open("wb") as log:
         app_process = subprocess.Popen([str(app / "Contents/MacOS/Cojam")], env=env,
                                        stdout=log, stderr=log)
         try:
-            wait_until("packaged Cojam backend", lambda: ready(base))
+            wait_until("packaged Cojam backend", lambda: ready(base), timeout=50)
+            page = request(base, "/").decode("utf-8")
+            token = re.search(r'name="rt-token" content="([^"]+)"', page)[1]
+            if b"/api/projects/choose-workdir" not in request(base, "/static/workspace.js"):
+                raise RuntimeError("Packaged front end is missing the folder picker")
+            with zipfile.ZipFile(io.BytesIO(request(base, "/static/member-connector.zip", token))) as archive:
+                if archive.testzip() is not None:
+                    raise RuntimeError("Packaged member connector is corrupt")
             title = wait_until("Cojam AppKit window", lambda: activate(app_process.pid))
             if title != "合拍 Cojam":
                 raise RuntimeError(f"Unexpected native window title: {title}")
@@ -150,9 +163,6 @@ def verify_gui(app, output):
             time.sleep(0.8)
             apple_script('tell application "System Events" to key code 36')
             wait_until("Create Project button", lambda: press_web_button(app_process.pid, "创建项目"))
-
-            page = request(base, "/").decode("utf-8")
-            token = re.search(r'name="rt-token" content="([^"]+)"', page)[1]
 
             def selected_project():
                 projects = json.loads(request(base, "/api/rooms", token))["projects"]

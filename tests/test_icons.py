@@ -5,17 +5,19 @@ import urllib.error
 import urllib.request
 
 import test_contacts_access as support
+from bridge.version import VERSION
 
 
 class CojamIcons(unittest.TestCase):
     def test_versioned_icons_are_served_with_current_artwork(self):
         root = Path(__file__).resolve().parents[1]
-        url = support.BASE + '/static/icon-192.png?v=cojam-262'
+        path = '/static/icon-192.png?v=cojam-' + VERSION.replace('.', '')
+        url = support.BASE + path
         with urllib.request.urlopen(url) as response:
             self.assertEqual(response.headers.get_content_type(), 'image/png')
             self.assertEqual(response.read(), (root / 'static/icon-192.png').read_bytes())
         for name in ('index.html', 'static/join.html', 'static/enroll.html'):
-            self.assertIn('/static/icon-192.png?v=cojam-262', (root / name).read_text(encoding='utf-8'))
+            self.assertIn(path, (root / name).read_text(encoding='utf-8'))
 
     def test_pwa_manifest_and_service_worker_are_removed(self):
         root = Path(__file__).resolve().parents[1]
