@@ -6,6 +6,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 from urllib.parse import quote
@@ -62,6 +63,20 @@ class Contacts(unittest.TestCase):
         self.assertEqual((r.meta["project"], r.ais, r.workdir()), (p["id"], ["alice"], DATA))
         self.assertFalse(r.meta["permissions"]["alice"]["work"])
         self.assertEqual(call("/api/rooms/new", {"project": "invalid"}, owner=True)[0], 400)
+
+    def test_macos_folder_picker_is_local_and_can_cancel(self):
+        path = "/api/projects/choose-workdir"
+        with patch.object(web.sys, "platform", "darwin"), \
+             patch.object(projects, "choose_macos_workdir", side_effect=[DATA, None, OSError("unavailable")]) as choose:
+            self.assertEqual(call(path, {})[0], 403)
+            forwarded = {"X-Forwarded-For": "10.0.0.2"}
+            self.assertEqual(call(path, {}, owner=True, headers=forwarded)[0], 403)
+            choose.assert_not_called()
+            self.assertEqual(call(path, {}, owner=True), (200, {"workdir": DATA}))
+            self.assertEqual(call(path, {}, owner=True), (200, {"workdir": None}))
+            self.assertEqual(call(path, {}, owner=True)[0], 503)
+        with patch.object(web.sys, "platform", "win32"):
+            self.assertEqual(call(path, {}, owner=True)[0], 404)
 
     def test_legacy_projects_are_stable(self):
         legacy = R.rooms.create("旧会话", "", DATA)

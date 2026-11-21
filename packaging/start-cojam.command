@@ -2,7 +2,7 @@
 # macOS browser distribution: no third-party Python packages are required.
 set -eu
 cojam_dir=$(CDPATH= cd "$(dirname "$0")" && pwd -P)
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:/opt/homebrew/bin:/usr/local/bin:${PATH:-/usr/bin:/bin}"
 
 cojam_python=''
 for cojam_candidate in /opt/homebrew/bin/python3 /usr/local/bin/python3 \

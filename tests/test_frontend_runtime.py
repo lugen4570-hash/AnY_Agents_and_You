@@ -73,6 +73,42 @@ vm.runInContext(source,context);
 
 
 class WorkspaceFolderPicker(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test the workspace picker')
+    def test_macos_browser_picker_fills_both_project_forms_and_handles_cancel(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const workspace=fs.readFileSync('static/workspace.js','utf8');
+const connections=fs.readFileSync('static/connections.js','utf8');
+assert.ok(workspace.includes("attachWorkspaceFolderPicker('pWd')"));
+assert.ok(connections.includes("attachWorkspaceFolderPicker('connWorkdir')"));
+const picker=workspace.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
+const agCat={local_workspace:true,macos_workspace_picker:true};
+let next='/Users/demo/项目 A', events=0, button;
+const input={value:'old',parentElement:{append(b){button=b}},dispatchEvent(){events++}};
+const context=vm.createContext({agCat,document:{getElementById:()=>input,createElement:()=>({})},
+  post:async url=>{assert.equal(url,'/api/projects/choose-workdir');return [true,{workdir:next}]},
+  Event:function(){},alert:()=>{throw Error('unexpected alert')}});
+vm.runInContext(picker,context);
+(async()=>{
+  context.attachWorkspaceFolderPicker('pWd');
+  assert.equal(button.hidden,false);
+  await button.onclick();
+  assert.equal(input.value,next);
+  next=null;
+  await button.onclick();
+  assert.equal(input.value,'/Users/demo/项目 A');
+  assert.equal(events,1);
+  assert.equal(button.disabled,false);
+  agCat.local_workspace=false;
+  button=null;
+  context.attachWorkspaceFolderPicker('connWorkdir');
+  assert.equal(button,null);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test the desktop bridge')
     def test_selection_and_cancel_keep_the_expected_path(self):
         root = Path(__file__).resolve().parents[1]

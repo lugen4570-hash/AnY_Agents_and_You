@@ -5,6 +5,7 @@ dist/
 build/
 *.spec
 .test-tmp/
+.venv-macos-build/
 static/member-connector.zip
 website/downloads/
 

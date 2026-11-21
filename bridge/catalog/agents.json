@@ -17,7 +17,9 @@
       "desktop": {
         "detect": [
           "%LOCALAPPDATA%\\AnthropicClaude\\Claude.exe",
-          "%LOCALAPPDATA%\\Programs\\Claude\\Claude.exe"
+          "%LOCALAPPDATA%\\Programs\\Claude\\Claude.exe",
+          "/Applications/Claude.app",
+          "~/Applications/Claude.app"
         ],
         "uninstall": ["Claude"]
       },
@@ -33,9 +35,12 @@
         "label": "Claude Desktop",
         "kind": "json-stdio",
         "path": "%APPDATA%\\Claude\\claude_desktop_config.json",
+        "macos_path": "~/Library/Application Support/Claude/claude_desktop_config.json",
         "detect": [
           "%LOCALAPPDATA%\\AnthropicClaude\\Claude.exe",
-          "%LOCALAPPDATA%\\Programs\\Claude\\Claude.exe"
+          "%LOCALAPPDATA%\\Programs\\Claude\\Claude.exe",
+          "/Applications/Claude.app",
+          "~/Applications/Claude.app"
         ],
         "restart": "完全退出并重开 Claude Desktop"
       },
@@ -58,7 +63,9 @@
       "desktop": {
         "detect": [
           "%LOCALAPPDATA%\\Programs\\Codex\\Codex.exe",
-          "%LOCALAPPDATA%\\Programs\\codex\\Codex.exe"
+          "%LOCALAPPDATA%\\Programs\\codex\\Codex.exe",
+          "/Applications/Codex.app",
+          "~/Applications/Codex.app"
         ],
         "uninstall": ["Codex"]
       },
@@ -128,7 +135,9 @@
         "detect": [
           "%LOCALAPPDATA%\\Programs\\cursor\\Cursor.exe",
           "%LOCALAPPDATA%\\Programs\\Cursor\\Cursor.exe",
-          "%ProgramFiles%\\Cursor\\Cursor.exe"
+          "%ProgramFiles%\\Cursor\\Cursor.exe",
+          "/Applications/Cursor.app",
+          "~/Applications/Cursor.app"
         ],
         "shortcuts": ["Cursor"],
         "uninstall": ["Cursor"]
@@ -141,7 +150,9 @@
         "detect": [
           "%LOCALAPPDATA%\\Programs\\cursor\\Cursor.exe",
           "%LOCALAPPDATA%\\Programs\\Cursor\\Cursor.exe",
-          "%ProgramFiles%\\Cursor\\Cursor.exe"
+          "%ProgramFiles%\\Cursor\\Cursor.exe",
+          "/Applications/Cursor.app",
+          "~/Applications/Cursor.app"
         ],
         "restart": "重启 Cursor"
       },
@@ -237,7 +248,9 @@
       "desktop": {
         "detect": [
           "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
-          "%ProgramFiles%\\Microsoft VS Code\\Code.exe"
+          "%ProgramFiles%\\Microsoft VS Code\\Code.exe",
+          "/Applications/Visual Studio Code.app",
+          "~/Applications/Visual Studio Code.app"
         ],
         "uninstall": ["Microsoft Visual Studio Code"]
       },
@@ -246,9 +259,12 @@
         "label": "VS Code (GitHub Copilot)",
         "kind": "json-servers",
         "path": "%APPDATA%\\Code\\User\\mcp.json",
+        "macos_path": "~/Library/Application Support/Code/User/mcp.json",
         "detect": [
           "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
-          "%ProgramFiles%\\Microsoft VS Code\\Code.exe"
+          "%ProgramFiles%\\Microsoft VS Code\\Code.exe",
+          "/Applications/Visual Studio Code.app",
+          "~/Applications/Visual Studio Code.app"
         ],
         "restart": "在 VS Code 中重新加载窗口或重启"
       },

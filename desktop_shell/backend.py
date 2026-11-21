@@ -82,7 +82,8 @@ def spawn_core(command, cwd):
     env = dict(os.environ)
     if sys.platform == "darwin":
         env.setdefault("ROUNDTABLE_LOG_DIR", str(Path.home() / "Library" / "Application Support" / "Cojam"))
-        paths = [str(Path.home() / ".local" / "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+        paths = [str(Path.home() / ".local" / "bin"), str(Path.home() / ".npm-global" / "bin"),
+                 "/opt/homebrew/bin", "/usr/local/bin"]
         env["PATH"] = os.pathsep.join(paths + [env.get("PATH", os.defpath)])
     env["ROUNDTABLE_NO_BROWSER"] = "1"
     env["ROUNDTABLE_OWNER_LIFECYCLE"] = "1"
@@ -203,9 +204,16 @@ class TabHeartbeat:
             self._send("ping")
 
     def stop(self):
+        self._finish(report_close=True)
+
+    def handoff_to_browser(self):
+        self._finish(report_close=False)
+
+    def _finish(self, *, report_close):
         with self._lock:
             if self._closed:
                 return
             self._closed = True
         self._stop.set()
-        self._send("close")
+        if report_close:
+            self._send("close")

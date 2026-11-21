@@ -58,7 +58,8 @@ HOSTS: list[dict[str, Any]] = [
      "path": os.path.join(HOME, ".cursor", "mcp.json"),
      # 只认真正的 Cursor 程序文件；~/.cursor 目录不算（cursor-agent CLI 也会创建它）
      "detect": [os.path.join(HOME, "AppData", "Local", "Programs", "cursor", "Cursor.exe"),
-                os.path.join(HOME, "AppData", "Local", "Programs", "Cursor", "Cursor.exe")],
+                os.path.join(HOME, "AppData", "Local", "Programs", "Cursor", "Cursor.exe"),
+                "/Applications/Cursor.app", os.path.join(HOME, "Applications", "Cursor.app")],
      # 装在别处的 Cursor（比如 D:\cursor）只能靠系统应用列表认出来
      "uninstall": ["cursor"],
      "restart": "重启 Cursor"},
@@ -95,11 +96,12 @@ def _load_catalog_hosts():
                     continue
                 known.add(m["id"])
                 desktop = entry.get("desktop") if isinstance(entry.get("desktop"), dict) else {}
+                path = (m.get("macos_path") if sys.platform == "darwin" else None) or m.get("path") or ""
                 HOSTS.append({
                     "id": m["id"],
                     "label": m.get("label") or entry.get("label") or m["id"],
                     "kind": m.get("kind") or "json",
-                    "path": os.path.expandvars(os.path.expanduser(m["path"])) if m.get("path") else "",
+                    "path": os.path.expandvars(os.path.expanduser(path)),
                     "bin": list(m.get("bin") or []),
                     "detect": [os.path.expandvars(os.path.expanduser(p)) for p in (m.get("detect") or [])],
                     "uninstall": list(m.get("uninstall") or desktop.get("uninstall") or []),
@@ -231,6 +233,10 @@ def install_toml(host):
 def _stdio_command():
     if FROZEN:
         return sys.executable, ["mcp-stdio"]
+    if sys.platform == "darwin":
+        source = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roundtable.py")
+        if os.path.isfile(source):
+            return sys.executable, [source, "mcp-stdio"]
     return sys.executable, ["-m", "bridge.mcp_stdio"]
 
 

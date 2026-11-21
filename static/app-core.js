@@ -18,7 +18,7 @@ function ownerInstance(){
 }
 (function(){
   const desktop=ownerTabId(location.search);
-  const nativeOwnedHeartbeat=Boolean((typeof window!=='undefined'&&window.cojamDesktop&&window.cojamDesktop.nativeHeartbeat)||(typeof window!=='undefined'&&window.__COJAM_NATIVE_HEARTBEAT__===true));
+  const nativeOwnedHeartbeat=Boolean((desktop&&new URLSearchParams(location.search).get('native_shell')==='1')||(typeof window!=='undefined'&&window.cojamDesktop&&window.cojamDesktop.nativeHeartbeat)||(typeof window!=='undefined'&&window.__COJAM_NATIVE_HEARTBEAT__===true));
   const instance=desktop||ownerInstance(), endpoint='/api/ui/session';
   let tab=desktop||instance;
   try{

@@ -112,17 +112,42 @@ const collapsedProjects=new Set();
 async function pollRooms(){try{const r=await fetch('/api/rooms',{cache:'no-store'});if(!r.ok)throw Error('读取项目失败');const j=await r.json();ROOMS=j.rooms||[];PROJECTS=j.projects||[];const m=seenMap();ROOMS.forEach(r=>{if(m[r.id]==null)m[r.id]=r.count});try{localStorage.setItem('rt_seen',JSON.stringify(m))}catch(e){}drawRooms();return j}catch(e){return null}}
 function attachWorkspaceFolderPicker(inputId){
   const input=document.getElementById(inputId);if(!input)return;
+  const catalog=typeof agCat!=='undefined'&&agCat;
+  if(catalog&&catalog.local_workspace===false)return;
+  const macBrowserPicker=catalog&&catalog.macos_workspace_picker===true;
   const button=document.createElement('button');button.type='button';button.textContent='选择文件夹';button.hidden=true;
   input.parentElement.append(button);
   const bridge=(typeof window!=='undefined'&&window.cojamDesktop)||null;
   const legacy=()=>typeof window!=='undefined'&&window.pywebview&&window.pywebview.api&&typeof window.pywebview.api.choose_workdir==='function'?window.pywebview.api:null;
-  const enable=()=>{if(bridge?bridge.canChooseWorkdir():!!legacy())button.hidden=false};
+  const canPickNatively=()=>bridge?bridge.canChooseWorkdir():!!legacy();
+  const enable=()=>{button.hidden=!(canPickNatively()||macBrowserPicker)};
   enable();
   if(bridge&&typeof bridge.ready==='function')bridge.ready(enable);
   else if(typeof window!=='undefined'&&typeof window.addEventListener==='function')window.addEventListener('pywebviewready',enable,{once:true});
-  button.onclick=async()=>{button.disabled=true;try{const path=await (bridge?bridge.chooseWorkdir():legacy().choose_workdir());if(path){input.value=path;input.dispatchEvent(new Event('input',{bubbles:true}))}}catch(e){alert('无法打开文件夹选择器，请手动填写路径。')}finally{button.disabled=false}};
+  button.onclick=async()=>{
+    button.disabled=true;
+    try {
+      let path;
+      if(canPickNatively()){
+        path=await (bridge?bridge.chooseWorkdir():legacy().choose_workdir());
+      } else if(macBrowserPicker){
+        const [ok,result]=await post('/api/projects/choose-workdir',{});
+        if(!ok)throw Error(result.error);
+        path=result.workdir;
+      }
+      if(path){input.value=path;input.dispatchEvent(new Event('input',{bubbles:true}))}
+    } catch(e){
+      alert('无法打开文件夹选择器，请重试或手动填写路径。');
+    } finally {
+      button.disabled=false;
+    }
+  };
 }
-async function openProject(){document.body.classList.remove('nav-open');if(agCat.local_workspace===false){showModal('<h3>新建项目</h3><p class="hint">当前是通过其他设备连接。手机网页不支持使用本地文件夹创建项目，也不能选择或指定运行合拍的电脑文件夹。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}showModal('<h3>新建项目</h3><p class="hint">项目中的会话共用工作文件夹，各自管理成员和权限。</p><label>项目名称<input id="pName" maxlength="60" placeholder="例如：我的应用"></label><label>工作文件夹<input id="pWd" placeholder="工作文件夹完整路径" value="'+esc((S&&S.workdir)||'')+'"></label><p id="pErr" role="alert"></p><div class="btns"><button id="pCancel">取消</button><button id="pSave" class="pri">创建项目</button></div>');attachWorkspaceFolderPicker('pWd');document.getElementById('pCancel').onclick=hideModal;document.getElementById('pSave').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const name=document.getElementById('pName').value,workdir=document.getElementById('pWd').value;button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/projects/new',{name,workdir});if(!ok){const error=document.getElementById('pErr');if(error)error.textContent=j.error||'创建失败';return}await pollRooms();if(document.getElementById('pSave')===button){hideModal();openNew(false,j.project.id)}}finally{button.disabled=false;button.textContent='创建项目'}};document.getElementById('pName').focus()}
+async function openProject(){document.body.classList.remove('nav-open');
+  if(!agCat){
+    try{await refreshContacts()}catch(e){alert('无法读取本机项目设置，请重试。');return}
+  }
+  if(agCat.local_workspace===false){showModal('<h3>新建项目</h3><p class="hint">当前是通过其他设备连接。手机网页不支持使用本地文件夹创建项目，也不能选择或指定运行合拍的电脑文件夹。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}showModal('<h3>新建项目</h3><p class="hint">项目中的会话共用工作文件夹，各自管理成员和权限。</p><label>项目名称<input id="pName" maxlength="60" placeholder="例如：我的应用"></label><label>工作文件夹<input id="pWd" placeholder="工作文件夹完整路径" value="'+esc((S&&S.workdir)||agCat.default_dir||'')+'"></label><p id="pErr" role="alert"></p><div class="btns"><button id="pCancel">取消</button><button id="pSave" class="pri">创建项目</button></div>');attachWorkspaceFolderPicker('pWd');document.getElementById('pCancel').onclick=hideModal;document.getElementById('pSave').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const name=document.getElementById('pName').value,workdir=document.getElementById('pWd').value;button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/projects/new',{name,workdir});if(!ok){const error=document.getElementById('pErr');if(error)error.textContent=j.error||'创建失败';return}await pollRooms();if(document.getElementById('pSave')===button){hideModal();openNew(false,j.project.id)}}finally{button.disabled=false;button.textContent='创建项目'}};document.getElementById('pName').focus()}
 async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
   await pollRooms();await refreshContacts();if(!PROJECTS.length)return openProject();

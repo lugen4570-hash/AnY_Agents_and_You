@@ -24,11 +24,12 @@ class MacDistribution(unittest.TestCase):
             fixture.mkdir()
             # Build a small clean repository fixture, never mutating the user's repo.
             paths = ['bridge', 'static', 'index.html', 'roundtable.py', 'LICENSE', 'pyproject.toml',
+                     'desktop_launcher.py', 'desktop_shell',
                      'packaging/member-readme.md', 'packaging/start-member.command', 'packaging/start-member.bat']
             archive = subprocess.check_output(['git', 'archive', 'HEAD', '--', *paths], cwd=ROOT)
             with tarfile.open(fileobj=io.BytesIO(archive)) as source:
                 source.extractall(fixture, filter='data')
-            for name in ('start-cojam.command', 'macos-python-readme.txt'):
+            for name in ('start-cojam.command', 'macos-python-readme.txt', 'build_macos.sh', 'build-cojam.command'):
                 (fixture / 'packaging' / name).write_bytes((ROOT / 'packaging' / name).read_bytes())
             subprocess.run(['git', 'init', '-q'], cwd=fixture, check=True)
             subprocess.run(['git', 'add', '.'], cwd=fixture, check=True, capture_output=True)
@@ -55,6 +56,15 @@ class MacDistribution(unittest.TestCase):
                 self.assertEqual((launcher.external_attr >> 16) & 0o777, 0o755)
                 self.assertNotIn(b'\r', bundle.read(launcher))
                 self.assertIn(b'Library/Application Support/Cojam', bundle.read(launcher))
+                packager = bundle.getinfo('Cojam/构建合拍桌面版.command')
+                self.assertEqual((packager.external_attr >> 16) & 0o777, 0o755)
+                self.assertNotIn(b'\r', bundle.read(packager))
+                self.assertIn(b'packaging/build_macos.sh', bundle.read(packager))
+                self.assertNotIn(b'\r', bundle.read('Cojam/packaging/build_macos.sh'))
+                for resource in ('desktop_launcher.py', 'desktop_shell/main.py', 'desktop_shell/backend.py',
+                                 'pyproject.toml', 'packaging/member-readme.md',
+                                 'packaging/start-member.command', 'packaging/start-member.bat'):
+                    self.assertIn('Cojam/' + resource, names)
                 provenance = json.loads(bundle.read('Cojam/SOURCE.json'))
                 self.assertFalse(provenance['python_runtime_bundled'])
                 self.assertFalse(provenance['mac_hardware_tested'])

@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tempfile
 import sys
@@ -12,12 +13,26 @@ from bridge import updater
 
 
 class Updates(unittest.TestCase):
-    def test_macos_does_not_offer_windows_installer(self):
-        with patch.object(updater.sys, 'platform', 'darwin'), patch.object(updater, '_open') as request:
+    def test_macos_uses_separate_manifest_and_downloads_verified_zip(self):
+        archive = 'Cojam-99.0.0-macOS-Python.zip'
+        manifest = self.manifest(b'macos archive')
+        manifest['url'] = updater.DOWNLOAD_ROOT + archive
+        with self.assertRaises(ValueError):
+            updater.parse_manifest(manifest)
+        with self.assertRaises(ValueError):
+            updater.parse_manifest(self.manifest(), macos=True)
+        with patch.object(updater.sys, 'platform', 'darwin'), \
+             patch.object(updater, 'STATE', {'state': 'idle'}), patch.object(updater, 'RELEASE', None), \
+             patch.object(updater, '_open', side_effect=[io.BytesIO(json.dumps(manifest).encode()), io.BytesIO(b'macos archive')]) as request, \
+             tempfile.TemporaryDirectory() as tmp:
             result = updater.check()
-        self.assertEqual(result['state'], 'error')
-        self.assertIn('macOS', result['error'])
-        request.assert_not_called()
+            self.assertEqual(result['state'], 'available')
+            self.assertTrue(result['macos'])
+            self.assertFalse(result['can_install'])
+            request.assert_called_once_with(updater.MACOS_MANIFEST)
+            updater._download(updater.RELEASE, tmp)
+            self.assertEqual(updater.status()['state'], 'downloaded')
+            self.assertEqual(Path(tmp, archive).read_bytes(), b'macos archive')
 
     def manifest(self, payload=b'installer'):
         return {'app':'Cojam', 'version':'99.0.0',

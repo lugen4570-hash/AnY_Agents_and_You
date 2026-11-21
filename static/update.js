@@ -16,7 +16,12 @@
     syncEntry(data);
     const box=document.getElementById('updateContent');if(!box)return;
     let body='<p>当前版本：'+esc(data.current||'未知')+'</p>';
-    if(data.state==='available')body+='<p>发现新版本 '+esc(data.latest)+'。</p>'+(data.notes?'<p>'+esc(data.notes)+'</p>':'')+'<button id="updateDownload" class="pri">'+(data.can_install?'下载并更新':'下载安装程序')+'</button><p class="hint">'+(data.can_install?'更新会在任务结束后关闭并重新打开合拍，会话数据会保留。':'下载后请关闭合拍，再手动运行安装程序。原来使用解压版时，请在安装向导中选择原来的程序文件夹，以继续使用其中的 data 数据。')+'</p>';
+    if(data.state==='available'){
+      const label=data.macos?'下载 macOS ZIP':(data.can_install?'下载并更新':'下载安装程序');
+      const hint=data.macos?'解压新版后运行「构建合拍桌面版.command」，退出合拍后替换 Cojam.app。浏览器版可以直接从新目录启动。'
+        :(data.can_install?'更新会在任务结束后关闭并重新打开合拍，会话数据会保留。':'下载后请关闭合拍，再手动运行安装程序。原来使用解压版时，请在安装向导中选择原来的程序文件夹，以继续使用其中的 data 数据。');
+      body+='<p>发现新版本 '+esc(data.latest)+'。</p>'+(data.notes?'<p>'+esc(data.notes)+'</p>':'')+'<button id="updateDownload" class="pri">'+label+'</button><p class="hint">'+hint+'</p>';
+    }
     else if(data.state==='downloading'){
       const pct=Math.floor((data.downloaded||0)*100/(data.size||1));
       const parts=[];
@@ -24,7 +29,11 @@
       if(data.speed>0)parts.push(data.speed>=1048576?(data.speed/1048576).toFixed(1)+' MB/s':Math.round(data.speed/1024)+' KB/s');
       body+='<p>正在下载… '+pct+'%'+(parts.length?'（'+parts.join(' · ')+'）':'')+'</p>';
     }
-    else if(data.state==='downloaded')body+='<p>下载完成，文件已校验。</p>'+(data.error?'<p role="alert">'+esc(data.error)+'</p>':'')+(data.can_install?'<button id="updateInstall" class="pri">安装并重新打开</button>':'<p>请关闭合拍后手动运行：</p>')+'<p><code>'+esc(data.path)+'</code></p>';
+    else if(data.state==='downloaded'){
+      const next=data.macos?'<p>请解压 ZIP。桌面版可双击其中的构建脚本，退出合拍后替换应用。</p>'
+        :(data.can_install?'<button id="updateInstall" class="pri">安装并重新打开</button>':'<p>请关闭合拍后手动运行：</p>');
+      body+='<p>下载完成，文件已校验。</p>'+(data.error?'<p role="alert">'+esc(data.error)+'</p>':'')+next+'<p><code>'+esc(data.path)+'</code></p>';
+    }
     else if(data.state==='installing')body+='<p>正在安装更新，合拍将关闭并在安装完成后重新打开。</p>';
     else if(data.state==='installed')body+='<p>安装完成。如果合拍没有自动重新打开，请退出后重新打开。</p>';
     else if(data.state==='current')body+='<p>当前已是最新发布版本（'+esc(data.latest)+'）。</p>';

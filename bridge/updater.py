@@ -1,4 +1,4 @@
-"""Check, verify and start an explicitly requested Windows desktop update."""
+"""Check and verify platform updates, with in-app installation on Windows."""
 import hashlib
 import base64
 import json
@@ -11,7 +11,6 @@ import tempfile
 import threading
 import time
 from typing import Any
-import urllib.parse
 import urllib.request
 
 from . import pal
@@ -22,6 +21,7 @@ logger = get_logger(__name__)
 
 MANIFEST = 'https://lugen4570-hash.github.io/Cojam/update.json'
 DOWNLOAD_ROOT = 'https://lugen4570-hash.github.io/Cojam/downloads/'
+MACOS_MANIFEST = MANIFEST.replace('/update.json', '/macos-update.json')
 MAX_INSTALLER = 100 * 1024 * 1024
 CHUNK_SIZE = 128 * 1024
 RANGE_THRESHOLD = 1024 * 1024
@@ -110,39 +110,35 @@ def can_install():
     )
 
 
-def parse_manifest(data):
+def parse_manifest(data, *, macos=False):
     if not isinstance(data, dict) or data.get('app') != 'Cojam':
         raise ValueError('更新信息不完整')
     v = str(data.get('version') or '')
     version(v)
     url = str(data.get('url') or '')
-    parsed = urllib.parse.urlsplit(url)
-    if (not url.startswith(DOWNLOAD_ROOT) or parsed.query or parsed.fragment or
-            not re.fullmatch(r'/Cojam/downloads/Cojam-Setup-[0-9]+\.[0-9]+\.[0-9]+\.exe', parsed.path)):
+    filename = f'Cojam-{v}-macOS-Python.zip' if macos else f'Cojam-Setup-{v}.exe'
+    if url != DOWNLOAD_ROOT + filename:
         raise ValueError('安装包地址无效')
-    if not parsed.path.endswith('Cojam-Setup-' + v + '.exe'):
-        raise ValueError('安装包版本不匹配')
     sha = str(data.get('sha256') or '').lower()
     size = data.get('size')
     if not re.fullmatch(r'[0-9a-f]{64}', sha) or type(size) is not int or not 0 < size <= MAX_INSTALLER:
         raise ValueError('安装包校验信息无效')
-    return {'version': v, 'url': url, 'sha256': sha, 'size': size,
+    return {'version': v, 'url': url, 'sha256': sha, 'size': size, 'macos': macos,
             'notes': str(data.get('notes') or '')[:1000]}
 
 
 def check():
     global RELEASE
-    if pal.is_macos(sys.platform):
-        return {'state': 'error', 'current': VERSION, 'error': 'macOS 版请通过官网获取更新并手动替换应用。'}
+    macos = pal.is_macos(sys.platform)
     with LOCK:
         if STATE['state'] in ('downloading', 'installing'):
             return status()
     try:
-        with _open(MANIFEST) as response:
+        with _open(MACOS_MANIFEST if macos else MANIFEST) as response:
             raw = response.read(65537)
         if len(raw) > 65536:
             raise ValueError('更新信息过大')
-        release = parse_manifest(json.loads(raw))
+        release = parse_manifest(json.loads(raw), macos=macos)
         available = version(release['version']) > version(VERSION)
         with LOCK:
             RELEASE = release if available else None
@@ -159,7 +155,7 @@ def check():
 
 def status():
     with LOCK:
-        return dict(STATE, can_install=can_install())
+        return dict(STATE, can_install=can_install(), macos=pal.is_macos(sys.platform))
 
 
 def start_download(directory=None, auto_install=False, busy=None, stop_backend=None):
@@ -396,9 +392,12 @@ def _download(release, directory=None, auto_install=False, busy=None, stop_backe
         total, digest_hex = _hash_file(temp_file)
         if total != release['size'] or digest_hex != release['sha256']:
             raise ValueError('安装包校验失败')
-        name = 'Cojam-Setup-' + release['version']
+        if release.get('macos'):
+            name, extension = f"Cojam-{release['version']}-macOS-Python", '.zip'
+        else:
+            name, extension = 'Cojam-Setup-' + release['version'], '.exe'
         for i in range(1000):
-            path = folder / (name + (('-%d' % i) if i else '') + '.exe')
+            path = folder / (name + (('-%d' % i) if i else '') + extension)
             try:
                 # Reserve a fresh filename without overwriting existing files, then move atomically.
                 with open(path, 'xb'):

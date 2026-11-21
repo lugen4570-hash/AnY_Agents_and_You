@@ -78,6 +78,23 @@ class TestDiscovery(unittest.TestCase):
         with patch.object(install, "app_installed", return_value=False):
             self.assertFalse(install.present(host))
 
+    def test_macos_detects_app_bundles_and_uses_native_mcp_config(self):
+        bundle = Path(self.tmp.name, "Claude.app")
+        (bundle / "Contents").mkdir(parents=True)
+        (bundle / "Contents" / "Info.plist").touch()
+        with patch.object(sys, "platform", "darwin"), patch.object(install, "HOSTS", []):
+            install._load_catalog_hosts()
+            hosts = {row["id"]: row for row in install.HOSTS}
+            claude = hosts["claude-desktop"]
+            self.assertIn("/Applications/Claude.app", claude["detect"])
+            self.assertEqual(claude["path"], os.path.expanduser(
+                "~/Library/Application Support/Claude/claude_desktop_config.json"))
+            self.assertEqual(hosts["vscode"]["path"], os.path.expanduser(
+                "~/Library/Application Support/Code/User/mcp.json"))
+            self.assertTrue(registry._detected({"desktop": {"path": str(bundle)}}))
+            with patch.object(install, "FROZEN", False):
+                self.assertEqual(install._stdio_command(), (sys.executable, [str(ROOT / "roundtable.py"), "mcp-stdio"]))
+
     def test_user_saved_cli_is_not_connected_after_failed_verification(self):
         entry={'id':'failed-cli','cli':{'bin':['fake']}}
         spec={'enabled':True,'driver':'cli','user':True}

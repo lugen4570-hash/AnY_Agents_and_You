@@ -114,7 +114,12 @@ def _detected(spec):
     desktop_path = (spec.get("desktop") or {}).get("path")
     for p in ([desktop_path] if desktop_path else []) + list(spec.get("detect") or []):
         try:
-            if os.path.isfile(os.path.expandvars(os.path.expanduser(p))):
+            path = os.path.expandvars(os.path.expanduser(p))
+            if os.path.isfile(path):
+                return True
+            if pal.is_macos() and path.lower().endswith(".app") and os.path.isfile(
+                os.path.join(path, "Contents", "Info.plist")
+            ):
                 return True
         except Exception as error:
             logger.debug("Registry path check failed for %s: %s", p, error)

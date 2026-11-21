@@ -1,12 +1,29 @@
 """Persisted projects, with stable groups for existing conversations."""
 import hashlib
 import os
+import subprocess
 import threading
 import uuid
 
 from .common import LOG_DIR, PROJECT, read_json, write_json
 
 LOCK = threading.RLock()
+
+MACOS_FOLDER_PROMPT = '''try
+    return POSIX path of (choose folder with prompt "选择合拍项目的工作文件夹")
+on error messageText number errorNumber
+    if errorNumber is -128 then return ""
+    error messageText number errorNumber
+end try'''
+
+
+def choose_macos_workdir():
+    result = subprocess.run(
+        ["/usr/bin/osascript", "-e", MACOS_FOLDER_PROMPT],
+        check=True, capture_output=True, encoding="utf-8", timeout=180,
+    )
+    path = result.stdout.removesuffix("\n")
+    return os.path.normpath(path) if path else None
 
 
 def legacy_id(workdir):

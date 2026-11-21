@@ -2,6 +2,11 @@
 
 最近更新：2026-11-21。
 
+## 2.8.9 macOS 适配
+
+本版本为 Mac 下载包提供桌面构建脚本和本机项目目录选择器，补充常用桌面 Agent 发现及 Mac 更新包校验。Windows 同步打包发布。使用说明见 [MACOS.md](MACOS.md)。
+
+
 ## Cojam 2.8.7 发布记录（新官网与 GitHub Release 已同步）
 
 - **发布完成**：已在 GitHub 仓库 [`lugen4570-hash/Cojam`](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.7) 发布正式 Release `v2.8.7`，并同步官网 `https://lugen4570-hash.github.io/Cojam/`。

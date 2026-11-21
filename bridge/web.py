@@ -6,6 +6,7 @@
 外部程序用 /api/post 或 /mcp；钩子用 /api/guard/*（带钥匙）。"""
 import hmac, json, mimetypes, os, re, secrets, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from subprocess import SubprocessError
 from typing import Any, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
@@ -297,7 +298,8 @@ class Handler(BaseHTTPRequestHandler):
                 if st["automatic"] or s["driver"] == "external":
                     member_rows[s["id"]] = st
             return self._json(200, dict(registry.catalog(), discovered_presets=registry.discover_hidden_presets(), default_dir=PROJECT, hosts=install.hosts_status(),
-                                        local_workspace=self._is_local_owner() and not bool(getattr(self, "_device_id", "")),
+                                        local_workspace=self._is_host_owner(),
+                                        macos_workspace_picker=sys.platform == "darwin" and self._is_host_owner(),
                                         owner_devices=devices.listing(getattr(self, "_device_id", "")),
                                         connections=connections.catalog(), members=member_rows,
                                         discovery=discovery.status(), connection_settings=conn_settings.snapshot(),
@@ -655,6 +657,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/contacts/status":
             pid = str(data.get("id") or "")
             return self._json(200, {"connection": connections.status(pid), "member": members.broker.status(pid)})
+        if path == "/api/projects/choose-workdir":
+            if not self._is_host_owner():
+                return self._json(403, {"error": "只能在运行合拍的 Mac 上选择项目文件夹。"})
+            if sys.platform != "darwin":
+                return self._json(404, {"error": "此系统不提供网页文件夹选择器。"})
+            try:
+                workdir = projects.choose_macos_workdir()
+            except (OSError, SubprocessError, UnicodeError) as error:
+                logger.warning("macOS folder picker failed: %s", error)
+                return self._json(503, {"error": "无法打开 macOS 文件夹选择器，请重试或手动填写路径。"})
+            return self._json(200, {"workdir": workdir})
         if path == "/api/projects/new":
             if not self._is_local_owner() or bool(getattr(self, "_device_id", "")):
                 return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹；请在运行合拍的设备上创建项目。"})

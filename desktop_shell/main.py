@@ -166,7 +166,9 @@ def main():
     base = base_url()
     core = backend.find_core()
     if core is None:
-        show_error("找不到合拍后台。请确认应用包完整；Windows 版需要把 Cojam.exe 和 CojamCore.exe 放在同一个文件夹里。")
+        detail = ("请重新构建或解压完整的 Cojam.app。" if sys.platform == "darwin"
+                  else "请确认应用包完整；Windows 版需要把 Cojam.exe 和 CojamCore.exe 放在同一个文件夹里。")
+        show_error("找不到合拍后台。" + detail)
         return 2
     state, info = backend.probe(base)
     if state in ("foreign", "timeout"):
@@ -203,7 +205,7 @@ def main():
         return True
 
     try:
-        open_window(url, on_closing)
+        open_window(url + "&native_shell=1", on_closing)
     except Exception:
         try:
             opened = webbrowser.open(url)
@@ -213,6 +215,7 @@ def main():
             heartbeat.stop()
             show_error("没能打开桌面窗口，也没能打开浏览器。")
             return 2
+        heartbeat.handoff_to_browser()
         show_error("没能打开桌面窗口。已改用浏览器打开合拍。")
         return 0
     heartbeat.stop()

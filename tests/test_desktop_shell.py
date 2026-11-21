@@ -337,7 +337,7 @@ class WindowAndFlow(unittest.TestCase):
         spawn.assert_called_once_with(["core.exe"], "C:/core")
         self.assertEqual(beat_class.call_args.args, (base, "token", "T" * 32))
         heartbeat.start.assert_called_once()
-        self.assertEqual(window.call_args.args[0], base + "/?owner_tab=" + "T" * 32)
+        self.assertEqual(window.call_args.args[0], base + "/?owner_tab=" + "T" * 32 + "&native_shell=1")
         self.assertEqual(heartbeat.stop.call_count, 1)
         error.assert_not_called()
 
@@ -390,6 +390,8 @@ class WindowAndFlow(unittest.TestCase):
                 patch.object(shell_main, "show_error") as error:
             self.assertEqual(shell_main.main(), 0)
         browser.assert_called_once()
+        self.assertNotIn("native_shell", browser.call_args.args[0])
+        heartbeat.handoff_to_browser.assert_called_once()
         heartbeat.stop.assert_not_called()
         self.assertIn("已改用浏览器", error.call_args.args[0])
 

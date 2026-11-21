@@ -1,0 +1,45 @@
+name: Verify macOS desktop builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build from the same ZIP provided by the website
+        run: |
+          python tests/test_macos_distribution.py
+          archive=$(python packaging/build_macos_python.py)
+          ditto -x -k "$archive" "$RUNNER_TEMP/mac-package"
+          "$RUNNER_TEMP/mac-package/Cojam/构建合拍桌面版.command"
+      - name: Verify signatures and start the packaged backend
+        working-directory: ${{ runner.temp }}/mac-package/Cojam/dist
+        run: |
+          codesign --verify --deep --strict Cojam.app
+          export ROUNDTABLE_PORT=18765 ROUNDTABLE_NO_BROWSER=1
+          export ROUNDTABLE_LOG_DIR="$RUNNER_TEMP/cojam-data"
+          Cojam.app/Contents/MacOS/CojamCore > "$RUNNER_TEMP/core.log" 2>&1 &
+          core_pid=$!
+          trap 'kill "$core_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/core.log"' EXIT
+          base=http://127.0.0.1:18765
+          curl --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 -fsS "$base/api/server/info"
+          curl --max-time 3 -fsS "$base/" -c "$RUNNER_TEMP/cojam-cookies" -o "$RUNNER_TEMP/cojam.html"
+          curl --max-time 3 -fsS "$base/static/workspace.js" -o "$RUNNER_TEMP/workspace.js"
+          curl --max-time 3 -fsS "$base/static/member-connector.zip" -b "$RUNNER_TEMP/cojam-cookies" -o "$RUNNER_TEMP/member.zip"
+          unzip -tq "$RUNNER_TEMP/member.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cojam-desktop-${{ matrix.runner }}
+          path: ${{ runner.temp }}/mac-package/Cojam/dist/Cojam-*-macOS-*.zip
