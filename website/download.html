@@ -3,20 +3,35 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10120f">
+  <meta name="theme-color" content="#f9f8fd">
   <meta name="description" content="下载 Windows 和 Mac 版合拍，或复制命令安装并运行 Cojam CLI。">
   <title>下载与安装 · 合拍 Cojam</title>
   <link rel="icon" href="assets/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20261121-salon">
-  <script src="site.js?v=20261121-salon" defer></script>
+  <link rel="stylesheet" href="style.css?v=20261121-cojam">
+  <script src="site.js?v=20261121-cojam" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="index.html" aria-label="合拍首页"><img src="assets/logo.svg" alt="" width="32" height="32"><span>cojam<span class="brand-cn">合拍</span></span></a>
-    <nav aria-label="主导航"><a href="salon.html">协作沙龙</a><a href="download.html" aria-current="page">下载</a></nav>
+  <header class="topbar" data-topbar>
+    <a class="brand" href="index.html" aria-label="合拍首页">
+      <img src="assets/logo.svg" alt="" width="40" height="40">
+      <span>cojam<span class="brand-cn">合拍</span></span>
+    </a>
+    <nav aria-label="主导航">
+      <a href="index.html#how">工作方式</a>
+      <a href="index.html#agents">多 Agent</a>
+      <a href="download.html" aria-current="page">下载与安装</a>
+      <a href="macos.html">Mac 教程</a>
+    </nav>
+    <a class="nav-cta" href="index.html">返回官网 <span aria-hidden="true">↗</span></a>
   </header>
+
   <main class="wrap inner-page download-page">
-    <header class="page-heading"><h1>下载与安装</h1><p class="lead">选择桌面应用，或直接在终端安装 Cojam。</p></header>
+    <header class="page-heading">
+      <span class="kicker">DOWNLOADS · 2.8.7</span>
+      <h1>下载与安装</h1>
+      <p class="lead">选择 Windows / macOS 桌面应用，或直接在终端安装 Cojam CLI 客户端。</p>
+    </header>
+
     <div class="download-shell">
       <nav class="download-nav" aria-label="安装方式">
         <a href="#desktop" data-view="desktop"><strong>桌面应用</strong><small>Windows / macOS</small></a>
@@ -26,19 +41,26 @@
         <section id="desktop" class="download-view" aria-labelledby="desktop-title">
           <h2 id="desktop-title">桌面应用</h2>
           <div class="platform-row">
-            <div><h3>Windows <span>x64</span></h3><p>安装后打开独立窗口。系统可能提示未签名。</p></div>
+            <div><h3>Windows <span>x64 · 2.8.7</span></h3><p>安装后打开独立原生桌面窗口，支持应用内更新检查与高速下载。系统可能提示未签名。</p></div>
             <div class="platform-actions"><a class="button primary" href="downloads/Cojam-Setup-2.8.7.exe" download>下载 Windows 版 <span aria-hidden="true">↓</span></a><a class="download-secondary" href="downloads/Cojam-Portable-2.8.7.exe" download>浏览器便携版</a></div>
           </div>
           <div class="platform-row">
-            <div><h3>macOS <span>Apple Silicon / Intel</span></h3><p>解压后启动浏览器版，或在本机生成 Cojam.app。需要 Python 3.11+。</p></div>
-            <div class="platform-actions"><a class="button" href="macos.html">打开 Mac 安装教程 <span aria-hidden="true">↗</span></a><a class="download-secondary" href="downloads/Cojam-macOS-Python.zip" download>直接下载 Mac 源码包</a></div>
+            <div><h3>macOS <span>Apple Silicon / Intel</span></h3><p>解压后启动浏览器版，或在本机生成 <code>Cojam.app</code>。需要 Python 3.11+。</p></div>
+            <div class="platform-actions"><a class="button secondary" href="macos.html">打开 Mac 安装教程 <span aria-hidden="true">↗</span></a><a class="download-secondary" href="downloads/Cojam-macOS-Python.zip" download>直接下载 Mac 源码包</a></div>
           </div>
         </section>
+
         <section id="cli" class="download-view" aria-labelledby="cli-title">
           <h2 id="cli-title">终端客户端</h2>
-          <p>需要 Python 3.11+。选择系统，把命令粘贴到终端并回车。首次安装会下载依赖，完成后自动进入 Cojam。</p>
+          <p>需要 Python 3.11+。选择系统，把命令粘贴到终端并回车。首次安装会创建隔离环境并下载所需组件，完成后自动进入 Cojam。</p>
           <div class="installer" data-installer>
-            <div class="installer-toolbar"><div class="platform-picker" aria-label="终端平台"><button type="button" data-platform="posix" aria-pressed="true">macOS / Linux</button><button type="button" data-platform="windows" aria-pressed="false">Windows</button></div><button class="copy-command" type="button" data-copy>复制命令</button></div>
+            <div class="installer-toolbar">
+              <div class="platform-picker" aria-label="终端平台">
+                <button type="button" data-platform="posix" aria-pressed="true">macOS / Linux</button>
+                <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+              </div>
+              <button class="copy-command" type="button" data-copy>复制命令</button>
+            </div>
             <pre tabindex="0"><code data-command>python3 -c "import urllib.request as u; exec(compile(u.urlopen('https://lugen4570-hash.github.io/Cojam/install-cli.py', timeout=30).read(), 'install-cli.py', 'exec'))"</code></pre>
             <noscript><p>Windows 请将命令开头的 <code>python3</code> 换成 <code>py -3</code>，再粘贴到 PowerShell。</p></noscript>
           </div>
@@ -49,6 +71,15 @@
       </div>
     </div>
   </main>
-  <footer class="footer wrap"><a href="index.html">返回合拍首页</a></footer>
+
+  <footer class="footer wrap">
+    <a class="brand footer-brand" href="index.html"><img src="assets/logo.svg" alt="" width="34" height="34"><span>cojam<span class="brand-cn">合拍</span></span></a>
+    <p>让好想法，一起发生。</p>
+    <div>
+      <a href="index.html">返回官网首页</a>
+      <a href="macos.html">Mac 教程</a>
+      <a href="https://github.com/lugen4570-hash/Cojam" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+    </div>
+  </footer>
 </body>
 </html>

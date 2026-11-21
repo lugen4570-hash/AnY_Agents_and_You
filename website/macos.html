@@ -3,16 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10120f">
+  <meta name="theme-color" content="#f9f8fd">
   <meta name="description" content="在 Mac 上下载和解压合拍，准备 Python，启动浏览器版或构建 Cojam.app。">
   <title>Mac 安装教程 · 合拍 Cojam</title>
   <link rel="icon" href="assets/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20261121-salon">
-  <link rel="stylesheet" href="macos.css?v=20261121-salon">
+  <link rel="stylesheet" href="style.css?v=20261121-cojam">
+  <link rel="stylesheet" href="macos.css?v=20261121-cojam">
+  <script src="site.js?v=20261121-cojam" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="index.html" aria-label="合拍首页"><img src="assets/logo.svg" alt=""><span>cojam<span class="brand-cn">合拍</span></span></a>
+  <header class="topbar" data-topbar>
+    <a class="brand" href="index.html" aria-label="合拍首页"><img src="assets/logo.svg" alt="" width="40" height="40"><span>cojam<span class="brand-cn">合拍</span></span></a>
+    <nav aria-label="主导航">
+      <a href="index.html#how">工作方式</a>
+      <a href="index.html#agents">多 Agent</a>
+      <a href="download.html">下载与安装</a>
+      <a href="macos.html" aria-current="page">Mac 教程</a>
+    </nav>
     <a class="nav-cta" href="download.html#desktop">返回下载区<span aria-hidden="true"> ↗</span></a>
   </header>
   <main class="mac-guide wrap">
@@ -83,7 +90,7 @@ Python 3.12.10</code></pre>
         <div class="mac-step-copy">
           <h2>创建第一个项目</h2>
           <p>在合拍里点「新建项目」，输入项目名称，再点「选择文件夹」。选择这次会话要用的工作目录，确认后创建项目。</p>
-          <p>想让 Codex、Claude 等本机 AI 参与，再安装并登录对应工具，然后回合拍添加联系人。</p>
+          <p>想让 Claude Code、Codex、Gemini、Antigravity 等本机 AI 参与，再安装并登录对应工具，然后回合拍添加联系人。</p>
         </div>
         <figure class="mac-capture">
           <a href="assets/macos-project-guide.webp"><img src="assets/macos-project-guide.webp" alt="合拍的新建项目窗口，工作文件夹下方有选择文件夹按钮" loading="lazy"></a>
