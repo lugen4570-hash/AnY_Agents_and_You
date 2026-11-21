@@ -23,13 +23,16 @@ def wait_until(description, predicate, timeout=30):
     raise RuntimeError(f"Timed out waiting for {description}")
 
 
-def apple_script(source, *args):
+def apple_script(source, *args, wait_for_element=False):
     result = subprocess.run(
         ["/usr/bin/osascript", "-e", source, *map(str, args)], text=True,
         capture_output=True, timeout=40,
     )
     if result.returncode:
-        raise RuntimeError(result.stderr.strip())
+        error = result.stderr.strip()
+        if wait_for_element and error.endswith(("(-1719)", "(-1728)")):
+            return ""
+        raise RuntimeError(error)
     return result.stdout.strip()
 
 
@@ -46,7 +49,7 @@ on run argv
         return name of window 1 of targetApp
     end tell
 end run
-""", pid)
+""", pid, wait_for_element=True)
 
 
 def web_button(pid, label, press=True):
@@ -74,7 +77,7 @@ on run argv
     end tell
     return ""
 end run
-""", pid, label, "press" if press else "check")
+""", pid, label, "press" if press else "check", wait_for_element=True)
 
 
 def paste_text(text):
