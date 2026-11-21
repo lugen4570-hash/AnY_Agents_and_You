@@ -2,6 +2,15 @@
 
 最近更新：2026-11-21。
 
+## Cojam 官网重设计发布与线上验证（2026-11-21）
+
+- **官网改动与推送**：提交 [`8e163c5055af7ed5f4ddfd735e32dae3dd0d9520`](https://github.com/lugen4570-hash/Cojam/commit/8e163c5055af7ed5f4ddfd735e32dae3dd0d9520) 推送至 `lugen4570-hash/Cojam` `main`，同步移除 `website/salon.html`，回归合拍品牌配色（浅薰衣草纸白 `#f9f8fd`、深梅子墨 `#211631`/`#1c132a`、电光紫 `#6022e8`、酸橙绿 `#d5ff3f`）与交互动效，并重构多 Agent 协作舞台与四种接入方式展示。
+- **GitHub Pages 部署**：`Deploy website` 工作流 Run [`44917947676`](https://github.com/lugen4570-hash/Cojam/actions/runs/44917947676) 完成（`build` 21s、`deploy` 8s）。
+- **线上逐项核验**：
+  - 官网首页 `https://lugen4570-hash.github.io/Cojam/`（`15,038` 字节）、[download.html](https://lugen4570-hash.github.io/Cojam/download.html)（`4,668` 字节）与 [macos.html](https://lugen4570-hash.github.io/Cojam/macos.html)（`5,155` 字节）均返回 HTTP 200 并引用 `style.css?v=20261121-cojam`，页面已确认不含“沙龙”或 `salon`；原 `website/salon.html` 返回 HTTP 404。
+  - 更新清单 `https://lugen4570-hash.github.io/Cojam/update.json` 返回 HTTP 200，版本 `2.8.7`、`size: 13318098`。
+  - 实际下载安装包校验一致：`Cojam-Setup-2.8.7.exe`（`13,318,098` 字节，SHA-256 `092c32e335bbfc8005af9157f077df0d942b8e00bfabf387094f19bde802c89d`）、`Cojam-Portable-2.8.7.exe`（`13,222,934` 字节，SHA-256 `42be6c6ff60b7b823c7b5cb7da7fab9bfd10618e53487756e1f182c368627368`）；既有的 GitHub Release `v2.8.7` 未被覆盖。
+
 ## 2.8.9 macOS 适配
 
 本版本为 Mac 下载包提供桌面构建脚本和本机项目目录选择器，补充常用桌面 Agent 发现及 Mac 更新包校验。Windows 同步打包发布。使用说明见 [MACOS.md](MACOS.md)。
