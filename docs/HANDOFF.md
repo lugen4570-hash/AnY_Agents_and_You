@@ -2,6 +2,14 @@
 
 最近更新：2026-11-21。
 
+## Cojam 2.8.10 Windows 正式发布
+
+- Agent 默认模型下拉框会列出完整选项，保留自定义模型与随模型切换的 effort。桌面更新窗口链接到新官网下载页，打包后的核心只使用新官网更新清单。旧版 2.8.7 写入的旧域名返回 404，用户需要关闭旧版并手动安装一次。
+- 正式 [GitHub Release v2.8.10](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.10) 对应源码 `15a31efb1002ccdb3ece6fb9d24ed26688b2dda0`。实际下载复核了七项附件的大小和 SHA-256。包括桌面安装包、桌面 ZIP、浏览器便携 EXE 和 ZIP、成员连接端、[SHA-256](https://github.com/lugen4570-hash/Cojam/releases/download/v2.8.10/SHA256SUMS-2.8.10.txt) 与[构建报告](https://github.com/lugen4570-hash/Cojam/releases/download/v2.8.10/build-report-2.8.10.json)。Windows 程序未签名，与 2.8.7 一致。
+- 官网部署提交 `e2b7564ee8c7795ffb12513793c4d89894e1f29f`，[Pages 部署 44918239481](https://github.com/lugen4570-hash/Cojam/actions/runs/44918239481) 已成功。首页和下载页均指向 2.8.10，线上 `update.json` 的安装包实际下载为 13,542,965 字节，SHA-256 `18a834c006f38c0bc0437b5135a5b009a4ff854f0eec204b861d8f5bbfc62f99`。浏览器便携 EXE 为 13,562,445 字节，SHA-256 `0b0f542e8f1e41eaba6120e5aa0beafe43c41039d62dd654623312a69943765e`，均与 GitHub 附件完全一致。
+- 实测浏览器模型下拉和自定义保存、65 项针对性回归、8 项 Rust 测试、隔离安装与卸载、运行中安装和卸载拦截、数据保留。发布后重新启动打包核心，成功读取线上 2.8.10 清单并正常退出。首次 505 项回归中的前端连接与图标缓存问题已修复重测，后台任务两项在独立 Windows 进程环境重测通过。日志静默异常检查在本轮发布前的基线同样失败。
+- Pages 已恢复 `macos-update.json`，实际下载核对了 2.8.10 Mac 源码包的 657,384 字节与 SHA-256 `138894c24e19d9cea0e6cc6c3028c0aeebdbae91105509af1e1f42bdd9315e57`。CLI 安装索引也已核对对应本次部署提交。Mac 未做实机启动测试。
+
 ## Cojam 官网重设计发布与线上验证（2026-11-21）
 
 - **官网改动与推送**：提交 [`8e163c5055af7ed5f4ddfd735e32dae3dd0d9520`](https://github.com/lugen4570-hash/Cojam/commit/8e163c5055af7ed5f4ddfd735e32dae3dd0d9520) 推送至 `lugen4570-hash/Cojam` `main`，同步移除 `website/salon.html`，回归合拍品牌配色（浅薰衣草纸白 `#f9f8fd`、深梅子墨 `#211631`/`#1c132a`、电光紫 `#6022e8`、酸橙绿 `#d5ff3f`）与交互动效，并重构多 Agent 协作舞台与四种接入方式展示。
