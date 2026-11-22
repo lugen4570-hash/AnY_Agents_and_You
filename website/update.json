@@ -1,8 +1,8 @@
 {
   "app": "Cojam",
-  "version": "2.8.13",
-  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.13.exe",
-  "sha256": "04f8ed72f75ac067658a754084496b662f7b7b0b8240234d1c97bad1a3db2a0e",
-  "size": 13410263,
-  "notes": "过滤 Antigravity 等 NDJSON/JSON 命令行工具流式输出中的原始协议事件行，避免思考状态条暴露原始 JSON，并补充回归测试。"
+  "version": "2.8.15",
+  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.15.exe",
+  "sha256": "522ea9f88b4b7d4bd587d34490d61e88f4d0ab908275f9fa7ec97ce98fb0afb4",
+  "size": 13358291,
+  "notes": "升级为 AnY（Agents and You）霍克尼明亮多色画室设计，重构官网、客户端 GUI 浅/深双主题与发言者层次、CLI 终端发言者圆角卡片与 F3 分栏看板，并补齐 macOS .icns 图标与打包适配。"
 }
