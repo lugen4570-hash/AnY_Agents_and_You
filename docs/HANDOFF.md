@@ -2,6 +2,11 @@
 
 最近更新：2026-11-22。
 
+## Cojam CLI 独立启动（2026-11-22）
+
+- 直接运行 `cojam` 或 `cojam open` 时，统一使用解析后的端口复用或启动本机后台。官网安装器的启动文件从独立 Python 环境加载 Cojam，旧启动模块仍兼容。命令找不到或仍启动旧版时，从 [官网 CLI 下载页](https://lugen4570-hash.github.io/Cojam/download.html#cli) 重新运行一次系统对应的安装命令。
+- 源码 `a8a582285b428090e6edf9ad75939baaf6a02b0c` 已通过 [Pages 部署 44978222139](https://github.com/lugen4570-hash/Cojam/actions/runs/44978222139)。在 Windows 从线上安装后，验证了启动文件、显式端口冷启动、打开项目列表和退出后的后台回收。针对性回归也覆盖了复用已运行后台。原有长流程 TUI 测试在发布前的基线与本轮均出现失败，未纳入本次启动验证范围。
+
 ## Cojam 2.8.11 Windows 正式发布（2026-11-22）
 
 - **问题修复与测试**：修复 `bridge/detached_jobs.py` 在回收独立 CLI 任务结果时将 24 位十六进制 `model_revision` 强转为 `int` 导致抛错并吞掉回复（如 Antigravity 连续触发 `invalid literal for int() with base 10` 内部错误）的问题，并在 `tests/test_detached_jobs.py` 新增 `test_detached_job_handles_hex_model_revision`。验证情况：`tests/test_detached_jobs.py` 在发布工作树与主工作区均 3/3 通过（首次合并跑 `tests.test_model_catalog`/`test_icons`/`test_updater`/`test_desktop_shell` 共 66 项通过，`test_cli_job_survives_cojam_shutdown_and_collects_on_reopen` 曾因 Windows 临时目录清理占用偶发失败，单独复跑已通过）；`mypy` 检查 `detached_jobs.py`/`version.py`/`model_catalog.py` 通过；`ruff` 检查 `tests/test_detached_jobs.py`/`version.py` 通过；`node --check static/connections.js` 与 `cargo test --locked`（8 项 Rust 测试）全部通过。
