@@ -2,6 +2,13 @@
 
 最近更新：2026-11-22。
 
+## Cojam 2.8.12 Windows 正式发布（2026-11-22）
+
+- 修复 Antigravity Orchestrator (Neon) 的思考强度选择，折叠未安装且未配置的 Agent 预设，加入图片马赛克和编辑重做，按会议恢复文字、引用和图片草稿，支持房主和真人访客撤回自己发出的消息。独立 CLI 回收十六进制模型版本标识的修复随本版保留。
+- [构建源码 1e98eb0](https://github.com/lugen4570-hash/Cojam/commit/1e98eb0456f3b7e2316a4b6f018a006850317ab1) 已推送到官方 `main`。从干净工作树重新构建。已核对 [v2.8.12 正式 Release](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.12) 中 7 个附件的大小和 SHA-256，包括安装包、桌面 ZIP、便携 ZIP、便携 EXE、成员连接端、校验文件和构建报告。Windows 构建未签名。
+- 178 项 Python 测试和 8 项 Rust 测试通过。隔离验证核心、便携版和桌面版可启动并提供本版资源，应用内「退出」可关闭后台。覆盖重装清理旧运行库，卸载保留测试数据。单用标题栏关闭窗口后，隔离测试的后台在 25 秒内仍未退出。
+- 官网通过 [Pages 部署 44981151110](https://github.com/lugen4570-hash/Cojam/actions/runs/44981151110) 发布。已从线上读取首页、下载页和更新清单，并重新下载安装包和便携 EXE，字节数和 SHA-256 均与 Release 一致。安装包为 `13,407,711` 字节，SHA-256 为 `2038cb2021aef06d79f87cc8bb69151bfce29438ee1762d4a42378c9f30017ad`。
+
 ## Cojam CLI 独立启动（2026-11-22）
 
 - 直接运行 `cojam` 或 `cojam open` 时，统一使用解析后的端口复用或启动本机后台。官网安装器的启动文件从独立 Python 环境加载 Cojam，旧启动模块仍兼容。命令找不到或仍启动旧版时，从 [官网 CLI 下载页](https://lugen4570-hash.github.io/Cojam/download.html#cli) 重新运行一次系统对应的安装命令。
