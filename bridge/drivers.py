@@ -386,6 +386,71 @@ def _resolve_cli_model_effort(pid, exe, spec, model, effort):
     return model, effort
 
 
+def _extract_assistant_content(content):
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [
+            item["text"].strip()
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str) and item["text"].strip()
+        ]
+        return " ".join(parts).strip()
+    return ""
+
+
+def _live_text_from_cli_line(spec, line):
+    """Extract only human-readable interim status text from a streamed CLI line."""
+    p = spec.get("parse") or {}
+    ptype = p.get("type") or "text"
+    s = (line or "").strip()
+    if not s:
+        return ""
+    if ptype not in ("ndjson", "json"):
+        return s
+    if not s.startswith("{"):
+        return ""
+    try:
+        obj = json.loads(s)
+    except Exception:
+        return ""
+    if not isinstance(obj, dict):
+        return ""
+
+    text_path = p.get("text")
+    flt = p.get("filter")
+    if text_path and (not flt or all(_get_path(obj, k) == v for k, v in flt.items())):
+        val = _get_path(obj, text_path)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    delta = obj.get("delta")
+    if isinstance(delta, str) and delta.strip():
+        return delta.strip()
+    if isinstance(delta, dict) and isinstance(delta.get("text"), str) and delta["text"].strip():
+        return delta["text"].strip()
+
+    if obj.get("type") == "text" and isinstance(obj.get("part"), dict):
+        pt = obj["part"].get("text")
+        if isinstance(pt, str) and pt.strip():
+            return pt.strip()
+
+    msg = obj.get("message")
+    if isinstance(msg, dict) and msg.get("role") == "assistant":
+        extracted = _extract_assistant_content(msg.get("content"))
+        if extracted:
+            return extracted
+
+    su = obj.get("step_update")
+    if isinstance(su, dict):
+        for key in ("thinking", "text", "message"):
+            sv = su.get(key)
+            if isinstance(sv, str) and sv.strip():
+                return sv.strip()
+
+    return ""
+
+
 def call_cli(pid, spec, prompt, session_id, images, mode, room):
     exe = registry.exe_of(spec)
     if not exe:
@@ -406,7 +471,9 @@ def call_cli(pid, spec, prompt, session_id, images, mode, room):
     def on_line(line):
         buf.append(line)
         if room is not None:
-            room.push_live(pid, {"live": line})   # 中途说的话给页面状态行看
+            live = _live_text_from_cli_line(spec, line)
+            if live:
+                room.push_live(pid, {"live": live})   # 仅推可读状态文本，避免暴露原始协议 JSON
 
     try:
         rc, so, se, to = run_stream(cmd, stdin_text, on_line, timeout_for(mode, pid), cwd=ctx["cwd"], env=env,

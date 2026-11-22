@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """接更多 agent：注册表读配置、通用 cli 驱动、http 驱动、每场会议各自的参会者、没有会话的 AI 拿整份记录。"""
 import json, os, sys, tempfile, threading, time, unittest
+from pathlib import Path
 from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -750,6 +751,82 @@ class LongPromptDelivery(Base):
         self.assertEqual(sid, "cur-1")
         self.assertNotIn(long_prompt, seen["cmd"])
         self.assertEqual(seen["stdin"], long_prompt)
+
+    def test_ndjson_live_stream_hides_raw_protocol_json(self):
+        preset = json.loads(
+            (Path(__file__).resolve().parents[1] / "bridge" / "presets" / "antigravity.json").read_text(encoding="utf-8")
+        )
+        write_cfg("antigravity.json", preset)
+        registry.load()
+
+        pushed = []
+
+        class FakeRoom:
+            def __init__(self):
+                self.id = "r-live"
+                self.procs = {}
+                self.keys = {}
+
+            def workdir(self):
+                return DATA
+
+            def title(self):
+                return "demo"
+
+            def goal(self):
+                return ""
+
+            def effective_models(self, _pid):
+                return ("", "")
+
+            def push_live(self, _pid, payload):
+                pushed.append(payload["live"])
+
+        room = FakeRoom()
+        raw_step = json.dumps({
+            "event": "step_update",
+            "step_update": {"conversation_id": "01d2b4d1-d283-4c79-9552-61fa1e69fbab", "step_index": 0, "state": "DONE", "step_type": "user_input"},
+        })
+        final_res = json.dumps({
+            "event": "result",
+            "conversation_id": "conv-1",
+            "result": {"response": "最终答复"},
+        })
+
+        def fake_run(cmd, stdin_text, on_line, timeout, cwd=None, env=None, reg=None):
+            on_line(raw_step)
+            on_line(json.dumps({"type": "text", "part": {"text": "正在整理要点"}}))
+            on_line(final_res)
+            return 0, "\n".join((raw_step, final_res)), "", None
+
+        with patch.object(common, "find_executable", return_value="C:\\bin\\agy.exe"), \
+             patch.object(drivers, "run_stream", side_effect=fake_run):
+            ok, text, sid, _ = drivers.call("antigravity", "hi", None, (), "discuss", room)
+        self.assertTrue(ok, text)
+        self.assertEqual(text, "最终答复")
+        self.assertEqual(sid, "conv-1")
+        self.assertNotIn(raw_step, pushed)
+        self.assertEqual(pushed, ["正在整理要点", "最终答复"])
+
+    def test_live_text_extractor_supports_text_and_assistant_content(self):
+        self.assertEqual(
+            drivers._live_text_from_cli_line({"parse": {"type": "text"}}, "  hello  "),
+            "hello",
+        )
+        self.assertEqual(
+            drivers._live_text_from_cli_line(
+                {"parse": {"type": "ndjson"}},
+                json.dumps({"message": {"role": "assistant", "content": [{"type": "text", "text": "分段进展"}]}}),
+            ),
+            "分段进展",
+        )
+        self.assertEqual(
+            drivers._live_text_from_cli_line(
+                {"parse": {"type": "ndjson"}},
+                json.dumps({"event": "step_update", "step_update": {"thinking": "先看下目录"}}),
+            ),
+            "先看下目录",
+        )
 
 
 if __name__ == "__main__":
