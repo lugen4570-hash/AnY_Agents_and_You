@@ -2,6 +2,13 @@
 
 最近更新：2026-11-22。
 
+## Cojam 2.8.14 Windows 正式发布（2026-11-22）
+
+- 发布包含按会议隔离草稿、会话跨项目迁移和空项目删除、成员模型与思考强度显示、CLI 首页隐藏归档会话，以及撤回后恢复带图草稿并取消对应 Agent 任务。构建源码为 [`33ad801`](https://github.com/lugen4570-hash/Cojam/commit/33ad801de14268b1837fa78c4c19c53e6b5b63ea)。
+- 207 项 Python 测试通过。CLI 长流程中的 Codex 续接提示断言在发布前的 `9b3cd13` 与本版均失败。Windows 核心、便携版、桌面壳的启动与应用内退出已验证。测试安装包完成静默安装、覆盖和卸载，并保留测试数据。桌面退出测试先调用应用内退出，再关闭原生窗口。
+- [GitHub Release v2.8.14](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.14) 的七个附件均已重新下载并核对字节数和 SHA-256。Windows 程序未签名。安装包字节数为 `13,419,545`，SHA-256 为 `90c75611af595543f43a73ab1bc539f1ad11bea36e471daaaa7c8a6358e0b9ac`。完整数据见 Release 附带的 `SHA256SUMS-2.8.14.txt` 和 `build-report-2.8.14.json`。
+- 按本轮范围保留官网页面、部署与更新清单，Windows 2.8.14 从 GitHub Release 提供。本机安装版仍为 2.8.13。
+
 ## Cojam 2.8.13 Windows 正式发布（2026-11-22）
 
 - **问题修复与测试**：在 `bridge/drivers.py` 新增 `_live_text_from_cli_line()` 与 `_extract_assistant_content()`，在 `call_cli()` 流式读取 `on_line` 时过滤 `ndjson`/`json` 预设输出的纯协议事件行（如 `step_update`）及不完整 JSON 片段，仅提取可读文本或思考摘要推送至实时状态条；普通纯文本 CLI 保持透传。在 `tests/test_agents_registry.py` 新增 `test_ndjson_live_stream_hides_raw_protocol_json` 与 `test_live_text_extractor_supports_text_and_assistant_content`。验证情况：`tests.test_agents_registry`（47 项）、`tests.test_icons`、`tests.test_updater`、`tests.test_desktop_shell` 共 99 项通过，`tests/test_detached_jobs.py` 在 CPU 空闲下独立复跑 3/3 通过（首次高负载并发时因未设置 `ROUNDTABLE_LOG_DIR` 写入临时 `data` 且子进程超时偶发失败）；`mypy bridge/drivers.py bridge/version.py`、`ruff check bridge/drivers.py tests/test_agents_registry.py bridge/version.py`、`node --check static/connections.js` 与 `cargo test --locked`（8 项 Rust 测试）全部通过。
