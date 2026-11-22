@@ -1,8 +1,8 @@
 {
   "app": "Cojam",
-  "version": "2.8.12",
-  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.12.exe",
-  "sha256": "2038cb2021aef06d79f87cc8bb69151bfce29438ee1762d4a42378c9f30017ad",
-  "size": 13407711,
-  "notes": "修复 Antigravity 思考强度选择，折叠未配置的 Agent 预设，新增图片马赛克、按会议恢复草稿和真人消息撤回。"
+  "version": "2.8.13",
+  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.13.exe",
+  "sha256": "04f8ed72f75ac067658a754084496b662f7b7b0b8240234d1c97bad1a3db2a0e",
+  "size": 13410263,
+  "notes": "过滤 Antigravity 等 NDJSON/JSON 命令行工具流式输出中的原始协议事件行，避免思考状态条暴露原始 JSON，并补充回归测试。"
 }
