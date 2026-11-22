@@ -74,6 +74,51 @@ function openWindow(fetch){
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test mobile upload behavior')
+    def test_mobile_upload_reads_array_buffer_falls_back_name_and_room_id(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const chat=fs.readFileSync('static/app-chat.js','utf8');
+const draft=chat.slice(chat.indexOf('let pend=[];'),chat.indexOf('const pendEl='));
+const uploadPart=chat.slice(chat.indexOf('async function upload('),chat.indexOf("document.getElementById('clip').onclick"));
+const onchangeLine=chat.match(/fileEl\.onchange=\(\)=>\{[^\n]+\};/)[0];
+const storage=new Map(),localStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+const requests=[],alerts=[];
+const ctx=vm.createContext({
+  RID:'room-mobile',
+  ta:{value:''},
+  fileEl:{files:[{name:'',type:'image/jpeg',size:4,arrayBuffer:async()=>new Uint8Array([1,2,3,4]).buffer}],value:'C:\\fakepath\\x.jpg'},
+  filePickerRoom:null,
+  localStorage,sessionStorage:{getItem(){},removeItem(){}},
+  renderQuote(){},resizeComposer(){},drawPend(){},
+  crypto:{getRandomValues:()=>[9,8,7,6]},
+  Blob,Uint8Array,setTimeout,clearTimeout,
+  alert:m=>alerts.push(m),
+  fetch:async(url,opts)=>{
+    requests.push({url,opts});
+    if(url.includes('fail'))return {ok:false,status:502,text:async()=>'<html>Bad Gateway</html>'};
+    return {ok:true,status:200,text:async()=>JSON.stringify({name:'upload.jpg',path:'room-mobile/files/upload.jpg',kind:'image'})};
+  },
+});
+vm.runInContext(draft+'\nlet quote=null;\n'+uploadPart+'\n'+onchangeLine,ctx);
+ctx.draftUploadTransaction=()=>new Promise(()=>{});
+(async()=>{
+  ctx.fileEl.onchange();
+  for(let i=0;i<50&&!requests.length;i++)await new Promise(r=>setTimeout(r,20));
+  assert.equal(requests.length,1);
+  assert.match(requests[0].url,/\/api\/r\/room-mobile\/upload\?name=upload_\d{6}\.jpg/);
+  assert.ok(requests[0].opts.body instanceof ArrayBuffer);
+  assert.equal(requests[0].opts.headers['Content-Type'],'image/jpeg');
+  assert.equal(alerts.length,0);
+  const ok2=await ctx.upload({name:'fail.png',type:'image/png',size:2,arrayBuffer:async()=>new Uint8Array([5,6]).buffer},'room-mobile');
+  assert.equal(ok2,false);
+  assert.match(alerts[0],/HTTP 502/);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test draft sending')
     def test_send_preserves_text_entered_before_response(self):
         root = Path(__file__).resolve().parents[1]
@@ -243,8 +288,8 @@ assert.ok(connections.includes("attachWorkspaceFolderPicker('connWorkdir')"));
 const picker=workspace.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 const agCat={local_workspace:true,macos_workspace_picker:true};
 let next='/Users/demo/项目 A', events=0, button;
-const input={value:'old',parentElement:{append(b){button=b}},dispatchEvent(){events++}};
-const context=vm.createContext({agCat,document:{getElementById:()=>input,createElement:()=>({})},
+const input={value:'old',parentElement:{after(b){button=b}},dispatchEvent(){events++}};
+const context=vm.createContext({agCat,document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
   post:async url=>{assert.equal(url,'/api/projects/choose-workdir');return [true,{workdir:next}]},
   Event:function(){},alert:()=>{throw Error('unexpected alert')}});
 vm.runInContext(picker,context);
@@ -275,8 +320,8 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/workspace.js','utf8');
 const helper=source.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 let button, next='D:\\Project';
-const parent={append(b){button=b}}, input={value:'old',parentElement:parent,dispatchEvent(){}};
-const context=vm.createContext({document:{getElementById:()=>input,createElement:()=>({})},
+const parent={after(b){button=b}}, input={value:'old',parentElement:parent,dispatchEvent(){}};
+const context=vm.createContext({document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
  window:{pywebview:{api:{choose_workdir:async()=>next}},addEventListener(){}},Event:function(){},alert:()=>{throw Error('unexpected alert')}});
 vm.runInContext(helper,context);context.attachWorkspaceFolderPicker('pWd');
 (async()=>{assert.equal(button.hidden,false);await button.onclick();assert.equal(input.value,'D:\\Project');
@@ -295,9 +340,9 @@ const bridgeCode=ws.slice(ws.indexOf('function createCojamDesktop'),ws.indexOf('
 const pickerHelper=ws.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 const invocations=[];
 let button;
-const input={value:'old',parentElement:{append(b){button=b}},dispatchEvent(){}};
+const input={value:'old',parentElement:{after(b){button=b}},dispatchEvent(){}};
 const ctx=vm.createContext({
-  document:{getElementById:()=>input,createElement:()=>({})},
+  document:{getElementById:()=>input,createElement:()=>({setAttribute(){}})},
   Event:function(){},
   alert:()=>{throw Error('unexpected alert')},
   addEventListener(){},
@@ -809,12 +854,17 @@ assert.equal(nativeListeners.length, 0);
 
 const roomMatch = runtimeJs.match(/function switchRoom\(id,replace\)\{[\s\S]*?\n\}/);
 assert.ok(roomMatch, 'switchRoom missing');
+const resetMatch = runtimeJs.match(/function resetRoomView\(\)\{[\s\S]*?\n\}/);
+assert.ok(resetMatch, 'resetRoomView missing');
 let pushed = null;
 const draftByRoom = {'room-1':'第一场', 'room-2':''};
 const composer = {value:'', blur(){}};
 const roomContext = vm.createContext({
   RID: null, roomViewGeneration: 0, ta: composer,
-  resetRoomView: () => {composer.value=draftByRoom[roomContext.RID]}, post: () => {}, api: () => '', drawRooms: () => {},
+  restoreDraft: () => {composer.value=draftByRoom[roomContext.RID]}, post: () => {}, api: () => '', drawRooms: () => {},
+  hideMenu(){}, setMeetingSide(){}, selectionTools:{}, msgById:{},
+  showAnn(){}, closeEdit(){}, vw:{classList:{contains:()=>false}},
+  document:{getElementById:()=>({dataset:{}})},
   saveDraft: () => {throw Error('switching rooms must not save the visual field into a draft')}, resumeDraftUploads: () => {},
   poll: () => Promise.resolve(), feed: {scrollTop: 0, scrollHeight: 0}, queueJump: () => {},
   location: {search: '?owner_tab=' + valid},
@@ -822,7 +872,7 @@ const roomContext = vm.createContext({
             pushState: (state, title, url) => { pushed = url; }},
   encodeURIComponent, URLSearchParams
 });
-vm.runInContext(roomMatch[0], roomContext);
+vm.runInContext(resetMatch[0]+'\n'+roomMatch[0], roomContext);
 roomContext.switchRoom('room-1', true);
 assert.ok(pushed.includes('owner_tab=' + valid), pushed);
 assert.ok(pushed.includes('r=room-1'), pushed);

@@ -491,6 +491,16 @@ def call_cli(pid, spec, prompt, session_id, images, mode, room):
         return False, timeout_text(pid, to, mode), session_id, []
     res = {}
     text, sess = _parse(spec, stdout, res)
+    if session_id:
+        resume_missing = pid == "antigravity" and any(
+            session_id.lower() in line and "conversation" in line and "not found" in line
+            for line in (se or "").lower().splitlines()
+        )
+        if (sess and sess != session_id) or resume_missing:
+            message = "%s 无法接续原会话，已保留原绑定。要新开请先重置会话接续。" % pid
+            if sess and sess != session_id and len(sess) <= 100 and sess.isprintable():
+                message += " 执行端返回了另一会话 ID：%s。" % sess
+            return False, message, session_id, []
     if rc != 0 and not text:
         tail = "\n".join((se or "").strip().splitlines()[-6:])
         return False, "%s 出错了（退出码 %s）\n%s" % (pid, rc, tail), session_id, []

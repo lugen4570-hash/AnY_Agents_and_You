@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from . import access, agents, debate, detached_jobs, drivers, execution, model_catalog, registry, workspace as ws
 from .common import (AIS, ATT_BASE, LAST_FILE, LOG_DIR, MAX_ATTACH, MAX_IMAGES, MAX_UPLOAD, MEET_DIR, MODES, PROJECT,
-                     ROOM_RE, SID_RE, TRASH_DIR, get_logger, in_dir, is_archived, kill_tree, kind_of, mentions, mode_key,
+                     ROOM_RE, TRASH_DIR, get_logger, in_dir, is_archived, kill_tree, kind_of, mentions, mode_key,
                      norm, now_str, preamble, read_json, ref_safe, safe_title, sanitize_name, write_json)
 from .guard import guard
 
@@ -66,6 +66,17 @@ def default_meta(title, ann, wd=None):
             "goal_synced": {"codex": None},
             "participants": registry.default_participants(),
             "old_sessions": {a: [] for a in AIS}}
+
+
+def member_permissions_error(ids, permissions):
+    if not isinstance(permissions, dict):
+        return "权限必须是对象"
+    for pid, value in permissions.items():
+        if pid not in ids or not isinstance(value, dict):
+            return "权限只能配置给已选择的联系人"
+        if any(k not in access.PERMISSIONS or not isinstance(v, bool) for k, v in value.items()):
+            return "未知权限或权限值不是布尔值"
+    return ""
 
 
 def fix_meta(m):
@@ -274,6 +285,22 @@ class Room:
     def title(self):
         return self.meta.get("title") or self.id
 
+    def rename(self, title):
+        title = title.strip() if isinstance(title, str) else ""
+        if not title or len(title) > 60 or not title.isprintable():
+            return False, "会话名称须为 1 至 60 个字符，不能含换行或控制字符"
+        with self.lock:
+            if self.closed:
+                return False, "会话已关闭"
+            previous = self.meta["title"]
+            self.meta["title"] = title
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta["title"] = previous
+                raise
+        return True, ""
+
     def session_name(self):
         """AI 那边的会话名 = 会议名（用户 2026-10-18 定），在 claude / codex 的会话列表里能认出是哪场会议。"""
         return (self.meta.get("title") or "").strip()[:80]
@@ -309,12 +336,14 @@ class Room:
         if release_guard:
             guard.release_room(self.id)
 
-    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None):
+    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None):
         now = datetime.now()
         with self.lock:
             m = {"id": len(self.messages), "speaker": speaker, "text": text, "time": now.strftime("%H:%M:%S")}
             if origin:
                 m["origin"] = origin   # 不显示；external = 会议室外的同名 AI 经 /api/post 发的
+            if progress:
+                m["progress"] = progress
             if attachments:
                 m["attachments"] = attachments
             if to_user:
@@ -828,6 +857,7 @@ class Room:
             if want == old and member_permissions is None:
                 return True, ""
             previous = copy.deepcopy(self.meta)
+            old_work = {pid: access.permissions(self, pid)["work"] for pid in old}
             self._ensure_meta_for(want)
             self.meta["participants"] = want
             self.meta["tools"] = {a: self.meta["tools"].get(a) or agents.default_tools(a) for a in AIS}
@@ -838,6 +868,16 @@ class Room:
             except OSError:
                 self.meta = previous
                 raise
+            enabled: list[str] = []
+            disabled: list[str] = []
+            for pid in want:
+                allowed = access.permissions(self, pid)["work"]
+                if allowed != old_work.get(pid, False):
+                    (enabled if allowed else disabled).append(pid)
+            if enabled:
+                self.system_note("已允许干活：" + "、".join(enabled))
+            if disabled:
+                self.system_note("已关闭干活权限：" + "、".join(disabled))
             if want == old:
                 return True, ""
             added = [a for a in want if a not in old]
@@ -853,17 +893,34 @@ class Room:
     def set_members(self, ids, permissions):
         if not isinstance(ids, list) or any(not isinstance(pid, str) for pid in ids):
             return False, "成员必须是联系人 ID 列表"
-        if not isinstance(permissions, dict):
-            return False, "权限必须是对象"
-        for pid, value in permissions.items():
-            if pid not in (ids or []) or not isinstance(value, dict):
-                return False, "权限只能配置给已选择的联系人"
-            if any(k not in access.PERMISSIONS or not isinstance(v, bool) for k, v in value.items()):
-                return False, "未知权限或权限值不是布尔值"
+        if error := member_permissions_error(ids, permissions):
+            return False, error
         ok, msg = self.set_participants(ids, permissions)
         if not ok:
             return ok, msg
         agents.stop_codex(self)
+        return True, ""
+
+    def reset_session(self, ai):
+        with self.lock:
+            if self.closed or ai not in self.ais:
+                return False, "此 Agent 不在当前会话"
+            if self.busy_for() or self.meta.get("handed_off", {}).get(ai) or execution.binding(self, ai)["phase"] != "ready":
+                return False, "请先等会话空闲并收回执行端"
+            sid = self.meta.get(ai + "_session")
+            if not sid:
+                return False, "此 Agent 没有可重开的会话"
+            previous = copy.deepcopy(self.meta)
+            self.meta["old_sessions"][ai].append(sid)
+            self.meta.pop(ai + "_session")
+            self.meta["last_seen"][ai] = -1
+            self.meta["ctx"][ai] = None
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta = previous
+                raise
+            self.system_note("已重置 %s 的会话接续，下次 @ 它时会新开会话" % ai)
         return True, ""
 
     def member_mode(self, ai, requested=None):
@@ -892,12 +949,7 @@ class Room:
             self.meta["mode"] = mode
             self.state["chain"] = 0
             self.save_meta()
-            if mode == "work":
-                blocked = [a for a in self.ais if (registry.get(a) or {}).get("kind") != "user" and not access.permissions(self, a)["work"]]
-                note = "切到干活模式" + ("（注意：%s 未开启「允许干活」权限，仍将只读；可在「成员与权限」中勾选）" % "、".join(blocked) if blocked else "")
-            else:
-                note = "切回讨论模式"
-            self.add_message("系统", note)
+            self.system_note("切到干活模式" if mode == "work" else "切回讨论模式")
         agents.stop_codex(self)   # 两种模式加载的工具不一样，下一轮按新模式重起
         return True, ""
 
@@ -1180,7 +1232,8 @@ class Room:
                 if not access.permissions(self, speaker)["trigger"]:
                     targets = []
             if text or attachments or not (changes or send_errs):
-                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to)
+                progress = self.live.get(speaker, {}).get("details") if not external else None
+                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to, progress=progress)
                 if human:
                     source = message["id"]
             self.board_note(speaker, changes, not_for=None if external else speaker)
@@ -1188,7 +1241,7 @@ class Room:
             if speaker == "你":
                 self.state["chain"] = 0
             if self.state.get("debate_active"):
-                return True
+                return True  # 论道期间的发言仍进记录，调度权留给主持流程
             for t in targets:
                 if not access.allowed(self, t, "read") or not access.allowed(self, t, "post"):
                     continue
@@ -1211,12 +1264,19 @@ class Room:
             return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai))
 
     def push_live(self, ai, res):
-        """AI 一轮里中途说的话（claude 的文字块、codex 的 commentary）放进 live，页面状态行显示最近一句；不进会议记录。"""
+        """Keep user-visible commentary for the current turn and its final reply."""
         t = res.pop("live", None)
-        if t and ai in self.live and not self.turn_recalled(ai):
-            t = t.strip()
-            self.live[ai]["text"] = t if len(t) <= 400 else t[:400] + "…"
-            self.live[ai]["time"] = datetime.now().strftime("%H:%M:%S")
+        entry = self.live.get(ai)
+        if not t or entry is None or self.turn_recalled(ai) or not (t := t.strip()):
+            return
+        previous, latest = entry.get("details", ""), entry.get("latest", "")
+        if t != latest:
+            if latest and t.startswith(latest):
+                previous = previous[:-len(latest)]
+            entry["details"] = (previous + ("\n\n" if previous else "") + t)[-12000:]
+            entry["latest"] = t
+        entry["text"] = t if len(t) <= 400 else t[:400] + "…"
+        entry["time"] = datetime.now().strftime("%H:%M:%S")
 
     def run_job(self, job, user):
         ai, tag, source = job
@@ -1330,20 +1390,6 @@ class Room:
                     self.state["stopped"].discard(ai)
                 if was_stopped and not ok:
                     ok, out = False, "%s 被你打断了" % ai
-                edits = res[3] if len(res) > 3 else []
-                if not ok and not was_stopped and not self.turn_recalled(ai) and (registry.get(ai) or {}).get("driver") == "acp" and new_sid is None:
-                    # ACP 会话已失效（欠费、过期等）：丢掉旧会话，按"第一次叫"带完整上下文重试一次。
-                    # 只认这个结构化信号；CLI / HTTP / external 驱动出错时仍走下面的原逻辑。
-                    with self.lock:
-                        self.meta.pop(ai + "_session", None)
-                        self.meta["last_seen"][ai] = -1   # 新会话没看过任何东西，下次也要给整份记录
-                        self.save_meta()
-                    prompt, upto, ver, imgs = self.build_prompt(ai, mode, fresh=True)
-                    if self.turn_recalled(ai):
-                        return
-                    res = ai_caller(ai, prompt, None, imgs, mode, self)
-                    ok, out, new_sid = res[0], res[1], res[2]
-                    edits = res[3] if len(res) > 3 else []
                 if ok:
                     with self.lock:
                         self.meta[ai + "_session"] = new_sid
@@ -1363,7 +1409,8 @@ class Room:
                         text = out if debate_summary else out.rstrip().removesuffix(debate.READY).rstrip()
                         if not text.strip():
                             return
-                        self.add_message(ai, text, to_user=debate_summary, origin="debate-summary" if debate_summary else "debate")
+                        self.add_message(ai, text, to_user=debate_summary, origin="debate-summary" if debate_summary else "debate",
+                                         progress=self.live.get(ai, {}).get("details"))
                         return out
                     elif was_stopped and remote:
                         self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai))
@@ -1757,7 +1804,7 @@ class Room:
                     "git": gi,
                     "running": list(self.state["running"]), "queued": self.queued_count(),
                     "claims": [c for c in guard.listing() if c["room"] == self.id or in_dir(c["shown"], self.workdir())],
-                    "live": {a: {"text": v["text"], "time": v["time"], "secs": int(time.time() - v["since"])} for a, v in list(self.live.items())}}
+                    "live": {a: {"text": v["text"], "details": v.get("details", ""), "time": v["time"], "secs": int(time.time() - v["since"])} for a, v in list(self.live.items())}}
 
     def messages_since(self, since):
         with self.lock:
@@ -1872,7 +1919,8 @@ def meeting_sessions(m):
                 keys.append(aid)
     for a in keys:
         ss = [m.get(a + "_session")] + list(((old or {}).get(a)) or [])
-        ids = [v for i, v in enumerate(ss) if isinstance(v, str) and SID_RE.match(v) and v not in ss[:i]]
+        ids = [v for i, v in enumerate(ss) if isinstance(v, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", v)
+               and v not in ss[:i]]
         if ids or (a + "_session") in m:     # 这场会议用过的才列（老会议没有新 agent 的字段）
             out[a] = ids
     return out
@@ -1944,23 +1992,27 @@ class Rooms:
         with self.lock:
             return list(self.loaded.values())
 
-    def create(self, title, ann="", wd=None, project="", participants=None):
+    def create(self, title, ann="", wd=None, project="", participants=None, permissions=None):
         """建一场新的。别的会议照常跑，不受影响。返回 Room。"""
         now = datetime.now()
         title = (title or "").strip() or "会议"
+        meta = default_meta(title, ann, wd)
+        meta["project"] = project
+        if participants is not None:
+            meta["participants"] = list(participants)
+        if permissions is not None:
+            if error := member_permissions_error(meta["participants"], permissions):
+                raise ValueError(error)
+        defaults = {a: (registry.get(a) or {}).get("default_permissions") or {} for a in meta["participants"]}
+        if participants is not None or permissions is not None or any(defaults.values()):
+            meta["permissions"] = {a: {**access.PERMISSIONS, **defaults[a], **(permissions or {}).get(a, {})}
+                                   for a in meta["participants"]}
         evicted = []
         with self.lock:
             os.makedirs(MEET_DIR, exist_ok=True)
             name = unique_name(MEET_DIR, "%s_%s" % (now.strftime("%Y-%m-%d_%H%M"), safe_title(title)))
             d = os.path.join(MEET_DIR, name)
             os.makedirs(os.path.join(d, "files"))
-            meta = default_meta(title, ann, wd)
-            meta["project"] = project
-            if participants is not None:
-                meta["participants"] = list(participants)
-            if participants is not None or any((registry.get(a) or {}).get("default_permissions") for a in meta["participants"]):
-                meta["permissions"] = {a: dict(access.PERMISSIONS, **((registry.get(a) or {}).get("default_permissions") or {}))
-                                       for a in meta["participants"]}
             write_json(os.path.join(d, "meeting.json"), meta)
             with open(os.path.join(d, "log.md"), "w", encoding="utf-8") as f:
                 f.write("# %s\n\n创建于 %s\n\n" % (title, meta["created"]))
@@ -2218,16 +2270,16 @@ def restore_meeting(name):
     return True, "", new
 
 
-def purge_all():
+def purge_all(cleanup=None):
     """清空回收站。返回 (ok, 错误)。"""
     for n in [x["id"] for x in scan(TRASH_DIR)]:
-        ok, msg = purge_meeting(n)
+        ok, msg = purge_meeting(n, cleanup)
         if not ok:
             return False, msg
     return True, ""
 
 
-def purge_meeting(name):
+def purge_meeting(name, cleanup=None):
     """彻底删除回收站里的一场。返回 (ok, 错误)。"""
     with rooms.lock:
         item = next((x for x in scan(TRASH_DIR) if x["id"] == name), None)
@@ -2253,32 +2305,42 @@ def purge_meeting(name):
                 mm = read_json(os.path.join(base, x["id"], "meeting.json")) or {}
                 for a, ss in meeting_sessions(mm).items():
                     used.update((a, v) for v in ss)
+        title = m.get("title") or name
+        if cleanup is not None:
+            cleanup.extend({"room": title, "ai": a, "session": v, "status": "shared", "message": "其他会话仍在使用，已保留"}
+                           for a, ss in sids.items() for v in ss if (a, v) in used)
         sids = {a: [v for v in ss if (a, v) not in used] for a, ss in sids.items()}
     if any(sids.values()):
-        threading.Thread(target=delete_sessions, args=(m.get("title") or name, sids), daemon=True).start()
+        if cleanup is None:
+            threading.Thread(target=delete_sessions, args=(title, sids), daemon=True).start()
+        else:
+            cleanup.extend(delete_sessions(title, sids))
     return True, ""
 
 
 def delete_sessions(title, sids):
-    """彻底删除会议后在后台删各 AI 的会话，结果记一条系统消息（记在最近打开的那场会议里，只给人看）。"""
-    parts = []
+    """彻底删除会议后在后台删各 AI 的会话，返回清理结果列表。"""
+    results = []
     for agent_id, ids in (sids or {}).items():
         if not ids:
             continue
         spec = registry.get(agent_id) or {}
         drv = spec.get("driver") or agent_id
         for sid in ids:
-            if drv == "claude" or agent_id == "claude":
-                n = agents.delete_claude_session(sid)
-                parts.append("%s 会话 %s…：%s" % (agent_id, sid[:8], "删了 %d 项" % n if n else "本机没找到"))
-            elif drv == "codex" or agent_id == "codex":
-                ok, why = agents.delete_codex_thread(sid)
-                parts.append("%s 会话 %s…：%s" % (agent_id, sid[:8], ("删了" + ("（%s）" % why if why else "")) if ok else "没删成（%s）" % why))
-            else:
-                parts.append("%s 会话 %s…：外部/通用驱动无本机清理接口（已从会议记录移除）" % (agent_id, sid[:8]))
-    if not parts:
-        return
-    lr = last_room()
-    r = rooms.get(lr) if lr else None
-    if r is not None:
-        r.system_note("彻底删除「%s」：%s" % (title, "；".join(parts)))
+            try:
+                if drv == "claude" or agent_id == "claude":
+                    n = agents.delete_claude_session(sid)
+                    status, message = ("deleted", "已删除 %d 项" % n) if n else ("missing", "本机没找到")
+                elif drv == "codex" or agent_id == "codex":
+                    ok, why = agents.delete_codex_thread(sid)
+                    if not ok:
+                        status, message = "failed", "没删成（%s）" % why
+                    else:
+                        status, message = ("missing", why) if why else ("deleted", "已删除")
+                else:
+                    status = "manual"
+                    message = "agy 端需要手动清理" if agent_id == "antigravity" else "无清理接口，需要在 Agent 端手动清理"
+            except Exception as error:
+                status, message = "failed", "没删成（%s）" % error
+            results.append({"room": title, "ai": agent_id, "session": sid, "status": status, "message": message})
+    return results

@@ -43,7 +43,7 @@ class LocalClient:
             response = conn.getresponse()
             return response.status, response.headers, response.read()
         except (OSError, http.client.HTTPException) as error:
-            raise CliError(f"无法连接本机 Cojam（127.0.0.1:{self.port}）。请运行 cojam 打开客户端，或运行 cojam serve 启动后台。") from error
+            raise CliError(f"无法连接本机 AnY（127.0.0.1:{self.port}）。请运行 any 打开客户端，或运行 any serve 启动后台。") from error
         finally:
             conn.close()
 
@@ -89,8 +89,8 @@ def port_number(value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="cojam", description="合拍 Cojam 终端客户端")
-    parser.add_argument("--version", action="version", version=f"Cojam {VERSION}")
+    parser = argparse.ArgumentParser(prog="any", description="AnY 终端客户端")
+    parser.add_argument("--version", action="version", version=f"AnY {VERSION}")
     parser.add_argument("--port", type=port_number, default=os.environ.get("ROUNDTABLE_PORT", "8765"),
                         help="本机后台端口（默认 8765 或 ROUNDTABLE_PORT）")
     commands = parser.add_subparsers(dest="command")
@@ -111,7 +111,7 @@ def main(argv=None):
         os.environ["ROUNDTABLE_NO_BROWSER"] = "1"
         from .common import HERE
         if not os.path.isfile(os.path.join(HERE, "index.html")):
-            print("请在 Cojam 源码目录运行 python -m bridge.cli serve，或使用桌面端启动后台。", file=sys.stderr)
+            print("请在 AnY 源码目录运行 python -m bridge.cli serve，或使用桌面端启动后台。", file=sys.stderr)
             return 1
         from .web import main as serve
         serve(headless=True)

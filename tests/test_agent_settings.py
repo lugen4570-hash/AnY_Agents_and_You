@@ -87,6 +87,18 @@ class AgentSettings(unittest.TestCase):
         self.assertEqual(command[:3], [sys.executable,'--profile','changed'])
         self.assertIn('app-server',command)
 
+    def test_codex_first_turn_uses_cojam_default_model_and_effort(self):
+        status, result = self.save({"bin": [sys.executable], "default": ["gpt-6.2-sol", "medium"]}, "codex")
+        self.assertEqual(status, 200, result)
+        room = R.rooms.create("Codex 默认模型", "", DATA, participants=["codex"])
+        with patch.object(agents, "CODEX_BACKEND", "appserver"), \
+             patch.object(agents, "call_codex_appserver", return_value=(True, "收到", "new-thread")) as call:
+            ok, _, sid, _ = agents.call_ai("codex", "测试", room=room)
+        self.assertTrue(ok)
+        self.assertEqual(sid, "new-thread")
+        self.assertIsNone(call.call_args.args[2])
+        self.assertEqual(call.call_args.args[5:7], ("gpt-6.2-sol", "medium"))
+
     def test_missing_program_settings_remain_editable(self):
         missing = str(Path(DATA,'not installed.exe'))
         self.assertEqual(self.save({'bin':[missing]})[0],200)

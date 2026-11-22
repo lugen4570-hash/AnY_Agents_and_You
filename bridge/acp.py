@@ -247,11 +247,15 @@ class AcpProcess:
         if wanted_sid:
             try:
                 res = self.request("session/load", {"sessionId": wanted_sid, "cwd": self.cwd, "mcpServers": mcp_servers}, timeout=timeout)
-                self.session_id = str(res.get("sessionId") or wanted_sid)
-                self._remember_options(res)
-                return self.session_id
+            except TimeoutError:
+                raise
             except Exception as error:
-                logger.debug("ACP session/load failed for %s (%s), creating new session: %s", self.pid, wanted_sid, error)
+                raise AcpSessionLost(str(error)) from error
+            if str(res.get("sessionId") or wanted_sid) != wanted_sid:
+                raise AcpSessionLost("执行端返回了不同的会话 ID")
+            self.session_id = wanted_sid
+            self._remember_options(res)
+            return self.session_id
         res = self.request("session/new", {"cwd": self.cwd, "mcpServers": mcp_servers}, timeout=timeout)
         self.session_id = str(res.get("sessionId") or wanted_sid or ("acp-" + str(int(time.time()))))
         self._remember_options(res)
@@ -357,14 +361,7 @@ class AcpProcess:
                         room.push_live(self.pid, {"tool": title})
 
             idle, total = timeout_for(mode, self.pid)
-            try:
-                res = self.request("session/prompt", {"sessionId": sid, "prompt": blocks}, timeout=total, on_note=on_note)
-            except AcpSessionLost:
-                # 不在这里重建会话：这轮的 prompt 只含增量，新会话收不到前言和历史。
-                # 交回给调用方丢掉旧会话、按"第一次叫"重发完整上下文。
-                self.session_id = None
-                self.applied = None
-                raise
+            res = self.request("session/prompt", {"sessionId": sid, "prompt": blocks}, timeout=total, on_note=on_note)
             if isinstance(res, dict):
                 extract_ctx_usage(res, ctx_res)
             if room is not None and ctx_res.get("ctx_used") and hasattr(room, "note_ctx"):
@@ -480,6 +477,10 @@ def call(pid, spec, prompt, session_id=None, images=(), mode="discuss", room=Non
     except TimeoutError:
         stop(room, pid)
         return False, timeout_text(pid, "total", mode), session_id, []
+    except AcpSessionLost as e:
+        proc.session_id = None
+        proc.applied = None
+        return False, "%s (ACP) 会话已失效或无法接续，已保留原绑定。要新开请先重置会话接续。（%s）" % (pid, e), session_id, list(proc.active_edits)
     except Exception as e:
         # 模型侧报错（额度不足之类）不代表进程坏了：进程和会话留着下轮接着用，别每次都重开进程再开新会话
         if proc.alive():
@@ -489,11 +490,6 @@ def call(pid, spec, prompt, session_id=None, images=(), mode="discuss", room=Non
                 if _pool.get(key) is proc:
                     _pool.pop(key, None)
             proc.close()
-        if isinstance(e, AcpSessionLost):
-            proc.session_id = None
-            proc.applied = None
-            # 第三个返回值 None 是"会话已失效"的信号：会议室丢掉旧会话、按第一次叫重发完整上下文
-            return False, "%s (ACP) 会话已失效，正在换新会话重试" % pid, None, []
         return False, "%s (ACP) 调用出错：%s" % (pid, e), proc.session_id or session_id, []
     finally:
         proc.active_room = None

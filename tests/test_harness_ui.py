@@ -31,8 +31,11 @@ class HarnessUiTests(unittest.TestCase):
             'id="composerExtBtn"',
             'id="composerPopover"',
             'id="slashMenu"',
+            'class="sr-file-input"',
         ):
             self.assertIn(marker, html, f'Missing marker {marker} in index.html')
+        self.assertNotIn('id="toolBox"', html)
+        self.assertNotIn('data-inline-tools', (ROOT / 'static' / 'harness-ui.js').read_text(encoding='utf-8'))
 
     def test_agent_settings_fold_unconfigured_presets(self):
         self.run_node(r'''
@@ -152,6 +155,17 @@ const workState = Object.assign({}, state, {
 });
 assert.deepEqual(h.blockedWorkTargets(workState, h.resolveComposerTarget('@codex hi', workState)), ['codex']);
 assert.deepEqual(h.blockedWorkTargets(workState, h.resolveComposerTarget('@antigravity hi', workState)), []);
+
+// 10. Built-in slash commands (/compact, /skills) filter & parse cleanly
+const cmdAll = h.filterSlashCommands('/', 1, state, state.agents);
+assert.deepEqual(cmdAll.items.map(i => i.name), ['compact', 'skills']);
+const cmdComp = h.filterSlashCommands('/com', 4, state, state.agents);
+assert.deepEqual(cmdComp.items.map(i => i.name), ['compact']);
+assert.deepEqual(h.parseComposerSlashCommand('/compact', state), { command: 'compact', targetIds: [], explicitTarget: false, error: '' });
+assert.deepEqual(h.parseComposerSlashCommand('@codex /compact', state), { command: 'compact', targetIds: ['codex'], explicitTarget: true, error: '' });
+assert.deepEqual(h.parseComposerSlashCommand('/compact codex', state), { command: 'compact', targetIds: ['codex'], explicitTarget: true, error: '' });
+assert.deepEqual(h.parseComposerSlashCommand('/skills codex', state), { command: 'skills', targetIds: ['codex'], explicitTarget: true, error: '' });
+assert.equal(h.parseComposerSlashCommand('/systematic-debugging check', state), null);
 ''')
 
     def test_extensions_badges_tristate_and_import_validation(self):
@@ -215,10 +229,12 @@ with tempfile.TemporaryDirectory() as wd:
     r.meta['instruction_seen'] = {'codex': r.instruction_signature('codex', 'discuss')}
     ok, msg = r.set_mode('work')
     assert ok, msg
-    assert '未开启「允许干活」权限' in r.messages[-1]['text'], r.messages[-1]['text']
+    assert r.messages[-1]['text'] == '切到干活模式', r.messages[-1]['text']
+    assert r.member_mode('codex') == 'discuss'
 
     ok, msg = r.set_members(['codex'], {'codex': {'work': True}})
     assert ok, msg
+    assert r.messages[-1]['text'] == '已允许干活：codex'
     r.add_message('你', '@codex 开始改代码')
     prompt, _, _, _ = r.build_prompt('codex', r.member_mode('codex'))
     assert '【合拍模式与权限已更新】' in prompt, prompt

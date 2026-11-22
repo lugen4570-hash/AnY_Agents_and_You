@@ -21,11 +21,11 @@
       'mode.work': '干活模式',
       'composer.model': '模型',
       'composer.ext': '扩展',
-      'composer.hint': '@ 指定成员 · / 技能',
-      'composer.placeholder': '有什么新想法？@ 指定成员，/ 调用技能…',
+      'composer.hint': '@ 指定成员 · / 命令与技能',
+      'composer.placeholder': '有什么新想法？@ 指定成员，/ 命令与技能…',
       'composer.desktopManaged': '由桌面端管理',
       'composer.desktopSkillHint': '为桌面端接入，技能由原软件管理，请在原软件中使用。',
-      'composer.noSkills': '当前没有可用技能。',
+      'composer.noSkills': '当前没有可用命令或技能。',
       'composer.sendTo': '将发送给',
       'composer.allAgents': '全员',
       'composer.save': '保存',
@@ -72,11 +72,11 @@
       'mode.work': 'Work',
       'composer.model': 'Models',
       'composer.ext': 'Extensions',
-      'composer.hint': '@ mention · / skills',
-      'composer.placeholder': 'Type a message… @ to mention, / for skills',
+      'composer.hint': '@ mention · / commands & skills',
+      'composer.placeholder': 'Type a message… @ to mention, / for commands & skills',
       'composer.desktopManaged': 'Managed by desktop app',
       'composer.desktopSkillHint': 'is connected via desktop MCP. Skills are managed in its host app.',
-      'composer.noSkills': 'No enabled skills available.',
+      'composer.noSkills': 'No matching commands or skills.',
       'composer.sendTo': 'To',
       'composer.allAgents': 'All agents',
       'composer.save': 'Save',
@@ -341,6 +341,71 @@
     };
   }
 
+  const SLASH_COMMANDS = [
+    {
+      name: 'compact',
+      aliases: [],
+      desc: '压缩上下文（只记要点；可填 @成员 或 /compact 成员）',
+      descEn: 'Compact context (optionally specify @agent)',
+    },
+    {
+      name: 'skills',
+      aliases: ['skill'],
+      desc: '配置本会话技能、MCP 与插件',
+      descEn: 'Configure session skills, MCP & plugins',
+    },
+  ];
+
+  function filterSlashCommands(text, cursorPos, state, contacts) {
+    const slash = parseSlashQuery(text, cursorPos);
+    if (!slash) return null;
+    const q = slash.query;
+    const target = resolveComposerTarget(text, state);
+    const isEn = resolveLang(getLangPref()) === 'en';
+    const items = SLASH_COMMANDS.filter(cmd =>
+      !q
+      || cmd.name.includes(q)
+      || (cmd.aliases || []).some(a => a.includes(q))
+      || cmd.desc.toLowerCase().includes(q)
+      || cmd.descEn.toLowerCase().includes(q)
+    ).map(cmd => ({
+      kind: 'command',
+      name: cmd.name,
+      desc: isEn ? cmd.descEn : cmd.desc,
+      agentIds: target.mode === 'single' ? [target.aiId] : (target.aiIds || []),
+      agentLabels: [isEn ? 'Command' : '命令'],
+    }));
+    return { slash, target, items };
+  }
+
+  function parseComposerSlashCommand(text, state) {
+    const s = String(text || '').trim();
+    const m = s.match(/^((?:@[A-Za-z0-9_.-]+\s+)*)\/([A-Za-z0-9_.-]+)(?:\s+([\s\S]*))?$/);
+    if (!m) return null;
+    const cmd = m[2].toLowerCase();
+    if (cmd !== 'compact' && cmd !== 'skills' && cmd !== 'skill') return null;
+    const aiIds = getRoomAiIds(state);
+    const mentions = extractExplicitMentions(s, aiIds);
+    const arg = (m[3] || '').trim();
+    let targetIds = [];
+    let error = '';
+    if (arg) {
+      const cleanArg = arg.replace(/^@/, '').trim();
+      const matched = aiIds.find(id => id.toLowerCase() === cleanArg.toLowerCase())
+        || aiIds.find(id => agentDisplayName(state, null, id).toLowerCase() === cleanArg.toLowerCase());
+      if (matched) targetIds = [matched];
+      else error = '未找到可操作的会话成员：' + arg;
+    } else if (mentions.length) {
+      targetIds = mentions;
+    }
+    return {
+      command: cmd === 'skill' ? 'skills' : cmd,
+      targetIds,
+      explicitTarget: Boolean(arg || mentions.length),
+      error,
+    };
+  }
+
   function applySlashSelection(text, slash, skillItem, target) {
     const before = text.slice(0, slash.start);
     const after = text.slice(slash.end);
@@ -410,6 +475,8 @@
     buildModelChipState,
     blockedWorkTargets,
     parseSlashQuery,
+    filterSlashCommands,
+    parseComposerSlashCommand,
     filterSlashSkills,
     applySlashSelection,
     classifyExtensionBadges,
@@ -514,54 +581,8 @@
         + '<div class="side-agent-actions">'
         + (permBlocked ? '<button type="button" data-open-perms="' + esc(id) + '">开启允许干活</button>' : '')
         + '<button type="button" data-open-ai="' + esc(id) + '">模型与执行端</button>'
-        + (desktop
-          ? '<button type="button" disabled title="桌面端由原软件管理扩展">' + esc(t('ext.hostManaged')) + '</button>'
-          : '<button type="button" data-inline-tools="' + esc(id) + '">本会话扩展开关</button>')
-        + '</div><div class="side-tools-inline" data-inline-tools-box="' + esc(id) + '" hidden></div></div>';
+        + '</div></div>';
     }).join('');
-  }
-
-  async function toggleInlineTools(aiId, box) {
-    if (!box) return;
-    if (!box.hidden) { box.hidden = true; return; }
-    box.hidden = false;
-    box.innerHTML = '<p class="hint">读取中…</p>';
-    const rid = RID;
-    toolsCache.delete(rid + ':' + aiId);
-    const data = await ensureRoomTools(aiId);
-    if (RID !== rid) return;
-    if (!data) {
-      box.innerHTML = '<p class="hint">读取本会话扩展清单失败。</p>';
-      return;
-    }
-    const x = (S && S.ais && S.ais[aiId]) || {};
-    const row = (id, on, name, sub, locked) => '<li class="' + (locked ? 'lk' : '') + '"><input type="checkbox" data-id="' + esc(id) + '"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') + '><span class="tn">' + esc(name) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span></li>';
-    const empty = '<li class="empty">（无）</li>';
-    box.innerHTML =
-      '<h5>MCP</h5><ul class="tl" data-k="mcp">' + ((data.mcp || []).map(m => row(m.name, m.on, m.name, m.source, false)).join('') || empty) + '</ul>'
-      + '<h5>插件</h5><ul class="tl" data-k="plugins">' + ((data.plugins || []).map(p => row(p.id, p.on, p.label || p.id.replace(/@.*$/, ''), p.hooks ? '带钩子' : '', false)).join('') || empty) + '</ul>'
-      + '<h5>技能</h5><ul class="tl" data-k="skills">' + ((data.skills || []).map(k => row(k.name, k.on, k.name, k.locked ? '跟随插件开关' : (k.desc || ''), k.locked)).join('') || empty) + '</ul>'
-      + '<div class="btns"><button type="button" data-inline-save="' + esc(aiId) + '" class="pri"' + (x.busy ? ' disabled' : '') + '>保存</button></div>';
-    const saveBtn = box.querySelector('[data-inline-save]');
-    if (saveBtn) {
-      saveBtn.onclick = async () => {
-        const val = k => [...box.querySelectorAll('ul[data-k="' + k + '"] input[data-id]')];
-        const mcp = val('mcp').filter(i => i.checked).map(i => i.dataset.id);
-        const defOn = p => (p.hooks || p.synced) ? false : p.global;
-        const plugins = {};
-        val('plugins').forEach(i => {
-          const p = (data.plugins || []).find(q => q.id === i.dataset.id);
-          if (p && (i.checked !== defOn(p) || p.set)) plugins[p.id] = i.checked;
-        });
-        const skills_off = val('skills').filter(i => !i.disabled && !i.checked).map(i => i.dataset.id);
-        saveBtn.disabled = true;
-        const [ok, j] = await post(api('tools'), { ai: aiId, tools: { mcp, plugins, skills_off } });
-        if (!ok) { alert((j && j.error) || '保存失败'); saveBtn.disabled = false; return; }
-        toolsCache.delete(rid + ':' + aiId);
-        await loadState();
-        box.hidden = true;
-      };
-    }
   }
 
   // ---- Composer Bar + Model Popover ----
@@ -580,6 +601,8 @@
       modeBtn.disabled = !has;
       modeBtn.classList.toggle('work', work);
       modeBtn.textContent = work ? t('mode.work') : t('mode.discuss');
+      const restricted = work ? (state.participants || []).filter(id=>state.ais?.[id]&&state.permissions?.[id]?.work===false) : [];
+      modeBtn.title = restricted.length ? '仅只读：' + restricted.map(id=>agentDisplayName(state,contacts,id)).join('、') : '切换讨论 / 干活模式';
     }
     if (extBtn) {
       extBtn.disabled = !has;
@@ -665,7 +688,134 @@
     if (closeBtn) closeBtn.onclick = closeComposerPopover;
   }
 
-  // ---- Slash Skill Autocomplete ----
+  // ---- Slash Skill & Command Autocomplete ----
+  function invalidateRoomTools(rid, aiId) {
+    if (!rid) return;
+    if (aiId) toolsCache.delete(rid + ':' + aiId);
+    else {
+      for (const k of [...toolsCache.keys()]) {
+        if (k.startsWith(rid + ':')) toolsCache.delete(k);
+      }
+    }
+  }
+
+  function isToolConfigurable(aiId) {
+    if (!S || !aiId || isDesktopManaged(S, aiId)) return false;
+    const spec = (typeof agentMeta === 'function' ? agentMeta(aiId) : null) || {};
+    const x = (S.ais && S.ais[aiId]) || {};
+    return ['claude', 'codex'].includes(spec.driver) || Boolean(x.caps && x.caps.tools);
+  }
+
+  function openSlashSkillsModal(preferredAi) {
+    if (!S || !S.meeting) { openAppSettings('extensions'); return; }
+    const aiIds = getRoomAiIds(S);
+    const configurable = aiIds.filter(isToolConfigurable);
+    const desktopIds = aiIds.filter(id => isDesktopManaged(S, id));
+    const activeAi = (preferredAi && configurable.includes(preferredAi)) ? preferredAi : (configurable[0] || '');
+    let html = '<div id="slashSkillsModal"><h3>技能与工具配置（当前会话）</h3>';
+    if (preferredAi && isDesktopManaged(S, preferredAi)) {
+      html += '<p class="hint">' + esc(agentDisplayName(S, CONTACTS, preferredAi)) + ' 为桌面端接入，技能与扩展由原软件管理，请在原软件中使用。</p>';
+    }
+    if (configurable.length > 1) {
+      html += '<div class="ext-subtabs" role="tablist" style="margin-bottom:10px">'
+        + configurable.map(id => '<button type="button" role="tab" data-skills-ai="' + esc(id) + '" aria-selected="' + String(id === activeAi) + '">' + esc(agentDisplayName(S, CONTACTS, id)) + '</button>').join('')
+        + '</div>';
+    }
+    if (activeAi) {
+      html += '<div id="toolsBox"><div class="hint">读取中…</div></div>';
+    } else {
+      html += '<p class="hint">' + (desktopIds.length ? '当前会话的成员均为桌面端管理，请在原软件中管理技能与工具。' : '当前会话没有可配置的 Agent 成员。') + '</p>';
+    }
+    html += '<div class="btns" style="margin-top:14px"><button type="button" id="skillsOpenExt">全局扩展与导入</button><button type="button" id="skillsCloseBtn">关闭</button></div></div>';
+    showModal(html);
+    const closeBtn = document.getElementById('skillsCloseBtn');
+    if (closeBtn) closeBtn.onclick = hideModal;
+    const extBtn = document.getElementById('skillsOpenExt');
+    if (extBtn) extBtn.onclick = () => openAppSettings('extensions');
+    mbox.querySelectorAll('[data-skills-ai]').forEach(btn => {
+      btn.onclick = () => openSlashSkillsModal(btn.dataset.skillsAi);
+    });
+    if (activeAi && typeof loadTools === 'function') {
+      loadTools(activeAi, (S.ais && S.ais[activeAi]) || {}, () => openSlashSkillsModal(activeAi));
+    }
+  }
+
+  async function executeSlashCompact(targetIds, explicitTarget) {
+    if (!S || !S.meeting || !RID) return false;
+    const aiIds = getRoomAiIds(S);
+    const ids = targetIds && targetIds.length ? targetIds : aiIds;
+    if (explicitTarget) {
+      for (const id of ids) {
+        const name = agentDisplayName(S, CONTACTS, id);
+        const x = (S.ais && S.ais[id]) || {};
+        if (isDesktopManaged(S, id)) {
+          alert(name + ' 当前不由 CLI 执行，请在当前执行端压缩。');
+          return false;
+        }
+        if (x.handed_off) {
+          alert(name + ' 在终端里，收回来再压。');
+          return false;
+        }
+        if (x.compacting) {
+          alert(name + ' 正在压缩中。');
+          return false;
+        }
+        if (x.can_compact === false) {
+          alert(name + ' 还没建会话，或暂无可压缩的新记录。');
+          return false;
+        }
+      }
+      for (const id of ids) {
+        const [ok, j] = await post(api('compact'), { ai: id });
+        if (!ok) { alert((j && j.error) || '压缩失败'); return false; }
+      }
+    } else {
+      const compressible = ids.filter(id => {
+        const x = (S.ais && S.ais[id]) || {};
+        return !isDesktopManaged(S, id) && !x.handed_off && !x.compacting && x.can_compact !== false;
+      });
+      if (!compressible.length) {
+        alert('当前没有可压缩的成员（可能尚未建立会话、无可压缩新记录或由桌面端管理）。');
+        return false;
+      }
+      if (compressible.length === aiIds.length) {
+        const [ok, j] = await post(api('compact'), {});
+        if (!ok) { alert((j && j.error) || '压缩失败'); return false; }
+      } else {
+        for (const id of compressible) {
+          const [ok, j] = await post(api('compact'), { ai: id });
+          if (!ok) { alert((j && j.error) || '压缩失败'); return false; }
+        }
+      }
+    }
+    await loadState();
+    if (typeof poll === 'function') poll();
+    return true;
+  }
+
+  async function handleComposerSlashCommand(text) {
+    const parsed = parseComposerSlashCommand(text, S);
+    if (!parsed) return { handled: false };
+    if (parsed.error) {
+      alert(parsed.error);
+      return { handled: true, clear: false };
+    }
+    if (parsed.command === 'skills') {
+      closeSlashMenu();
+      openSlashSkillsModal(parsed.targetIds[0] || '');
+      return { handled: true, clear: true };
+    }
+    if (parsed.command === 'compact') {
+      closeSlashMenu();
+      const ok = await executeSlashCompact(parsed.targetIds, parsed.explicitTarget);
+      return { handled: true, clear: ok };
+    }
+    return { handled: false };
+  }
+
+  exported.handleComposerSlashCommand = handleComposerSlashCommand;
+  exported.invalidateRoomTools = invalidateRoomTools;
+
   function closeSlashMenu() {
     const menu = document.getElementById('slashMenu');
     if (menu) menu.hidden = true;
@@ -680,45 +830,89 @@
     const slash = parseSlashQuery(taEl.value, taEl.selectionStart);
     if (!slash) return closeSlashMenu();
 
+    const cmdRes = filterSlashCommands(taEl.value, taEl.selectionStart, S, CONTACTS);
     const target = resolveComposerTarget(taEl.value, S);
     const needIds = (target.mode === 'single' ? [target.aiId] : target.aiIds).filter(id => !isDesktopManaged(S, id));
     await Promise.all(needIds.map(id => ensureRoomTools(id)));
 
     const toolsByAi = {};
     needIds.forEach(id => { toolsByAi[id] = toolsCache.get(RID + ':' + id) || null; });
-    const res = filterSlashSkills(taEl.value, taEl.selectionStart, S, toolsByAi, CONTACTS);
-    if (!res) return closeSlashMenu();
-    slashState = res;
-    if (slashActiveIndex >= res.items.length) slashActiveIndex = 0;
+    const skillRes = filterSlashSkills(taEl.value, taEl.selectionStart, S, toolsByAi, CONTACTS);
+    const cmdItems = (cmdRes && cmdRes.items) || [];
+    const skillItems = ((skillRes && skillRes.items) || []).map(item => Object.assign({ kind: 'skill' }, item));
+    const allItems = [...cmdItems, ...skillItems];
+    slashState = {
+      slash,
+      target,
+      desktopOnly: Boolean(skillRes && skillRes.desktopOnly && !cmdItems.length),
+      notice: (skillRes && skillRes.notice) || '',
+      items: allItems,
+    };
+    if (slashActiveIndex >= allItems.length) slashActiveIndex = 0;
 
     let html = '';
-    if (res.notice) html += '<div class="slash-notice">' + esc(res.notice) + '</div>';
-    if (!res.desktopOnly) {
-      if (!res.items.length) {
-        html += '<div class="slash-notice">' + esc(t('composer.noSkills')) + '</div>';
-      } else {
-        html += res.items.map((item, idx) =>
-          '<button type="button" role="option" class="slash-item' + (idx === slashActiveIndex ? ' active' : '') + '" data-slash-idx="' + idx + '">'
-          + '<span class="slash-item-main"><span class="slash-item-name">/' + esc(item.name) + '</span>'
-          + (item.desc ? '<span class="slash-item-desc">' + esc(item.desc) + '</span>' : '') + '</span>'
-          + '<span class="slash-item-agents">' + item.agentLabels.map(l => '<span class="slash-agent-tag">' + esc(l) + '</span>').join('') + '</span>'
-          + '</button>'
-        ).join('');
-      }
+    if (slashState.notice) html += '<div class="slash-notice">' + esc(slashState.notice) + '</div>';
+    if (!allItems.length) {
+      if (!slashState.desktopOnly) html += '<div class="slash-notice">' + esc(t('composer.noSkills')) + '</div>';
+    } else {
+      html += allItems.map((item, idx) =>
+        '<button type="button" role="option" class="slash-item' + (idx === slashActiveIndex ? ' active' : '') + (item.kind === 'command' ? ' is-command' : '') + '" data-slash-idx="' + idx + '">'
+        + '<span class="slash-item-main"><span class="slash-item-name">/' + esc(item.name) + '</span>'
+        + (item.desc ? '<span class="slash-item-desc">' + esc(item.desc) + '</span>' : '') + '</span>'
+        + '<span class="slash-item-agents">' + item.agentLabels.map(l => '<span class="slash-agent-tag">' + esc(l) + '</span>').join('') + '</span>'
+        + '</button>'
+      ).join('');
     }
     menu.innerHTML = html;
     menu.hidden = false;
   }
 
-  function pickSlashItem(idx) {
+  async function pickSlashItem(idx, mode = 'execute') {
     if (!slashState || !slashState.items[idx]) return;
     const taEl = document.getElementById('ta');
     if (!taEl) return;
     const item = slashState.items[idx];
-    const applied = applySlashSelection(taEl.value, slashState.slash, item, slashState.target);
+    const currentSlash = slashState.slash;
+    const currentTarget = slashState.target;
+    if (item.kind === 'command') {
+      const before = taEl.value.slice(0, currentSlash.start);
+      const after = taEl.value.slice(currentSlash.end);
+      if (mode === 'tab') {
+        taEl.value = before + '/' + item.name + (after.startsWith(' ') ? '' : ' ') + after;
+        closeSlashMenu();
+        taEl.focus();
+        if (typeof saveDraft === 'function') saveDraft();
+        syncComposerBar();
+        return;
+      }
+      const stripped = (before + after).replace(/\s{2,}/g, ' ').trim();
+      const targetIds = currentTarget.explicit
+        ? (currentTarget.mode === 'single' ? [currentTarget.aiId] : currentTarget.aiIds)
+        : [];
+      if (item.name === 'skills') {
+        taEl.value = /^(?:@[A-Za-z0-9_.-]+\s*)+$/.test(stripped) ? '' : stripped;
+        if (typeof saveDraft === 'function') saveDraft();
+        closeSlashMenu();
+        syncComposerBar();
+        openSlashSkillsModal(targetIds[0] || '');
+        return;
+      }
+      if (item.name === 'compact') {
+        closeSlashMenu();
+        const ok = await executeSlashCompact(targetIds, currentTarget.explicit);
+        if (ok) {
+          taEl.value = /^(?:@[A-Za-z0-9_.-]+\s*)+$/.test(stripped) ? '' : stripped;
+          if (typeof saveDraft === 'function') saveDraft();
+          syncComposerBar();
+        }
+        return;
+      }
+    }
+    const applied = applySlashSelection(taEl.value, currentSlash, item, currentTarget);
     taEl.value = applied.text;
     closeSlashMenu();
     taEl.focus();
+    if (typeof saveDraft === 'function') saveDraft();
     syncComposerBar();
   }
 
@@ -1025,16 +1219,6 @@
   const openSettingsBtn = document.getElementById('openSettingsBtn');
   if (openSettingsBtn) openSettingsBtn.onclick = () => openAppSettings('general');
 
-  const sideToggleBtn = document.getElementById('sideToggleBtn');
-  if (sideToggleBtn) {
-    sideToggleBtn.onclick = () => {
-      const side = document.getElementById('side');
-      const isOpen = side && side.classList.contains('on');
-      if (typeof setMeetingSide === 'function') setMeetingSide(!isOpen);
-      sideToggleBtn.setAttribute('aria-expanded', String(!isOpen));
-    };
-  }
-
   const sideTabs = document.getElementById('sideTabs');
   if (sideTabs) {
     sideTabs.addEventListener('click', e => {
@@ -1058,12 +1242,6 @@
         openAi(openBtn.dataset.openAi);
         return;
       }
-      const toolsBtn = e.target.closest('[data-inline-tools]');
-      if (toolsBtn) {
-        const aiId = toolsBtn.dataset.inlineTools;
-        const box = sideAgentsPane.querySelector('[data-inline-tools-box="' + aiId + '"]');
-        toggleInlineTools(aiId, box);
-      }
     });
   }
 
@@ -1078,7 +1256,12 @@
   }
 
   const composerExtBtn = document.getElementById('composerExtBtn');
-  if (composerExtBtn) composerExtBtn.onclick = () => { closeComposerPopover(); openInspectorTab('agents'); };
+  if (composerExtBtn) composerExtBtn.onclick = () => {
+    closeComposerPopover();
+    closeSlashMenu();
+    if (typeof S !== 'undefined' && S && S.meeting) openSlashSkillsModal();
+    else openAppSettings('extensions');
+  };
 
   const composerModelBtn = document.getElementById('composerModelBtn');
   if (composerModelBtn) {
@@ -1136,7 +1319,7 @@
     slashMenu.addEventListener('mousedown', e => e.preventDefault());
     slashMenu.addEventListener('click', e => {
       const item = e.target.closest('[data-slash-idx]');
-      if (item) pickSlashItem(Number(item.dataset.slashIdx));
+      if (item) pickSlashItem(Number(item.dataset.slashIdx), 'execute');
     });
   }
 
@@ -1160,7 +1343,7 @@
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         e.stopImmediatePropagation();
-        pickSlashItem(slashActiveIndex);
+        pickSlashItem(slashActiveIndex, e.key === 'Tab' ? 'tab' : 'execute');
       } else if (e.key === 'Escape') {
         e.preventDefault();
         closeSlashMenu();

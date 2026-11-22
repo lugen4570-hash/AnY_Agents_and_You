@@ -1,5 +1,24 @@
 # 界面与消息交互（2026-11-18）
 
+## AnY 品牌（2026-11-22）
+
+- AnY 是 Agents and You 的缩写。标志使用 ∀，字标独立排列。官网采用暖白、石墨和森林绿，首页用可切换的会话演示说明用法。工作台随系统切换浅色和深色，联系人仍使用各自的识别色。
+- CLI 在项目首页播放一次短动效，支持 Textual 的关闭动效设置。`any` 与 `cojam` 都可启动 CLI。安装目录及协议继续使用原有标识以兼容旧版本。
+
+## 会话工作区与图片编辑（2026-11-21）
+
+- 文字、引用和待发送附件各自跟随会话。切换房间或刷新同一个标签页后自动恢复。切换期间完成的上传仍归原会话。
+- 从待发送附件重新打开图片可继续撤销和重做。图片编辑保留原图和操作记录。橡皮擦只修改标注层，马赛克框选后作用于底图，发送时上传编辑后的平面图片。
+- 会话管理集中在右上角的侧栏入口。模型选择放在输入框下方，公开进度在对话中点 Agent 图标展开。「论道」从输入框下方启动，运行中可点「结束并总结」。
+- 手机使用单栏和可收起的导航。软键盘弹起时按可见区域调整输入框和弹窗。Windows 桌面壳采用 AnY 配色，保留原生窗口按钮。
+
+## 会话权限与论道接口（2026-11-21）
+
+- 新建会话 `POST /api/rooms/new` 支持 `permissions`，格式与现有成员接口一致。权限从通用默认、联系人默认到本次勾选依次覆盖。切换模式的聊天记录只记模式，实时权限看会话 `state.permissions`。开启或关闭干活权限会留下系统记录。
+- 改名用 `POST /api/r/{id}/rename`，提交 `{title}`，沿用原会话 ID。接续报错时，CLI 和 ACP 保留原绑定。确认重开可调用 `POST /api/r/{id}/session/reset`，提交 `{ai}`，下次 @ 该成员时新开。旧 ID 留在会话清理记录里。
+- `POST /api/trash/purge` 支持 `{id}` 清理单场会话，空对象清空回收站。`cleanup` 逐项返回 `room`、`ai`、`session`、`status` 和 `message`。状态有 `deleted`、`missing`、`shared`、`manual` 和 `failed`。Antigravity 的会话由用户在 Agent 端手动清理。
+- `POST /api/r/{id}/debate/start` 使用 `{topic, participants, min_rounds, max_rounds, moderator}`。`max_rounds: null` 表示不限，`0–0` 直接由主持 Agent 给出最终回答。`POST /api/r/{id}/debate/finish` 请求完成当前轮并在达到下限后总结。会话状态中的 `debate` 提供已完成轮数、正在发言的成员和运行状态。发言的 `origin` 是 `debate`，最终回答是 `debate-summary`。
+
 ## 全 Agent 真实模型与思考强度索引对齐（2026-11-18 · 2.8.5）
 
 - 清理各预设配置（`antigravity`、`cursor`、`opencode`、`grok`、`qodercli`、`gemini`、`qwen`）及内置 `claude` 中硬编码或虚构的 `models` 列表；[agents.py](../bridge/agents.py) 通过 `user_explicit_models()` 仅将用户配置文件或 Agent 设置保存的模型视为显式列表。

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 from rich.cells import cell_len
 from rich.text import Text
@@ -100,6 +100,14 @@ class Prompt(TextArea):
         if not select and self.composer.navigate(1):
             return
         super().action_cursor_down(select)
+
+    def action_cursor_left(self, select=False):
+        if not select and not self.text and not self.composer.menu.display:
+            app = cast(Any, self.app)
+            if hasattr(app, "action_switch_to_rooms"):
+                app.action_switch_to_rooms()
+                return
+        super().action_cursor_left(select)
 
 
 class Composer(Vertical):

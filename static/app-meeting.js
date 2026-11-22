@@ -180,11 +180,10 @@ function drawState(){
 function drawMeetingDetails(){
   const state=S||{},ais=Object.entries(state.ais||{}),empty=text=>'<p class="hint">'+esc(text)+'</p>';
   const label=id=>(agentMeta(id)||{}).label||id;
-  const put=(id,html)=>{const el=document.getElementById(id);if(el.innerHTML!==html)el.innerHTML=html};
+  const put=(id,html)=>{const el=document.getElementById(id);if(el&&el.innerHTML!==html)el.innerHTML=html};
   const git=state.git;
   put('envBox',state.workdir?'<p class="detail-path">'+esc(state.workdir)+'</p><p class="hint">'+(git?'分支 '+esc(git.branch)+' · '+esc(git.changed)+' 处未提交改动'+(git.track?' · '+esc(git.track):''):'此工作目录未提供 Git 状态')+'</p>':empty('尚未选择会议工作目录。'));
-  put('ctxBox',ais.map(([id,x])=>'<div class="detail-agent"><b>'+esc(label(id))+'</b><p class="hint">'+esc(ctxTitle(x))+'</p><button data-detail-agent="'+esc(id)+'">模型、effort 与上下文</button></div>').join('')||empty('邀请 Agent 后可查看其上下文状态。'));
-  put('toolBox',ais.map(([id,x])=>'<div class="detail-agent"><b>'+esc(label(id))+'</b><p class="hint">'+esc(x.tools||'暂未提供工具信息')+'</p><button data-detail-agent="'+esc(id)+'">查看 Agent 设置</button></div>').join('')||empty('当前会议还没有 Agent。'));
+  put('ctxBox',ais.map(([id,x])=>'<div class="detail-agent"><b>'+esc(label(id))+'</b><p class="hint">'+esc(ctxTitle(x))+'</p><button data-detail-agent="'+esc(id)+'">模型与执行端</button></div>').join('')||empty('邀请 Agent 后可查看其上下文状态。'));
   const steps=(state.steps||[]).filter(step=>!step.undone&&step.files&&step.files.length);
   const files=steps.slice(-8).reverse().map(step=>'<div class="detail-agent"><b>'+esc(label(step.ai))+' · 第 '+esc(step.seq)+' 步</b>'+step.files.map(file=>'<p class="detail-path">'+esc(file.st)+' · '+esc(file.path)+'</p>').join('')+'</div>').join('');
   put('outBox',files||empty('暂无已记录的文件改动；共享附件请在消息中查看。'));
@@ -291,16 +290,21 @@ async function openList(showTrash){
   const j=await (await fetch('/api/rooms',{cache:'no-store'})).json();
   const tj=await (await fetch('/api/trash',{cache:'no-store'})).json();
   const projects=j.projects||[],projectNames=new Map(projects.map(p=>[p.id,p.name]));
-  const projectRows=projects.map(p=>{
-    const count=j.rooms.filter(room=>room.project===p.id).length;
+  const projectStats=new Map(projects.map(p=>{
+    const owned=j.rooms.filter(room=>room.project===p.id);
+    const busy=owned.filter(room=>(room.running||[]).length||room.queued).length;
     const inTrash=tj.trash.filter(room=>room.project===p.id).length;
-    return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+count+' 场会话'+(inTrash?' · 回收站 '+inTrash+' 场':'')+'</small></span><span class="acts"><button type="button" data-project-delete="'+esc(p.id)+'"'+(count||inTrash?' disabled':'')+'>删除项目</button></span></div>';
+    return [p.id,{count:owned.length,busy,inTrash}];
+  }));
+  const projectRows=projects.map(p=>{
+    const st=projectStats.get(p.id)||{count:0,busy:0,inTrash:0};
+    return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+st.count+' 场会话'+(st.inTrash?' · 回收站 '+st.inTrash+' 场':'')+'</small></span><span class="acts"><button type="button" data-project-delete="'+esc(p.id)+'"'+(st.busy?' disabled':'')+'>删除项目</button></span></div>';
   }).join('');
   const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
     '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
   const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button><button type="button" class="pb">彻底删除</button></span></div>').join('');
   showModal('<h3>项目与会话管理</h3><h4>项目</h4>'+(projectRows||'<p class="hint">还没有项目</p>')+
-    (projectRows?'<p class="hint">移走会话并处理回收站中的会话后，即可删除空项目。磁盘上的工作文件夹会保留。</p>':'')+
+    (projectRows?'<p class="hint">删除项目会将该项目下的会话（含已归档）移入回收站，磁盘上的工作文件夹会保留。</p>':'')+
     '<h4>会话</h4>'+(rows||'<div class="hint">还没有会议</div>')+
     '<div class="btns" style="margin-top:10px"><button type="button" id="lTrash">回收站（'+tj.trash.length+'）</button><button type="button" id="lClose">关闭</button></div>'+
     '<div id="trashBox" style="display:'+(showTrash?'block':'none')+'"><h3 style="margin-top:14px">回收站</h3>'+(trows||'<div class="hint">空的</div>')+
@@ -312,11 +316,22 @@ async function openList(showTrash){
   const act=async(url,body)=>{const [ok,jj]=await post(url,body);if(!ok){alert(jj.error||'失败');return false}return true};
   mbox.querySelectorAll('[data-project-delete]').forEach(button=>{
     button.onclick=async()=>{
-      const id=button.dataset.projectDelete;
-      if(!confirm('删除空项目「'+projectNames.get(id)+'」？磁盘上的工作文件夹会保留。'))return;
+      const id=button.dataset.projectDelete,st=projectStats.get(id)||{count:0,busy:0,inTrash:0};
+      const name=projectNames.get(id)||id;
+      const msg=st.count?'删除项目「'+name+'」？项目下的 '+st.count+' 场会话（含已归档）会移入回收站，磁盘上的工作文件夹会保留。':'删除项目「'+name+'」？磁盘上的工作文件夹会保留。';
+      if(!confirm(msg))return;
       button.disabled=true;
-      if(await act('/api/projects/delete',{id})){await pollRooms();if(button.isConnected)openList(showTrash)}
-      else button.disabled=false;
+      const [ok,res]=await post('/api/projects/delete',{id});
+      if(!ok){alert((res&&res.error)||'失败');button.disabled=false;return}
+      const trashed=new Set((res&&res.trashed_rooms)||[]);
+      if(RID&&trashed.has(RID)){
+        hideModal();roomViewGeneration++;RID=null;resetRoomView();
+        const params=new URLSearchParams(location.search);params.delete('r');
+        history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():''));
+        await pickRoom();
+        return;
+      }
+      await pollRooms();if(button.isConnected)openList(showTrash);
     };
   });
   async function purge(button,id,title){
@@ -360,7 +375,6 @@ function openAi(a){
   h+=executionSettingsMarkup(a,(S.execution||{})[a],aiBusy);
   const spec=agentMeta(a)||{};
   const hasTerminal=['claude','codex'].includes(spec.driver)||x.handoff;
-  const hasTools=['claude','codex'].includes(spec.driver)||(x.caps&&x.caps.tools);
   if(hasTerminal){
     h+='<h3 style="margin-top:14px">会话与终端</h3>';
     if(!x.session)h+='<div class="hint">还没叫过它，先在会议里 @ 它一次。</div>';
@@ -370,20 +384,9 @@ function openAi(a){
     h+='<button type="button" class="pri" id="aToggle"'+((!x.session||(!x.handed_off&&x.busy)||(!x.handoff&&!x.handed_off))?' disabled':'')+'>'+(x.handed_off?'收回':'交给终端')+'</button></div>';
     if(x.session&&!x.handed_off&&x.busy)h+='<div class="hint">它正在跑或排着队，说完才能交。</div>';
   }
-  const isDesktop=!!(S.execution&&S.execution[a]&&S.execution[a].endpoint==='desktop');
-  const canC=typeof x.can_compact==='boolean'?(!x.compacting&&!x.handed_off&&!isDesktop&&x.can_compact):(x.session&&!x.handed_off&&!x.compacting&&!isDesktop);
-  const compactHint=x.compacting?'正在压缩，压完会议里会插一条消息。'
-    :x.handed_off?'在终端里，收回来再压。'
-    :isDesktop?'当前不由 CLI 执行，请在当前执行端压缩。'
-    :!canC?(x.session?'当前状态暂不可压缩。':'还没建会话，或暂无可压缩的新记录。')
-    :'聊久了会变慢、变贵。压完它只记要点，其他成员不受影响。'+(x.compact_at?'（上次压缩：'+esc(x.compact_at)+'）':'')+(x.ctx&&x.ctx.used?'<br>现在上下文用了 '+fmtK(x.ctx.used)+(x.ctx.window?' / '+fmtK(x.ctx.window)+'（'+Math.round(x.ctx.used*100/x.ctx.window)+'%）':'')+'。':'');
-  h+='<h3 style="margin-top:14px">压缩上下文</h3><div class="hint">'+compactHint+'</div>'+
-    '<div class="btns"><button type="button" id="aCompact"'+(canC?'':' disabled')+'>压缩 '+esc(a)+'</button></div>';
-  if(hasTools)h+='<h3 style="margin-top:14px">工具（这场会议）</h3><div id="toolsBox"><div class="hint">读取中…</div></div>';
   if(x.session)h+='<div class="btns"><button type="button" id="aReset"'+((aiBusy||x.handed_off)?' disabled':'')+'>重开 Agent 会话</button></div>';
   if(!hasTerminal)h+='<div class="btns" style="margin-top:14px"><button type="button" id="aClose">关闭</button></div>';
   showModal(h);
-  if(hasTools)loadTools(a,x);
   bindModelSettings(a,mo,aiBusy);
   bindExecutionSettings(a,(S.execution||{})[a],aiBusy);
   document.getElementById('aClose').onclick=hideModal;
@@ -394,10 +397,6 @@ function openAi(a){
     if(rid!==RID)return;
     if(!ok){alert(j.error||'重开失败');reset.disabled=false;return}
     await loadState();poll();if(document.getElementById('aReset')===reset)openAi(a);
-  };
-  document.getElementById('aCompact').onclick=async()=>{
-    if(!confirm('压缩 '+a+' 的上下文？压完它只记要点。'+(x.busy?'\n\n它手上有活，会等这一轮说完再压。':'')))return;
-    const [ok,j]=await post(api('compact'),{ai:a});if(!ok)alert(j.error||'失败');await loadState();poll();openAi(a);
   };
   const c=document.getElementById('aCopy');if(c)c.onclick=()=>{copyText(x.cmd);c.textContent='已复制'};
   const t=document.getElementById('aToggle');if(t)t.onclick=async()=>{
@@ -458,6 +457,7 @@ document.getElementById('cMine').onclick=async()=>{
 
 // ===== 工具：这场会议里 MCP / 插件 / 技能开哪些 =====
 async function loadTools(a,x){
+  const onSaved=arguments.length>2?arguments[2]:null;
   const box=document.getElementById('toolsBox');if(!box)return;
   const rid=RID,url=api('tools'),current=()=>RID===rid&&document.getElementById('toolsBox')===box;
   let t;
@@ -484,7 +484,12 @@ async function loadTools(a,x){
     const [ok,j]=await post(url,{ai:a,tools:{mcp,plugins,skills_off}});
     if(!current())return;
     if(!ok){alert(j.error||'失败');return}
-    await loadState();openAi(a);
+    if(typeof window!=='undefined'&&window.CojamHarness&&typeof window.CojamHarness.invalidateRoomTools==='function'){
+      window.CojamHarness.invalidateRoomTools(rid,a);
+    }
+    await loadState();
+    if(typeof onSaved==='function')await onSaved();
+    else openAi(a);
   };
 }
 drawQuick();

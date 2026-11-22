@@ -66,9 +66,11 @@ class T(unittest.TestCase):
         ok, err = R.trash_meeting(a)
         self.assertTrue(ok, err)
         self.assertTrue(os.path.exists(os.path.join(proj, csid + ".jsonl")), "进回收站时不删")
-        ok, err = R.purge_all()
+        cleanup = []
+        ok, err = R.purge_all(cleanup)
         self.assertTrue(ok, err)
-        self.assertTrue(wait_note("彻底删除"))
+        self.assertFalse(any("彻底删除" in m["text"] for m in ROOM.messages))
+        self.assertTrue(any(item["ai"] == "claude" and item["status"] == "deleted" for item in cleanup))
         self.assertFalse(os.path.exists(os.path.join(proj, csid + ".jsonl")))
         self.assertFalse(os.path.exists(os.path.join(proj, csid)))
         self.assertFalse(os.path.exists(os.path.join(FAKE_HOME, "file-history", csid)))
@@ -117,11 +119,13 @@ class T(unittest.TestCase):
         meta = {
             "claude_session": "cccccccc-1111-2222-3333-444444444444",
             "acp-bot_session": "acp-session-1234",
+            "opencode_session": "ses_1234abcd",
             "claude-alt_session": "aaaaaaaa-1111-2222-3333-444444444444",
             "old_sessions": {"claude": [], "codex": [], "acp-bot": ["acp-old-567890"]},
         }
         sids = R.meeting_sessions(meta)
         self.assertEqual(sids["acp-bot"], ["acp-session-1234", "acp-old-567890"])
+        self.assertEqual(sids["opencode"], ["ses_1234abcd"])
         self.assertEqual(sids["claude-alt"], ["aaaaaaaa-1111-2222-3333-444444444444"])
 
         new_room("删第三方会话")
@@ -136,11 +140,13 @@ class T(unittest.TestCase):
 
         with mock.patch.object(R.registry, "get", side_effect=fake_agent), \
              mock.patch.object(agents, "delete_claude_session", side_effect=lambda sid: (deleted_claude.append(sid), 2)[1]):
-            R.delete_sessions("测试场", {"claude-alt": ["aaaaaaaa-1111-2222-3333-444444444444"], "acp-bot": ["acp-session-1234"]})
+            results = R.delete_sessions("测试场", {"claude-alt": ["aaaaaaaa-1111-2222-3333-444444444444"],
+                                                 "acp-bot": ["acp-session-1234"], "antigravity": ["agy-session-1234"]})
         self.assertEqual(deleted_claude, ["aaaaaaaa-1111-2222-3333-444444444444"])
-        note = ROOM.messages[-1]["text"]
-        self.assertIn("claude-alt", note)
-        self.assertIn("acp-bot", note)
+        self.assertEqual([item["status"] for item in results], ["deleted", "manual", "manual"])
+        self.assertEqual([item["ai"] for item in results], ["claude-alt", "acp-bot", "antigravity"])
+        self.assertEqual(results[-1]["session"], "agy-session-1234")
+        self.assertFalse(any("彻底删除" in m["text"] for m in ROOM.messages))
 
 
 if __name__ == "__main__":

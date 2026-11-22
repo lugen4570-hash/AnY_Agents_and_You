@@ -265,7 +265,7 @@ class CojamCliTest(unittest.TestCase):
                 app.composer.set_text("/model codex cojam-test-model")
                 await pilot.press("enter")
                 await wait_for(pilot, lambda: meeting.own_models("codex")[0] == "cojam-test-model")
-                with patch.object(app, "submit") as submit, patch.object(app, "render_state"):
+                with patch.object(app, "submit") as submit:
                     app.state["running"] = ["codex"]
                     app.composer.set_text("/")
                     await pilot.press("escape")
@@ -353,6 +353,43 @@ class CojamCliTest(unittest.TestCase):
         actions = [call.args[1] for call in lifecycle.update.call_args_list]
         self.assertIn("open", actions)
         self.assertEqual(actions[-1], "close")
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_terminal_left_right_arrows_switch_between_home_and_chat(self):
+        from textual.widgets import OptionList
+        from bridge.terminal import CojamTerminal
+
+        async def wait_for(pilot, check):
+            for _ in range(40):
+                if check():
+                    return
+                await pilot.pause(0.15)
+            self.fail("terminal did not reach expected state")
+
+        async def run():
+            client = LocalClient(self.port)
+            meeting = room.rooms.create("左右切换会话", wd=DATA.name, participants=[])
+            room.set_last(meeting.id)
+            app = CojamTerminal(client)
+            async with app.run_test(size=(100, 28)) as pilot:
+                await wait_for(pilot, lambda: app.connected and app.rooms)
+                self.assertIsNone(app.room)
+                self.assertEqual(app.query_one("#rooms", OptionList).highlighted_option.id, meeting.id)
+                await pilot.press("right")
+                await wait_for(pilot, lambda: app.room == meeting.id)
+                self.assertTrue(app.composer.prompt.has_focus)
+                await pilot.press("left")
+                await wait_for(pilot, lambda: app.room is None)
+                self.assertEqual(app.query_one("#rooms", OptionList).highlighted_option.id, meeting.id)
+                await pilot.press("right")
+                await wait_for(pilot, lambda: app.room == meeting.id)
+                app.composer.set_text("hello")
+                self.assertEqual(app.composer.prompt.cursor_location, (0, 5))
+                await pilot.press("left")
+                self.assertEqual(app.room, meeting.id)
+                self.assertEqual(app.composer.prompt.cursor_location, (0, 4))
+
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

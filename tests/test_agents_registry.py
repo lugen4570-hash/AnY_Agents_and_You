@@ -534,6 +534,21 @@ class AntigravityCli(Base):
         self.assertEqual(text2, "OK")
         self.assertEqual(sess2, "9efc7920-ded1-4417-aeb5-1447d41b3713")
 
+    def test_agy_resume_does_not_accept_replacement_conversation(self):
+        self._load()
+        sid = "90000000-ded1-4417-aeb5-1447d41b3713"
+        new_sid = "9efc7920-ded1-4417-aeb5-1447d41b3713"
+        for returned, warning in [(new_sid, ""), (sid, f"warning: conversation {sid} not found")]:
+            response = json.dumps({"event": "result", "conversation_id": returned,
+                                   "result": {"status": "SUCCESS", "response": "收到"}})
+            with self.subTest(returned=returned, warning=warning), \
+                 patch.object(common, "find_executable", return_value="/opt/agy"), \
+                 patch.object(drivers, "run_stream", return_value=(0, response, warning, None)):
+                ok, text, saved, _ = drivers.call("antigravity", "继续", sid, (), "discuss", None)
+            self.assertFalse(ok)
+            self.assertIn("已保留原绑定", text)
+            self.assertEqual(saved, sid)
+
     def test_upgrades_legacy_agents_d_and_streams_long_prompt_on_stdin(self):
         write_cfg("antigravity.json", {
             "id": "antigravity",

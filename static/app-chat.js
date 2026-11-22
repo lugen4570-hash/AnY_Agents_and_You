@@ -310,9 +310,45 @@ function drawPend(){
   if(uploading){const c=document.createElement('div');c.className='chip';c.textContent='上传中 '+uploading+' 个…';pendEl.appendChild(c)}
 }
 async function upload(f,rid=RID,replace=null,edit=null,saved=null){
-  if(!rid)return false;
-  if(!f.size||f.size>25*1024*1024){if(rid===RID)alert('附件必须大于 0 字节且不超过 25 MB：'+f.name);return false}
-  const record=saved||{id:crypto.getRandomValues(new Uint32Array(4)).join('-'),rid,file:f,replacePath:replace?.path,edit};
+  if(!rid||!f)return false;
+  const readFileBytes=async file=>{
+    if(typeof file.arrayBuffer==='function')return await file.arrayBuffer();
+    if(typeof FileReader==='function'){
+      return await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result);
+        reader.onerror=()=>reject(reader.error||new Error('读取文件失败'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+    return null;
+  };
+  const uploadName=file=>{
+    if(file&&file.name)return file.name;
+    const mime=(file&&file.type)||'';
+    const sub=(mime.split('/')[1]||'bin').split(';')[0].replace('jpeg','jpg').replace(/[^a-z0-9._-]/gi,'')||'bin';
+    const t=new Date(),stamp=[t.getHours(),t.getMinutes(),t.getSeconds()].map(n=>String(n).padStart(2,'0')).join('');
+    return 'upload_'+stamp+'.'+sub;
+  };
+  const safeUploadStoreOp=async(mode,op)=>{
+    let timer;
+    try{
+      return await Promise.race([
+        draftUploadTransaction(mode,op),
+        new Promise(resolve=>{timer=setTimeout(()=>resolve(null),300)}),
+      ]);
+    }catch(e){return null}
+    finally{if(timer)clearTimeout(timer)}
+  };
+  const name=(saved&&saved.fileName)||uploadName(f);
+  if(typeof f.size==='number'&&f.size>25*1024*1024){if(rid===RID)alert('附件必须大于 0 字节且不超过 25 MB：'+name);return false}
+  let bytes=null;
+  try{bytes=await readFileBytes(f)}catch(e){if(rid===RID)alert('无法读取文件：'+name+'\n'+((e&&e.message)||e));return false}
+  const byteSize=bytes?bytes.byteLength:(typeof f.size==='number'?f.size:0);
+  if(!byteSize||byteSize>25*1024*1024){if(rid===RID)alert('附件必须大于 0 字节且不超过 25 MB：'+name);return false}
+  const storedFile=(bytes&&typeof Blob==='function')?new Blob([bytes],{type:(f&&f.type)||'application/octet-stream'}):f;
+  const uid=(typeof crypto!=='undefined'&&crypto.getRandomValues)?crypto.getRandomValues(new Uint32Array(4)).join('-'):(Date.now()+'-'+Math.random().toString(16).slice(2));
+  const record=saved||{id:uid,rid,file:storedFile,fileName:name,replacePath:replace?.path,edit};
   const previous=uploadTransfers.get(rid);
   let release;
   const transfer=new Promise(resolve=>{release=resolve});
@@ -320,10 +356,17 @@ async function upload(f,rid=RID,replace=null,edit=null,saved=null){
   activeUploads.add(record.id);
   uploads.set(rid,(uploads.get(rid)||0)+1);if(rid===RID)drawPend();
   try{
-    if(!saved)await draftUploadTransaction('readwrite',s=>s.put(record)).catch(()=>{});
+    if(!saved)await safeUploadStoreOp('readwrite',s=>s.put(record));
     await previous;
-    const r=await fetch('/api/r/'+encodeURIComponent(rid)+'/upload?name='+encodeURIComponent(f.name||'file'),{method:'POST',body:f});
-    const j=await r.json();
+    const headers={'Content-Type':(f&&f.type)||'application/octet-stream'};
+    const r=await fetch('/api/r/'+encodeURIComponent(rid)+'/upload?name='+encodeURIComponent(name),{method:'POST',headers,body:bytes||f});
+    let j={};
+    if(typeof r.text==='function'){
+      const raw=await r.text();
+      try{j=raw?JSON.parse(raw):{}}catch(err){if(!r.ok)throw new Error('HTTP '+r.status);throw new Error('服务器返回格式异常')}
+    }else{
+      j=await r.json();
+    }
     if(!r.ok)throw new Error(j.error||r.status);
     const draft=getDraft(rid),attachments=draft.attachments;
     const at=attachments.indexOf(replace);
@@ -331,9 +374,9 @@ async function upload(f,rid=RID,replace=null,edit=null,saved=null){
     j.uploadId=record.id;
     if(!replace)attachments.push(j);else if(at>=0)attachments.splice(at,1,j);
     persistDraft(rid,draft);
-    await draftUploadTransaction('readwrite',s=>s.delete(record.id)).catch(()=>{});
+    await safeUploadStoreOp('readwrite',s=>s.delete(record.id));
     return !replace||at>=0;
-  }catch(e){if(rid===RID)alert('上传失败：'+f.name+'\n'+e.message);return false}
+  }catch(e){if(rid===RID)alert('上传失败：'+name+'\n'+e.message);return false}
   finally{
     release();if(uploadTransfers.get(rid)===transfer)uploadTransfers.delete(rid);
     activeUploads.delete(record.id);
@@ -447,13 +490,26 @@ document.addEventListener('mousedown',e=>{if(!cmenu.contains(e.target))hideMenu(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideMenu();selectionTools.hidden=true;}});
 feed.addEventListener('scroll',()=>{hideMenu();updateSelectionTools()});
 addEventListener('resize',()=>{hideMenu();updateSelectionTools()});
-fileEl.onchange=()=>{const fs=[...fileEl.files],rid=filePickerRoom;filePickerRoom=null;fileEl.value='';fs.forEach(f=>upload(f,rid))};
+fileEl.onchange=()=>{const fs=[...fileEl.files],rid=filePickerRoom||RID;filePickerRoom=null;fileEl.value='';fs.forEach(f=>upload(f,rid))};
 async function send(){
   const rid=RID,original=ta.value,text=original.trim();
   if(!rid||sendingRooms.has(rid))return;
   if(uploads.get(rid)){alert('附件还在上传，稍等一下');return}
   if(!text&&!pend.length)return;
   const atts=pend.slice(),qm=quote;
+  if(!atts.length&&typeof window!=='undefined'&&window.CojamHarness&&typeof window.CojamHarness.handleComposerSlashCommand==='function'){
+    const slashResult=await window.CojamHarness.handleComposerSlashCommand(text);
+    if(slashResult&&slashResult.handled){
+      if(slashResult.clear){
+        const draft=getDraft(rid);
+        if(draft.text===original)draft.text='';
+        if(draft.quote===qm)draft.quote=null;
+        persistDraft(rid,draft);
+        if(rid===RID)restoreDraft();
+      }
+      return;
+    }
+  }
   saveDraft();sendingRooms.add(rid);
   try{
     const body={text,attachments:atts.map(a=>({path:a.path,kind:a.kind}))};

@@ -1,4 +1,4 @@
-# 合拍 Cojam
+# AnY · Agents and You
 
 一个按项目组织会话的本地多 AI 与多人协作应用。你可以在同一个会话里与多个 AI（Claude Code、Codex、Gemini CLI、OpenCode、Cursor、Antigravity 等）以及受邀伙伴实时讨论、互相 `@` 分工，并在安全护栏下协作修改同一个项目。
 
@@ -51,6 +51,8 @@ python -m bridge
 ```sh
 python desktop_launcher.py
 ```
+
+终端模式在同一个后台里读写项目和会话。可在终端发言、查看回复和看板，也可以把支持续接的 Agent 会话交给另一窗口里的原生 CLI。安装和快捷键见 [终端客户端](docs/CLI.md)。
 
 ### 三步上手
 

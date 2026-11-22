@@ -434,6 +434,8 @@ class CojamTerminal(App):
     BINDINGS = [
         ("f2", "show_projects", "项目与会话"), ("f3", "toggle_details", "会话详情"),
         ("ctrl+r", "resume", "切换会话"), ("ctrl+q", "quit", "退出"),
+        Binding("left", "switch_to_rooms", show=False),
+        Binding("right", "switch_to_chat", show=False),
         Binding("ctrl+n", "new_room", show=False), Binding("ctrl+l", "compose_message", show=False),
         Binding("escape", "interrupt", show=False), Binding("f1", "help", show=False),
     ]
@@ -526,7 +528,7 @@ class CojamTerminal(App):
                     yield Button("新建会话", id="home-new", compact=True, classes="link-button")
                     yield Button("新建项目", id="home-project", compact=True, classes="link-button")
                 yield OptionList(id="rooms", compact=True)
-                yield Static("↑↓ 选择  ·  Enter 打开  ·  Ctrl+R 搜索", id="home-help")
+                yield Static("↑↓ 选择  ·  Enter / → 打开  ·  Ctrl+R 搜索", id="home-help")
             with Vertical(id="chat"):
                 with Horizontal(id="chat-heading"):
                     yield Button("‹ 项目", id="back-projects", compact=True, classes="link-button")
@@ -572,8 +574,32 @@ class CojamTerminal(App):
         self.select_room(None)
         rooms = self.query_one("#rooms", OptionList)
         if previous and any(row["id"] == previous for row in self.rooms):
-            rooms.highlighted = rooms.get_option_index(previous)
+            with suppress(Exception):
+                rooms.highlighted = rooms.get_option_index(previous)
         self.focus_main()
+
+    def action_switch_to_rooms(self):
+        if self.room is None:
+            return
+        if self.focused is self.composer.prompt and (self.composer.prompt.text or self.composer.menu.display):
+            return
+        self.action_show_projects()
+
+    def action_switch_to_chat(self):
+        if self.room is not None:
+            return
+        widget = self.query_one("#rooms", OptionList)
+        option = widget.highlighted_option
+        target = option.id if option and option.id else None
+        if not target:
+            active_ids = [row["id"] for row in self.rooms if not row.get("archived")]
+            if self.last_room in active_ids:
+                target = self.last_room
+            elif active_ids:
+                target = active_ids[0]
+        if target:
+            self.open_room(target)
+            self.action_compose_message()
 
     @on(Button.Pressed, "#show-members, #hide-members")
     def action_toggle_details(self):
@@ -602,10 +628,10 @@ class CojamTerminal(App):
 
     def action_help(self):
         if self.room is None:
-            self.notify("↑↓ 选择会话，Enter 打开；Ctrl+R 搜索，Ctrl+N 新建。", timeout=6)
+            self.notify("↑↓ 选择会话，Enter / → 打开；Ctrl+R 搜索，Ctrl+N 新建。", timeout=6)
             return
         self.write("输入 / 查看命令，输入 @ 选择成员。Tab 补全，↑↓ 浏览候选或历史，Ctrl+R 搜索会话。\n"
-                   "Enter 发送，Shift+Enter 或 Alt+Enter 换行。生成中按 Esc 停止。", "cyan")
+                   "空输入框按 ← 返回会话列表（会话列表按 → 进入会话）。Enter 发送，Shift+Enter 或 Alt+Enter 换行。生成中按 Esc 停止。", "cyan")
         self.write("\n".join(f"/{name} {spec.arguments}  {spec.description}" for name, spec in COMMANDS.items()))
 
     def action_resume(self):
@@ -617,8 +643,13 @@ class CojamTerminal(App):
         self.action_compose_message()
 
     def check_action(self, action, parameters):
-        if action in ("show_projects", "toggle_details", "resume", "new_room", "interrupt") and self.screen is not self.default_screen:
+        if action in ("show_projects", "toggle_details", "resume", "new_room", "interrupt",
+                      "switch_to_rooms", "switch_to_chat") and self.screen is not self.default_screen:
             return False
+        if action == "switch_to_rooms":
+            return self.room is not None
+        if action == "switch_to_chat":
+            return self.room is None
         if action == "interrupt":
             return bool(self.room and not self.sending and not self.composer.menu.display
                         and (self.state.get("running") or self.state.get("queued")))

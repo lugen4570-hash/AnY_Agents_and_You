@@ -4,7 +4,7 @@
  --line:#DCE6E0;--soft:#EDF4F0;--hover:#E2EEE9;--btn:#1B5A48;--btn-fg:#FCFBF7;
  --me:#E5F4F8;--me-line:#BCE0EB;--me-fg:#15353E;--me-mut:#4B727D;--accent:#1F849E;--work:#D95D44;--code:#EEF5F2;--danger:#B83227;--chrome:#E6F0EC;
  --side-fg:#18302B;--side-muted:#526B65;
- --studio-print:#E6937E;--studio-note:#FFF5D6;--studio-note-line:#EED58C;
+ --studio-note:#FFF5D6;--studio-note-line:#EED58C;
  --studio-sky:#E4F4F9;--studio-leaf:#E8F5E2;--studio-coral:#FCEBE6;
  --shadow:0 3px 14px rgba(24,48,43,.05),0 1px 3px rgba(24,48,43,.04);--shadow-lg:0 24px 72px rgba(16,32,36,.18);
 }
@@ -13,7 +13,7 @@
  --line:#284148;--soft:#1B3137;--hover:#223D45;--btn:#7DD3E8;--btn-fg:#0D2026;
  --me:#1A3A44;--me-line:#2E5D6B;--me-fg:#EEF8FA;--me-mut:#9CC7D4;--accent:#7DD3E8;--work:#F49E8A;--code:#132429;--danger:#FF9CA3;--chrome:#0A1417;
  --side-fg:#F3F2E7;--side-muted:#9BB6B4;
- --studio-print:#C77E71;--studio-note:#2E2A1C;--studio-note-line:#635733;
+ --studio-note:#2E2A1C;--studio-note-line:#635733;
  --studio-sky:#17343D;--studio-leaf:#1B3529;--studio-coral:#382321;
  --shadow:0 3px 14px rgba(0,0,0,.24),0 1px 3px rgba(0,0,0,.18);--shadow-lg:0 28px 90px rgba(0,0,0,.55);
 }}
@@ -24,10 +24,11 @@ button:disabled{opacity:.45}button:focus-visible,a:focus-visible,input:focus-vis
 #navToggle,#navClose{border-radius:8px;padding:0;line-height:1}
 #navClose{width:30px;height:30px;flex:none;opacity:.75}
 #navToggle:hover,#navClose:hover{opacity:1;background:var(--hover);color:var(--fg)}
-.brand-word{display:block;line-height:1}
-.studio-wordmark{display:block;width:86px;aspect-ratio:152/67;filter:drop-shadow(2px 1.5px 0 var(--studio-print))}
+.brand-lockup{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-word{display:block;min-width:0;line-height:1}
+.studio-wordmark{display:block;width:70px;max-width:100%;aspect-ratio:102/38}
 .studio-wordmark::before{content:'';display:block;height:100%;background:var(--fg);mask:url("/static/wordmark.svg") center/contain no-repeat}
-.brand-word small{font-size:10px;font-weight:500;font-style:normal;letter-spacing:.08em;line-height:1.5;margin-top:6px;color:var(--mut)}
+.brand-word small{display:block;font-size:9px;font-weight:550;letter-spacing:.09em;line-height:1.35;margin-top:4px;color:var(--mut)}
 .nav-search{display:flex;align-items:center;gap:9px;margin:0 6px 14px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--bar);color:var(--mut)}
 .nav-search input{width:100%;min-width:0;background:none;border:0;padding:0;color:var(--fg);font:12px var(--font);outline:none}
 .nav-search input::placeholder{color:var(--mut)}.nav-search kbd{flex:none;font:9px var(--mono);opacity:.7}
@@ -48,13 +49,13 @@ button:disabled{opacity:.45}button:focus-visible,a:focus-visible,input:focus-vis
 .connection-choice[data-connection-type=user] .connection-symbol{background:var(--studio-coral);color:var(--work);border-color:var(--line)}
 #mbox:has(.connection-choices){background:var(--bg)}
 @media(max-width:849px){.brand-word{font-size:30px}.nav-search{margin-bottom:14px}.room-type{font-size:8px!important}.brief-marker{width:26px;height:26px;flex:none;font-size:14px}#title{font-size:20px!important}.session-brief p{-webkit-line-clamp:1}.session-brief{padding:9px 12px}.room-detail{margin-top:6px!important}}
-@media(prefers-color-scheme:dark){.connection-symbol{filter:saturate(.85)}.brand img,.nav-foot img{content:url("/static/logo-dark.svg")}}
+@media(prefers-color-scheme:dark){.connection-symbol{filter:saturate(.85)}}
 #rooms{--fg:var(--side-fg);--mut:var(--side-muted);--faint:var(--side-muted);--line:color-mix(in srgb,var(--side-muted) 18%,transparent);--soft:color-mix(in srgb,var(--accent) 10%,transparent);--hover:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--fg);background:var(--side)}
 #rooms .brand,.nav-search,.contacts-section,.nav-new,.nav-foot{flex-shrink:0}
 #rooms,.projects-section,#contactList,#feed,#mbox{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--mut) 25%,transparent) transparent}
 #rooms .projects-section{min-height:80px;overflow:auto}
 #rooms .brand{gap:12px;padding:8px 10px 18px;font-size:22px;letter-spacing:-.8px;line-height:1.35;font-weight:650}
-.brand img{flex:none;border-radius:0;box-shadow:none}.brand small{display:block;font-size:10px;font-weight:500;letter-spacing:.08em;color:var(--mut);margin-top:6px}
+.brand-lockup img{flex:none}
 .workspace-label{display:flex;align-items:center;gap:11px;margin:0 8px 24px;padding:12px;border:1px solid var(--line);border-radius:11px;font-size:12px;background:#ffffff03}
 .workspace-label small{display:block;font-size:10px;color:var(--mut);margin-top:2px;letter-spacing:.06em}
 .workspace-emblem{width:29px;height:29px;display:grid;place-items:center;background:#ffffff0b;border:1px solid var(--line);border-radius:8px;font-family:Georgia,serif;font-size:17px;font-style:italic}
@@ -84,7 +85,7 @@ button:disabled{opacity:.45}button:focus-visible,a:focus-visible,input:focus-vis
 .nav-new{display:flex;align-items:center;justify-content:space-between;margin:0 6px 16px;padding:10px 13px;width:calc(100% - 12px);background:var(--btn);color:var(--btn-fg);border:1px solid var(--btn);border-radius:11px;font-size:12.5px;font-weight:650;box-shadow:0 2px 8px color-mix(in srgb,var(--btn) 18%,transparent)}
 .nav-new:hover{opacity:.92;transform:translateY(-1px)}.nav-new span{font-size:16px;font-weight:400}
 .nav-foot{display:flex;align-items:center;gap:9px;padding:14px 8px 2px;border-top:1px solid var(--line);font-size:11px;line-height:1.45}
-.nav-foot img{width:28px;height:28px;padding:4px;box-sizing:border-box;background:var(--studio-sky);border:1px solid var(--line);border-radius:9px}
+.nav-foot img{flex:none;width:28px;height:28px}
 .nav-foot small{display:block;font-size:9.5px;color:var(--mut);margin-top:1px}.host-badge{margin-left:auto;color:var(--mut);font:8px var(--mono);border:1px solid var(--line);border-radius:4px;padding:3px 5px;letter-spacing:.07em}
 header{background:var(--bg);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:1px solid var(--line)}
 body.work header{box-shadow:inset 0 -2px 0 var(--work)}

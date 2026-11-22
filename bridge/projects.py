@@ -57,14 +57,14 @@ def create(name, workdir):
         return p
 
 
-def delete(pid, conversations):
+def delete(pid, conversations=None):
     with LOCK:
-        if any((room.get("project") or legacy_id(room["workdir"])) == pid for room in conversations):
-            return False, "项目下还有会话。请先迁移会话。回收站中的会话可恢复后迁移，也可在回收站彻底删除。"
         path = os.path.join(LOG_DIR, "projects.json")
         saved = read_json(path) or []
         remaining = [project for project in saved if project["id"] != pid]
-        if len(remaining) == len(saved):
-            return False, "项目不存在"
-        write_json(path, remaining)
-        return True, ""
+        if len(remaining) != len(saved):
+            write_json(path, remaining)
+            return True, ""
+        if any((room.get("project") or legacy_id(room["workdir"])) == pid for room in (conversations or [])):
+            return True, ""
+        return False, "项目不存在"

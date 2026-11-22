@@ -40,7 +40,7 @@ const row={dataset:{id:'current'},querySelector:selector=>node(selector),closest
 const ctx=vm.createContext({RID:'current',roomViewGeneration:0,URLSearchParams,location:{search:'?r=current&owner_tab=keep',pathname:'/'},
  history:{replaceState:(a,b,url)=>href=url},fetch:async url=>({json:async()=>url==='/api/rooms'?{rooms:[{id:'current',title:'Current',created:'2026-11-15',running:[],queued:0}]}:{trash:[]}}),
  roomBadge:()=>null,esc:String,showModal:value=>html=value,hideModal:()=>hidden++,document:{getElementById:id=>node(id)},
- mbox:{querySelectorAll:selector=>selector==='.item'?[row]:[]},post:async()=>[true,{}],confirm:()=>true,alert:message=>{throw Error(message)},
+ mbox:{querySelectorAll:selector=>selector==='.item'||selector==='.item[data-id]'?[row]:[]},post:async()=>[true,{}],confirm:()=>true,alert:message=>{throw Error(message)},
  resetRoomView:()=>reset++,pickRoom:async()=>picked++,pollRooms:async()=>{},closeMeetingTools(){},switchRoom(){}});
 vm.runInContext(code,ctx);
 (async()=>{await ctx.openList();assert.match(html,/<button type="button" class="db">删除/);await node('.db').onclick({stopPropagation(){}});

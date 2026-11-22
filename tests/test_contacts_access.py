@@ -89,7 +89,6 @@ class Contacts(unittest.TestCase):
             R.rooms.unload(archived.id)
             delete = "/api/projects/delete"
             move = "/api/rooms/move"
-            self.assertEqual(call(delete, {"id": source["id"]}, owner=True)[0], 409)
             self.assertEqual(call(move, {"id": active.id, "project": destination["id"]}, key=self.key)[0], 403)
             self.assertEqual(call(move, {"id": active.id, "project": "invalid"}, owner=True)[0], 404)
             for meeting in (active, archived):
@@ -104,6 +103,34 @@ class Contacts(unittest.TestCase):
             self.assertTrue(rows[archived.id]["archived"])
             self.assertEqual(active.messages[-1]["text"], "迁移后仍可读取")
             self.assertTrue(Path(DATA).is_dir())
+
+    def test_delete_project_directly_with_active_archived_and_trashed_rooms(self):
+        with tempfile.TemporaryDirectory(dir=DATA) as workdir:
+            project = projects.create("可直接删除", workdir)
+            active = R.rooms.create("活跃", wd=workdir, project=project["id"], participants=[])
+            archived = R.rooms.create("归档", wd=workdir, project=project["id"], participants=[])
+            trashed = R.rooms.create("已进回收站", wd=workdir, project=project["id"], participants=[])
+            R.set_archived(archived.id, True)
+            R.trash_meeting(trashed.id)
+
+            busy_project = projects.create("运行中项目", workdir)
+            busy_room = R.rooms.create("运行中会话", wd=workdir, project=busy_project["id"], participants=[])
+            with patch.object(R.Room, "busy_for", return_value=True):
+                status, err = call("/api/projects/delete", {"id": busy_project["id"]}, owner=True)
+                self.assertEqual(status, 409)
+                self.assertIn("停止", err["error"])
+            R.trash_meeting(busy_room.id)
+            self.assertEqual(call("/api/projects/delete", {"id": busy_project["id"]}, owner=True)[0], 200)
+
+            status, res = call("/api/projects/delete", {"id": project["id"]}, owner=True)
+            self.assertEqual(status, 200)
+            self.assertEqual(set(res["trashed_rooms"]), {active.id, archived.id})
+            _, listing = call("/api/rooms", owner=True)
+            self.assertNotIn(project["id"], {p["id"] for p in listing["projects"]})
+            _, trash_data = call("/api/trash", owner=True)
+            trash_ids = {item["id"] for item in trash_data["trash"]}
+            self.assertTrue({active.id, archived.id, trashed.id}.issubset(trash_ids))
+            self.assertTrue(Path(workdir).is_dir())
 
     def test_legacy_projects_are_stable(self):
         legacy = R.rooms.create("旧会话", "", DATA)

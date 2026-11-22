@@ -4,8 +4,9 @@
 会议相关的接口都带会议号：/api/r/<会议号>/<动作>，每个浏览器标签页可以开着不同的会议，互不影响。
 管理员接口只认页面注入的 X-RT-Token；
 外部程序用 /api/post 或 /mcp；钩子用 /api/guard/*（带钥匙）。"""
-import hmac, json, mimetypes, os, re, secrets, sys, threading, webbrowser
+import hmac, io, json, mimetypes, os, re, secrets, sys, threading, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 from subprocess import SubprocessError
 from typing import Any, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -50,6 +51,38 @@ class Handler(BaseHTTPRequestHandler):
             return int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return -1
+
+    def _read_chunked_body(self, max_bytes):
+        chunks = []
+        total = 0
+        while True:
+            line = self.rfile.readline(4096)
+            if not line:
+                raise ValueError("incomplete chunked body")
+            size_hex = line.split(b";", 1)[0].strip()
+            try:
+                chunk_size = int(size_hex, 16)
+            except ValueError as exc:
+                raise ValueError("bad chunk size") from exc
+            if chunk_size < 0:
+                raise ValueError("bad chunk size")
+            if chunk_size == 0:
+                while True:
+                    trailer = self.rfile.readline(4096)
+                    if not trailer or trailer in (b"\r\n", b"\n"):
+                        break
+                break
+            total += chunk_size
+            if total > max_bytes:
+                raise ValueError("too large (max 25MB)")
+            data = self.rfile.read(chunk_size)
+            if len(data) != chunk_size:
+                raise ValueError("incomplete chunked body")
+            eol = self.rfile.readline(4)
+            if eol not in (b"\r\n", b"\n"):
+                raise ValueError("malformed chunk terminator")
+            chunks.append(data)
+        return b"".join(chunks)
 
     def _read_json(self):
         n = self._length()
@@ -688,7 +721,19 @@ class Handler(BaseHTTPRequestHandler):
                 with R.rooms.lock:
                     rows = R.rooms.listing()
                     if path == "/api/projects/delete":
-                        ok, msg = projects.delete(str(data.get("id") or ""), rows + R.list_trash())
+                        pid = str(data.get("id") or "")
+                        project_rows = [row for row in rows if (row.get("project") or projects.legacy_id(row["workdir"])) == pid]
+                        if any(row.get("running") or row.get("queued") or ((loaded := R.rooms.loaded.get(row["id"])) is not None and loaded.busy_for())
+                               for row in project_rows):
+                            return self._json(409, {"ok": False, "error": "项目下有正在运行或排队的会话，请先停止后再删除"})
+                        trashed_rooms = []
+                        for row in project_rows:
+                            ok, msg = R.trash_meeting(row["id"])
+                            if not ok:
+                                return self._json(409, {"ok": False, "error": msg, "trashed_rooms": trashed_rooms})
+                            trashed_rooms.append(row["id"])
+                        ok, msg = projects.delete(pid, rows)
+                        return self._json(200 if ok else 409, {"ok": ok, "error": msg, "trashed_rooms": trashed_rooms})
                     else:
                         pid = str(data.get("project") or "")
                         if not any(p["id"] == pid for p in projects.listing(rows)):
@@ -707,15 +752,20 @@ class Handler(BaseHTTPRequestHandler):
             member_ids = data.get("participants")
             if member_ids is not None and (not isinstance(member_ids, list) or any(not isinstance(a, str) or a not in registry.enabled_ids() for a in member_ids)):
                 return self._json(400, {"error": "请选择已有且启用的联系人"})
-            with R.rooms.lock:
-                project = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
-                if pid and project is None:
-                    return self._json(400, {"error": "项目不存在"})
-                wd = (project["workdir"] if project else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
-                wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
-                if not os.path.isabs(wd) or not os.path.isdir(wd):
-                    return self._json(400, {"error": "工作文件夹不存在：" + wd})
-                r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids)
+            try:
+                if "permissions" in data and not isinstance(data["permissions"], dict):
+                    raise ValueError("权限必须是对象")
+                with R.rooms.lock:
+                    project = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
+                    if pid and project is None:
+                        raise ValueError("项目不存在")
+                    wd = (project["workdir"] if project else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
+                    wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
+                    if not os.path.isabs(wd) or not os.path.isdir(wd):
+                        raise ValueError("工作文件夹不存在：" + wd)
+                    r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids, data.get("permissions"))
+            except ValueError as error:
+                return self._json(400, {"error": str(error)})
             return self._json(200, {"ok": True, "id": r.id})
         if path == "/api/rooms/archive":
             ok, msg = R.set_archived(str(data.get("id", "")), bool(data.get("on")))
@@ -724,7 +774,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/trash/restore":
             ok, msg, _new = R.restore_meeting(str(data.get("id", "")))
         elif path == "/api/trash/purge":
-            ok, msg = R.purge_all()
+            cleanup: list[dict[str, str]] = []
+            if "id" in data:
+                ok, msg = R.purge_meeting(str(data.get("id") or ""), cleanup)
+            else:
+                ok, msg = R.purge_all(cleanup)
+            return self._json(200 if ok else 409, {"ok": ok, "error": msg, "cleanup": cleanup})
         elif path == "/api/claims/release":
             it = guard.force_release(str(data.get("key", "")))
             if it is None:
@@ -750,12 +805,26 @@ class Handler(BaseHTTPRequestHandler):
             if updater.status().get('state') == 'installing':
                 return self._json(409, {"error": "合拍正在更新，请重新打开后再操作"})
         if act == "upload":
+            name = (parse_qs(qs).get("name") or [""])[0]
+            te = (self.headers.get("Transfer-Encoding") or "").lower()
+            if "chunked" in te:
+                try:
+                    body = self._read_chunked_body(MAX_UPLOAD)
+                except ValueError as e:
+                    code = 413 if "too large" in str(e) else 400
+                    return self._json(code, {"error": str(e)})
+                if not body:
+                    return self._json(400, {"error": "empty"})
+                try:
+                    full = r.save_upload(name, io.BytesIO(body).read, len(body))
+                except Exception as e:
+                    return self._json(500, {"error": str(e)})
+                return self._json(200, R.make_attachment(full))
             n = self._length()
             if n <= 0:
                 return self._json(400, {"error": "empty"})
             if n > MAX_UPLOAD:
                 return self._json(413, {"error": "too large (max 25MB)"})
-            name = (parse_qs(qs).get("name") or [""])[0]
             try:
                 full = r.save_upload(name, self.rfile.read, n)
             except Exception as e:
@@ -778,6 +847,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True})
         if act == "recall":
             return self._recall(r, data.get("id"), "你")
+        if act in ("rename", "session/reset"):
+            try:
+                if act == "rename":
+                    ok, msg = r.rename(data.get("title"))
+                else:
+                    ok, msg = r.reset_session(str(data.get("ai") or ""))
+            except OSError:
+                return self._json(500, {"error": "无法保存会话，请检查数据目录权限或文件是否被占用后重试"})
+            return self._json(200 if ok else 409, {"ok": ok, "error": msg, "title": r.title()})
         if act in ("debate/start", "debate/finish"):
             try:
                 state = debate.start(r, data) if act == "debate/start" else debate.finish(r)
@@ -1020,11 +1098,14 @@ class ExclusiveServer(ThreadingHTTPServer):
 
     def server_bind(self):
         pal.apply_exclusive_socket(self.socket)
-        super().server_bind()
+        # HTTPServer.server_bind performs reverse DNS, which can stall startup
+        # before the desktop window can connect. The listener already has an IP.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 def _stop_runtime() -> None:
-    """Stop Cojam web service without killing detached CLI jobs (collected on reopen)."""
+    """Close agent sessions and preserve detached jobs for recovery on reopen."""
     from . import detached_jobs
     detached_jobs.begin_shutdown()
     for room in R.rooms.all():

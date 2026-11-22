@@ -518,7 +518,7 @@ class AllAgentCompactionTests(unittest.TestCase):
         self.assertIn('ACP 阶段摘要', seen[1][1])
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test openAi modal')
-    def test_open_ai_modal_shows_compact_for_non_claude_codex_agents(self):
+    def test_open_ai_modal_excludes_compact_and_session_tools(self):
         root = Path(__file__).resolve().parents[1]
         script = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
@@ -527,7 +527,7 @@ const start = appMeeting.indexOf('function openAi(');
 const end = appMeeting.indexOf("\ndocument.getElementById('bList')", start);
 const part = appMeeting.slice(start, end);
 let modalHtml = '';
-const els = {aClose: {}, aCompact: {}};
+const els = {aClose: {}};
 const ctx = vm.createContext({
   S: {
     participants: ['gemini'],
@@ -543,7 +543,7 @@ const ctx = vm.createContext({
         can_compact: true,
         compact_at: '',
         handoff: false,
-        caps: {},
+        caps: {tools: true},
         model: {models: ['gemini-2.5-pro'], model: '', effort: ''},
         ctx: {used: 3400, window: 1000000},
       },
@@ -559,7 +559,7 @@ const ctx = vm.createContext({
   hideModal: () => {},
   bindModelSettings: () => {},
   bindExecutionSettings: () => {},
-  loadTools: () => { throw new Error('should not loadTools for non-tools cli'); },
+  loadTools: () => { throw new Error('openAi must not render or load tools'); },
   api: k => k,
   post: async () => [true, {}],
   loadState: async () => {},
@@ -569,11 +569,11 @@ const ctx = vm.createContext({
 });
 vm.runInContext(part, ctx);
 ctx.openAi('gemini');
-assert.match(modalHtml, /压缩上下文/);
-assert.match(modalHtml, /id="aCompact">压缩 gemini/);
-assert.doesNotMatch(modalHtml, /id="aCompact"[^>]*disabled/);
-assert.match(modalHtml, /3400 \/ 1000000/);
+assert.doesNotMatch(modalHtml, /压缩上下文/);
+assert.doesNotMatch(modalHtml, /id="aCompact"/);
+assert.doesNotMatch(modalHtml, /id="toolsBox"/);
 assert.doesNotMatch(modalHtml, /会话与终端/);
+assert.match(modalHtml, /id="modelSettings"/);
 assert.match(modalHtml, /id="aClose"/);
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -598,8 +598,8 @@ class MemberPermissionsAndStatusSeparationTests(unittest.TestCase):
         script = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
 const ws = fs.readFileSync('static/workspace.js', 'utf8');
-const permsPart = ws.slice(ws.indexOf('const PERM_LABELS='), ws.indexOf('function contactPicker'));
-const openAgentsStart = ws.indexOf('async function openAgents()');
+const permsPart = ws.slice(ws.indexOf('const PERM_LABELS='), ws.indexOf('let contactsRequestSequence='));
+const openAgentsStart = ws.indexOf('function memberPermissionRow(');
 const openAgentsEnd = ws.indexOf("document.getElementById('contactsAdd')", openAgentsStart);
 const openAgentsPart = ws.slice(openAgentsStart, openAgentsEnd);
 
@@ -612,10 +612,10 @@ const makeClassList = () => {
 };
 function parseOpenAgents(html) {
   const rows = [];
-  const rowRe = /<section class="member-row" data-member="([^"]+)">([\s\S]*?)<\/section>/g;
+  const rowRe = /<section class="member-row" data-member="([^"]+)" data-permissions="([^"]*)">([\s\S]*?)<\/section>/g;
   let m;
   while ((m = rowRe.exec(html))) {
-    const id = m[1], inner = m[2];
+    const id = m[1], initialPermissions = m[2].replace(/&quot;/g, '"'), inner = m[3];
     const memberCheck = {checked: /data-member-check[^>]* checked/.test(inner), onchange: null};
     const perms = {};
     for (const g of ['chat', 'collab', 'work']) {
@@ -624,7 +624,7 @@ function parseOpenAgents(html) {
       perms[g] = {checked: !!(pm && /checked/.test(pm[1])), disabled: false, dataset: {permGroup: g}, onchange: null};
     }
     rows.push({
-      dataset: {member: id},
+      dataset: {member: id, permissions: initialPermissions},
       memberCheck,
       perms,
       querySelector: sel => sel === '[data-member-check]' ? memberCheck : perms[sel.match(/data-perm-group="([^"]+)"/)[1]],
@@ -668,7 +668,7 @@ const ctx = vm.createContext({
     },
   },
   mbox,
-  esc: s => String(s),
+  esc: s => String(s).replace(/"/g, '&quot;'),
   refreshContacts: async () => {},
   showModal: html => { dom = parseOpenAgents(html); },
   hideModal: () => {},
@@ -688,6 +688,9 @@ vm.runInContext(permsPart + '\n' + openAgentsPart, ctx);
   assert.equal(dom.rows[2].perms.chat.disabled, true, 'uninvited gemini starts disabled');
   assert.equal(dom.bulk.chat.classList.contains('on'), true, 'chat starts on for all invited');
   assert.equal(dom.bulk.work.classList.contains('on'), false, 'work starts off');
+  await dom.mSave.onclick();
+  assert.equal(posted.body.permissions.codex.board, true);
+  assert.equal(posted.body.permissions.codex.files, false, 'untouched grouped settings retain individual permissions');
 
   // One click turns work ON for all invited members (claude + codex), leaving uninvited gemini untouched/disabled
   dom.bulk.work.onclick();
@@ -711,6 +714,7 @@ vm.runInContext(permsPart + '\n' + openAgentsPart, ctx);
   await dom.mSave.onclick();
   assert.equal(posted.url, '/api/r/r1/members');
   assert.deepEqual(JSON.parse(JSON.stringify(posted.body.participants)), ['claude', 'codex', 'gemini']);
+  assert.equal(posted.body.permissions.codex.files, true, 'explicit bulk enable grants both permissions');
   assert.deepEqual(JSON.parse(JSON.stringify(posted.body.permissions.gemini)), {
     read: true, post: true, trigger: true, board: true, files: true, work: false,
   });

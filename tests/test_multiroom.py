@@ -59,6 +59,42 @@ class MultiRoom(unittest.TestCase):
         gate.clear()
         started.clear()
 
+    def test_create_permissions_and_rename_through_owner_api(self):
+        body = {"title": "改名前", "workdir": WD, "participants": ["codex"],
+                "permissions": {"codex": {"work": True}}}
+        status, payload = call("POST", "/api/rooms/new", body)
+        self.assertEqual(status, 200, payload)
+        room = R.rooms.get(payload["id"])
+        self.assertTrue(access.permissions(room, "codex")["work"])
+        self.assertEqual(call("POST", rp(room, "rename"), {"title": " 改名后 "})[0], 200)
+        state = call("GET", rp(room, "state"))[1]
+        self.assertEqual(state["title"], "改名后")
+        self.assertEqual(room.id, payload["id"])
+        self.assertEqual(common.read_json(os.path.join(room.dir, "meeting.json"))["title"], "改名后")
+        self.assertEqual(call("POST", rp(room, "rename"), {"title": "\n"})[0], 409)
+        self.assertEqual(call("POST", rp(room, "rename"), {"title": "越权"}, auth=False)[0], 403)
+        self.assertEqual(call("POST", "/api/rooms/new", {**body, "permissions": {"codex": {"work": "true"}}})[0], 400)
+        self.assertEqual(call("POST", rp(room, "mode"), {"mode": "work"})[0], 200)
+        self.assertEqual(room.messages[-1]["text"], "切到干活模式")
+        self.assertEqual(call("POST", rp(room, "members"), {"participants": ["codex"], "permissions": {"codex": {"work": False}}})[0], 200)
+        self.assertEqual(room.messages[-1]["text"], "已关闭干活权限：codex")
+        room.meta["codex_session"] = "old-codex-session"
+        room.save_meta()
+        self.assertEqual(call("POST", rp(room, "session/reset"), {"ai": "codex"})[0], 200)
+        self.assertNotIn("codex_session", room.meta)
+        self.assertEqual(room.meta["old_sessions"]["codex"], ["old-codex-session"])
+
+    def test_purge_api_reports_sessions_that_need_manual_cleanup(self):
+        room = R.rooms.create("需要手动清理", "", WD, participants=[])
+        room.meta["antigravity_session"] = "agy-session-1234"
+        room.save_meta()
+        self.assertEqual(call("POST", "/api/rooms/delete", {"id": room.id})[0], 200)
+        status, payload = call("POST", "/api/trash/purge", {"id": room.id})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["cleanup"], [{"room": "需要手动清理", "ai": "antigravity",
+                                               "session": "agy-session-1234", "status": "manual",
+                                               "message": "agy 端需要手动清理"}])
+
     def test_rooms_run_in_parallel(self):
         a = R.rooms.create("甲", "", WD)
         b = R.rooms.create("乙", "", WD)

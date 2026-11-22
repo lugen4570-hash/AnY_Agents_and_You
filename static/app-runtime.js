@@ -52,8 +52,8 @@ function resetRoomView(){
   hideMenu();selectionTools.hidden=true;setMeetingSide(false);
   since=0;recallCount=0;curMeeting=undefined;S=null;feed.innerHTML='';
   for(const k in msgById)delete msgById[k];
-  liveCards.clear();
   restoreDraft();lastRun={running:[],queued:0};
+  if(typeof liveCards!=='undefined')liveCards.clear();
   annVal='';showAnn();boardSig='';closeEdit();
   if(typeof closeToc==='function')closeToc();
   if(vw.classList.contains('on')){if(ed?.dirty)saveImageEdit(ed);endEdit();vw.classList.remove('on')}
@@ -91,6 +91,26 @@ async function pickRoom(){
   else {drawState();feed.innerHTML='<div class="workspace-empty"><h2>开始一场新会话</h2><p>添加联系人，创建项目，再邀请成员一起协作。</p><button id="emptyNew">＋ 创建项目 / 会话</button></div>';document.getElementById('emptyNew').onclick=()=>openNew(true)}
 }
 document.getElementById('rNew').onclick=()=>openNew(false);
+if(typeof window!=='undefined'&&window.visualViewport){
+  const viewport=window.visualViewport;
+  const updateViewport=()=>{
+    const mobile=innerWidth<850&&viewport.scale===1,root=document.documentElement;
+    if(mobile){
+      root.style.setProperty('--visible-height',Math.round(viewport.height)+'px');
+      root.style.setProperty('--visible-offset',Math.round(viewport.offsetTop)+'px');
+    }else{
+      root.style.removeProperty('--visible-height');root.style.removeProperty('--visible-offset');
+    }
+    const field=document.activeElement;
+    const typing=mobile&&field&&field.matches('textarea,input:not([type=checkbox]):not([type=radio]):not([type=file])');
+    const compact=mobile&&(viewport.height<480||(typing&&innerHeight-viewport.height>100));
+    document.body.classList.toggle('compact-input',!!compact);
+  };
+  viewport.addEventListener('resize',updateViewport);viewport.addEventListener('scroll',updateViewport);addEventListener('resize',updateViewport);
+  document.addEventListener('focusin',updateViewport);
+  document.addEventListener('focusout',()=>setTimeout(updateViewport,0));
+  updateViewport();
+}
 if(document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(RID){if(since)markSeen(RID,since);poll()}pollRooms()}});
 setInterval(()=>{if(!document.hidden&&RID)poll()},1500);
 setInterval(()=>{if(!document.hidden)pollRooms()},3000);

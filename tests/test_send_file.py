@@ -218,6 +218,58 @@ class T(unittest.TestCase):
                 self.assertEqual(R.abs_path(att_ext), os.path.normpath(ext_file))
                 self.assertEqual(att_ext["url"], "")
 
+    def test_http_upload_supports_content_length_and_chunked_encoding(self):
+        import http.client, json
+        server = web.ExclusiveServer(("127.0.0.1", 0), web.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(lambda: (server.shutdown(), thread.join(5), server.server_close()))
+        port = server.server_address[1]
+        payload = b"hello-mobile-upload-bytes-" * 10
+        headers = {"X-RT-Token": web.RT_TOKEN, "Content-Type": "application/octet-stream"}
+
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("POST", "/api/r/%s/upload?name=mobile.bin" % ROOM.id, body=payload, headers=headers)
+        resp = conn.getresponse()
+        body = json.loads(resp.read())
+        conn.close()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(body["name"], "mobile.bin")
+        with open(R.abs_path(body), "rb") as fh:
+            self.assertEqual(fh.read(), payload)
+
+        # Chunked transfer encoding (multiple chunks + zero terminator)
+        part1, part2 = payload[:40], payload[40:]
+        chunked_raw = (
+            f"{len(part1):x}\r\n".encode() + part1 + b"\r\n"
+            + f"{len(part2):x}\r\n".encode() + part2 + b"\r\n"
+            + b"0\r\n\r\n"
+        )
+        conn2 = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn2.putrequest("POST", "/api/r/%s/upload?name=chunked.bin" % ROOM.id)
+        conn2.putheader("X-RT-Token", web.RT_TOKEN)
+        conn2.putheader("Transfer-Encoding", "chunked")
+        conn2.endheaders()
+        conn2.send(chunked_raw)
+        resp2 = conn2.getresponse()
+        body2 = json.loads(resp2.read())
+        conn2.close()
+        self.assertEqual(resp2.status, 200)
+        self.assertEqual(body2["name"], "chunked.bin")
+        with open(R.abs_path(body2), "rb") as fh:
+            self.assertEqual(fh.read(), payload)
+
+        # Chunked exceeding MAX_UPLOAD returns 413
+        conn3 = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn3.putrequest("POST", "/api/r/%s/upload?name=huge.bin" % ROOM.id)
+        conn3.putheader("X-RT-Token", web.RT_TOKEN)
+        conn3.putheader("Transfer-Encoding", "chunked")
+        conn3.endheaders()
+        conn3.send(f"{common.MAX_UPLOAD + 1:x}\r\n".encode())
+        resp3 = conn3.getresponse()
+        self.assertEqual(resp3.status, 413)
+        conn3.close()
+
 
 if __name__ == "__main__":
     unittest.main()

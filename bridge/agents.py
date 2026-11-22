@@ -909,6 +909,9 @@ def call_ai(ai, prompt, session_id=None, images=(), mode=None, room=None):
             return False, "%s 没有返回内容" % ai, session_id, edits
         if not sid:
             return False, "%s 没拿到会话 id" % ai, session_id, edits
+        reported_sid = res.get("sid") or (res.get("result") or {}).get("session_id")
+        if session_id and reported_sid and reported_sid != session_id:
+            return False, "%s 无法接续原会话，已保留原绑定。要新开请先重置会话接续。" % ai, session_id, edits
         if room is not None:
             room.note_ctx(ai, res)
         return True, out, sid, edits
@@ -1536,7 +1539,7 @@ def delete_codex_thread(sid):
         return True, ""
     except Exception as e:
         msg = str(e)
-        if "not found" in msg.lower() or "no thread" in msg.lower() or "找不到" in msg:
+        if any(s in msg.lower() for s in ("not found", "no thread", "no rollout found")) or "找不到" in msg:
             return True, "本来就没有"
         return False, msg
     finally:

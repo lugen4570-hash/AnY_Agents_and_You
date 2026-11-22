@@ -44,7 +44,7 @@ html { scroll-padding-top: 84px; }
 body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.7 var(--font); }
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; cursor: pointer; }
-img { max-width: 100%; }
+img { max-width: 100%; height: auto; }
 h1, h2, h3, h4, p { margin-top: 0; }
 h1, h2, h3 { line-height: 1.18; letter-spacing: -.035em; }
 i { font-style: normal; }
@@ -364,10 +364,12 @@ html:not(.has-js) .stage-tabs { display: none; }
 :is(.nested-tabs, .platform-picker) button:hover { background: var(--panel); }
 .nested-tabs button[aria-selected="true"], .platform-picker button[aria-pressed="true"] { background: var(--action); color: var(--action-text); border-color: var(--action); }
 .nested-panels, .doc-card { padding: clamp(16px, 3vw, 32px); }
-.panel-grid, .panel-gallery { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: clamp(16px, 4vw, 42px); }
-.panel-gallery { align-items: start; }
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: clamp(16px, 4vw, 42px); }
+.panel-gallery { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.gallery-copy { max-width: 52em; }
 .panel-copy h3, .gallery-copy h3, .nested-panel h3 { margin-bottom: 14px; font-size: clamp(20px, 2.2vw, 28px); }
 .panel-visual, .term-grid > div, .mini-box, .doc-callout { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.doc-callout { margin-top: 18px; }
 .diagram-stack, .diagram-steps, .status-demo { display: grid; gap: 8px; }
 .diag-row, .doc-two-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .diag-row:has(> :nth-child(3)), .term-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -382,9 +384,28 @@ html:not(.has-js) .stage-tabs { display: none; }
 .agent-matrix span { padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 .construct-list, .doc-steps { padding-inline-start: 1.25rem; }
 .construct-list li + li, .doc-steps li + li { margin-top: 7px; }
-.product-frame { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
-.frame-bar { padding: 6px 12px; background: var(--panel); font-size: 12px; }
-.product-frame img { display: block; width: 100%; }
+.product-frame { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 32px #173d3212; }
+.frame-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+.frame-bar > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.frame-bar > span:first-child i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--control-line);
+  opacity: .6;
+}
+.product-frame img { display: block; width: 100%; height: auto; }
 .page-capabilities main { padding-bottom: 54px; }
 
 .quick-start { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: center; gap: 20px 36px; padding-block: clamp(50px, 8vw, 100px); }
@@ -482,13 +503,13 @@ html:not(.has-js) .stage-tabs { display: none; }
 .term-grid { display: grid; gap: 8px; }
 .term-grid p, .mini-box p, .doc-callout p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 .doc-note { margin-bottom: 0; color: var(--muted); font-size: 14px; }
-.mac-doc-step + .mac-doc-step { margin-top: 18px; }
-.mac-doc-step h4 { margin-bottom: 6px; }
-.mac-doc-step p { margin-bottom: 8px; }
-.doc-code { padding: 12px; border-radius: 6px; background: #17181b; color: #efece6; font: 13px/1.6 var(--mono); }
-.doc-figure { margin: 14px 0 0; }
-.doc-figure img { display: block; border: 1px solid var(--line); border-radius: 6px; }
-.doc-figure figcaption { color: var(--muted); font-size: 12px; }
+.mac-doc-step + .mac-doc-step { margin-top: 24px; padding-top: 20px; border-top: 1px dashed var(--line); }
+.mac-doc-step h4 { margin-bottom: 8px; }
+.mac-doc-step p { margin-bottom: 10px; }
+.doc-code { margin: 10px 0 0; padding: 12px 14px; border-radius: 8px; background: #17181b; color: #efece6; font: 13px/1.6 var(--mono); }
+.doc-figure { margin: 14px 0 4px; }
+.doc-figure img { display: block; max-width: min(100%, 460px); height: auto; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px #173d3214; }
+.doc-figure figcaption { margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .docs-faq details { border-bottom: 1px solid var(--line); }
 .docs-faq summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 14px 0; font-weight: 680; cursor: pointer; }
 .docs-faq summary::-webkit-details-marker { display: none; }

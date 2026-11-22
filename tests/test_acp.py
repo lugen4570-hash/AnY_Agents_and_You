@@ -63,7 +63,11 @@ for raw in sys.stdin:
     elif method == "session/new":
         send({"jsonrpc": "2.0", "id": mid, "result": {"sessionId": "acp-sess-1", "configOptions": CONFIG_OPTIONS}})
     elif method == "session/load":
-        send({"jsonrpc": "2.0", "id": mid, "result": {"sessionId": params.get("sessionId"), "configOptions": CONFIG_OPTIONS}})
+        sid = params.get("sessionId")
+        if sid == "missing-acp-session":
+            send({"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": "session not found"}})
+        else:
+            send({"jsonrpc": "2.0", "id": mid, "result": {"sessionId": sid, "configOptions": CONFIG_OPTIONS}})
     elif method == "session/set_config_option":
         cid = params.get("configId")
         if cid in ("model", "effort", "mode"):
@@ -266,7 +270,13 @@ class TestAcpDriver(unittest.TestCase):
         sent = {c["params"]["configId"]: c["params"]["value"] for c in self.config_calls()[2:]}
         self.assertEqual(sent, {"model": "zhipu/glm-5.3", "effort": "high"})
 
-    def test_room_retries_lost_acp_session_with_full_first_prompt(self):
+    def test_load_failure_preserves_session(self):
+        ok, text, sid, _ = drivers.call("fakeacp", "接续", "missing-acp-session", (), "discuss", None)
+        self.assertFalse(ok)
+        self.assertIn("已保留原绑定", text)
+        self.assertEqual(sid, "missing-acp-session")
+
+    def test_room_reopens_lost_acp_session_only_after_reset(self):
         r = self.make_room("fakeacp")
         r.meta["announcement"] = "会话丢失后仍需完成原目标"
         self.assertIsNotNone(r.board_op("你", "add", "todo", "重试后保留待办"))
@@ -277,7 +287,7 @@ class TestAcpDriver(unittest.TestCase):
             if len(prompts) == 1:
                 return True, "@用户 第一轮", "s-1", []
             if len(prompts) == 2:
-                return False, "fakeacp (ACP) 会话已失效，正在换新会话重试", None, []
+                return False, "fakeacp (ACP) 会话已失效，已保留原绑定", sid, []
             return True, "@用户 重试成功", "s-2", []
 
         old = R.ai_caller
@@ -288,7 +298,13 @@ class TestAcpDriver(unittest.TestCase):
         self.assertEqual(r.meta.get("fakeacp_session"), "s-1")
         r.handle_message("你", "@fakeacp 第二件事")
         self.assertTrue(self.wait(r))
-        self.assertEqual(len(prompts), 3)          # 只重试一次
+        self.assertEqual(len(prompts), 2)
+        self.assertEqual(r.meta.get("fakeacp_session"), "s-1")
+        self.assertEqual(r.reset_session("fakeacp"), (True, ""))
+        self.assertIn("s-1", r.meta["old_sessions"]["fakeacp"])
+        r.handle_message("你", "@fakeacp 现在继续")
+        self.assertTrue(self.wait(r))
+        self.assertEqual(len(prompts), 3)
         retry_prompt, retry_sid = prompts[2]
         self.assertIsNone(retry_sid)
         self.assertIn("这场会议的目标", retry_prompt)

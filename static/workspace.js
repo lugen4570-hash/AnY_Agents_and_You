@@ -64,7 +64,6 @@ function expandGroupedPerms(groupState){
   PERM_GROUPS.forEach(g=>{const v=!!groupState[g.id];g.keys.forEach(k=>{out[k]=v;});});
   return out;
 }
-function contactPicker(ids){return CONTACTS.filter(a=>a.enabled).map(a=>'<label class="contact-pick"><input type="checkbox" data-contact="'+esc(a.id)+'"'+(ids.includes(a.id)?' checked':'')+'>'+esc(a.label)+' <small>'+esc(a.kind==='user'?'用户':AG_DRV[a.driver])+'</small></label>').join('')||'<p class="hint">先在左侧添加联系人，也可以先创建空会话。</p>'}
 let contactsRequestSequence=0, contactsAppliedSequence=0;
 async function refreshContacts(signal,reload=false){const seq=++contactsRequestSequence;const r=await fetch('/api/agents'+(reload?'?reload=1':''),{signal});if(!r.ok)throw Error('读取联系人失败');const data=await r.json();if((signal&&signal.aborted)||seq<contactsAppliedSequence)return;contactsAppliedSequence=seq;agCat=data;CONTACTS=agCat.agents||[];drawContacts();if(typeof drawQuick==='function')drawQuick()}
 function contactStatusLabel(a){const c=(agCat.connections||{})[a.id]||{},m=(agCat.members||{})[a.id]||{};if(m.standby)return 'MCP 待命中';if(m.automatic)return '自动响应已连接';if(a.kind==='user'&&c.state==='waiting')return '邀请已生成，从未连接';return c.label||'未验证'}
@@ -116,7 +115,8 @@ function attachWorkspaceFolderPicker(inputId){
   if(catalog&&catalog.local_workspace===false)return;
   const macBrowserPicker=catalog&&catalog.macos_workspace_picker===true;
   const button=document.createElement('button');button.type='button';button.textContent='选择文件夹';button.hidden=true;
-  input.parentElement.append(button);
+  button.setAttribute('aria-label','选择文件夹');
+  input.parentElement.after(button);
   const bridge=(typeof window!=='undefined'&&window.cojamDesktop)||null;
   const legacy=()=>typeof window!=='undefined'&&window.pywebview&&window.pywebview.api&&typeof window.pywebview.api.choose_workdir==='function'?window.pywebview.api:null;
   const canPickNatively=()=>bridge?bridge.canChooseWorkdir():!!legacy();
@@ -152,15 +152,49 @@ async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
   await pollRooms();await refreshContacts();if(!PROJECTS.length)return openProject();
   const selected=projectId||(S&&(S.project||legacyProject(S.workdir)))||PROJECTS[0].id;
-  showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人</h4><p class="hint">已按 Agent 的默认加入设置勾选，可以在创建前调整。</p><div id="nContacts">'+contactPicker(agCat.default_participants || [])+'</div><div class="btns"><button id="nCancel">取消</button><button id="nOk" class="pri">创建会话</button></div>');
-  document.getElementById('nCancel').onclick=hideModal;document.getElementById('nOk').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:document.getElementById('nProject').value,participants:[...mbox.querySelectorAll('[data-contact]:checked')].map(e=>e.dataset.contact)};button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/rooms/new',body);if(!ok)return alert(j.error||'创建失败');if(document.getElementById('nOk')===button){hideModal();document.body.classList.remove('nav-open');switchRoom(j.id)}pollRooms()}finally{button.disabled=false;button.textContent='创建会话'}};document.getElementById('nTitle').focus();
+  const defaults=agCat.default_participants||[];
+  const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,defaults.includes(a.id),a.default_permissions||{})).join('');
+  showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
+  const rows=[...document.getElementById('nContacts').querySelectorAll('[data-member]')];
+  rows.forEach(row=>{
+    const update=()=>syncMemberPermissionRow(row);update();row.querySelector('[data-member-check]').onchange=update;
+    row.querySelectorAll('[data-perm-group]').forEach(i=>{i.onchange=()=>{i.dataset.edited='true'}});
+  });
+  document.getElementById('nCancel').onclick=hideModal;
+  document.getElementById('nOk').onclick=async e=>{
+    const button=e.currentTarget;if(button.disabled)return;
+    const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:document.getElementById('nProject').value,...readMemberPermissions(rows)};
+    button.disabled=true;button.textContent='正在创建…';
+    try{const [ok,j]=await post('/api/rooms/new',body);if(!ok)return alert(j.error||'创建失败');if(document.getElementById('nOk')===button){hideModal();switchRoom(j.id)}pollRooms()}
+    finally{button.disabled=false;button.textContent='创建会话'}
+  };
+  document.getElementById('nTitle').focus();
+}
+function memberPermissionRow(a,selected,p){
+  return '<section class="member-row" data-member="'+esc(a.id)+'" data-permissions="'+esc(JSON.stringify(p))+'"><label class="contact-pick"><input type="checkbox" data-member-check'+(selected?' checked':'')+'>'+esc(a.label)+' <small>@'+esc(a.id)+'</small></label><div class="perm-grid">'+PERM_GROUPS.map(g=>'<label><input type="checkbox" data-perm-group="'+g.id+'"'+(groupPermValue(p,g)?' checked':'')+'><span>'+esc(g.label)+'<small class="perm-sub">'+esc(g.hint)+'</small></span></label>').join('')+'</div></section>';
+}
+function syncMemberPermissionRow(row){
+  const on=row.querySelector('[data-member-check]').checked;
+  row.querySelectorAll('[data-perm-group]').forEach(i=>i.disabled=!on);
+}
+function readMemberPermissions(rows){
+  const participants=[],permissions={};
+  rows.forEach(row=>{
+    if(!row.querySelector('[data-member-check]').checked)return;
+    const id=row.dataset.member,state={},edited=new Set(),original=JSON.parse(row.dataset.permissions||'{}');
+    participants.push(id);
+    row.querySelectorAll('[data-perm-group]').forEach(i=>{state[i.dataset.permGroup]=i.checked;if(i.dataset.edited)edited.add(i.dataset.permGroup)});
+    permissions[id]=expandGroupedPerms(state);
+    PERM_GROUPS.forEach(group=>{
+      if(edited.has(group.id)||state[group.id]!==groupPermValue(original,group))return;
+      group.keys.forEach(key=>{permissions[id][key]=original[key]??group.defaults});
+    });
+  });
+  return {participants,permissions};
 }
 async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;await refreshContacts();if(rid!==RID)return;const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
   const memberList=CONTACTS.filter(a=>a.enabled||ids.includes(a.id));
-  const rowHtml=a=>{
-    const p=perms[a.id]||{read:true,post:true,trigger:true,board:false,files:false,work:false};
-    return '<section class="member-row" data-member="'+esc(a.id)+'"><label class="contact-pick"><input type="checkbox" data-member-check'+(ids.includes(a.id)?' checked':'')+'>'+esc(a.label)+' <small>@'+esc(a.id)+'</small></label><div class="perm-grid">'+PERM_GROUPS.map(g=>'<label><input type="checkbox" data-perm-group="'+g.id+'"'+(groupPermValue(p,g)?' checked':'')+'><span>'+esc(g.label)+'<small class="perm-sub">'+esc(g.hint)+'</small></span></label>').join('')+'</div></section>';
-  };
+  const rowHtml=a=>memberPermissionRow(a,ids.includes(a.id),perms[a.id]||a.default_permissions||{});
   const bulkBar='<div class="perm-bulk-bar"><button type="button" class="perm-bulk-btn" id="mMembersAll"></button><div class="perm-bulk-perms">'+PERM_GROUPS.map(g=>'<button type="button" class="perm-bulk-btn" data-perm-all="'+g.id+'"></button>').join('')+'</div></div>';
   showModal('<h3>会话成员与权限</h3><p class="hint">仅影响当前会话。同一联系人在其他会话中的权限独立配置。干活权限还需会话切到干活模式；CLI / 外部 Harness 必须自行遵守只读约定。</p>'+bulkBar+'<div id="memberRows">'+memberList.map(rowHtml).join('')+'</div><div class="btns"><button id="mClose">取消</button><button id="mSave" class="pri">保存成员和权限</button></div>');
   const rows=[...mbox.querySelectorAll('[data-member]')];
@@ -185,11 +219,11 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
       b.textContent=allOn?'✓ '+g.label+'（点此全关）':g.label+'（一键全开）';
     });
   };
-  const syncRow=row=>{const on=row.querySelector('[data-member-check]').checked;row.querySelectorAll('[data-perm-group]').forEach(i=>i.disabled=!on);};
+  const syncRow=syncMemberPermissionRow;
   rows.forEach(row=>{
     syncRow(row);
     row.querySelector('[data-member-check]').onchange=()=>{syncRow(row);syncBulk();};
-    row.querySelectorAll('[data-perm-group]').forEach(i=>{i.onchange=syncBulk;});
+    row.querySelectorAll('[data-perm-group]').forEach(i=>{i.onchange=()=>{i.dataset.edited='true';syncBulk()}});
   });
   const mAllBtn=document.getElementById('mMembersAll');
   if(mAllBtn)mAllBtn.onclick=()=>{
@@ -202,12 +236,12 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
       const gid=btn.dataset.permAll,active=activeRows();
       if(!active.length)return;
       const allOn=active.every(r=>r.querySelector('[data-perm-group="'+gid+'"]').checked);
-      active.forEach(r=>{r.querySelector('[data-perm-group="'+gid+'"]').checked=!allOn;});
+      active.forEach(r=>{const input=r.querySelector('[data-perm-group="'+gid+'"]');input.checked=!allOn;input.dataset.edited='true'});
       syncBulk();
     };
   });
   syncBulk();
-  document.getElementById('mClose').onclick=hideModal;document.getElementById('mSave').onclick=async()=>{const participants=[],permissions={};rows.forEach(row=>{if(!row.querySelector('[data-member-check]').checked)return;const id=row.dataset.member;participants.push(id);const state={};row.querySelectorAll('[data-perm-group]').forEach(i=>{state[i.dataset.permGroup]=i.checked;});permissions[id]=expandGroupedPerms(state);});const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/members',{participants,permissions});if(!ok)return alert(j.error||'保存失败');hideModal();await loadState()};
+  document.getElementById('mClose').onclick=hideModal;document.getElementById('mSave').onclick=async()=>{const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/members',readMemberPermissions(rows));if(!ok)return alert(j.error||'保存失败');hideModal();await loadState()};
 }
 document.getElementById('contactsAdd').onclick=()=>startConnectionWizard();
 if(document.getElementById('agentSettingsBtn'))document.getElementById('agentSettingsBtn').onclick=()=>openAgentManager();

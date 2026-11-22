@@ -22,6 +22,12 @@ class LanAddress(unittest.TestCase):
         self.assertEqual(common.pick_lan_ip(['10.0.0.7', '192.168.1.23']), '10.0.0.7')
         self.assertEqual(common.pick_lan_ip(['172.16.4.9']), '172.16.4.9')
 
+    def test_usable_default_route_bypasses_hostname_resolution(self):
+        with patch.object(common.socket, 'socket') as udp, patch.object(common.socket, 'getaddrinfo') as resolve:
+            udp.return_value.getsockname.return_value = ('192.168.1.23', 43210)
+            self.assertEqual(common.lan_ipv4(), '192.168.1.23')
+            resolve.assert_not_called()
+
     def test_tailscale_address_is_detected_separately(self):
         import subprocess
         completed = subprocess.CompletedProcess([], 0, stdout='100.64.0.5\nfd7a:115c:a1e0::1\n', stderr='')
@@ -40,6 +46,13 @@ class LanAddress(unittest.TestCase):
 
 
 class LanListener(unittest.TestCase):
+    def test_binding_a_numeric_address_does_not_resolve_its_hostname(self):
+        with patch.object(common.socket, 'getfqdn') as resolve, \
+             web.ExclusiveServer(('127.0.0.1', 0), web.Handler) as server:
+            self.assertEqual(server.server_name, '127.0.0.1')
+            self.assertEqual(server.server_port, server.server_address[1])
+            resolve.assert_not_called()
+
     def test_no_private_address_means_no_listener(self):
         with patch.object(common, 'lan_ipv4', return_value=None):
             self.assertEqual(web.start_lan_listener(0), (None, None))

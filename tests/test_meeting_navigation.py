@@ -24,14 +24,13 @@ const ctx=vm.createContext({bar:node('bar'),modal:node('modal'),innerHeight:844,
  document:{getElementById:node,activeElement:node('menu'),body:{classList:{remove(){}}},addEventListener:(k,f)=>events[k]=f},
  addEventListener:(k,f)=>events['window:'+k]=f,drawMeetingDetails:()=>details++,openAi(){}});
 vm.runInContext(source,ctx);
-node('menu').onclick();assert.equal(node('menu').getAttribute('aria-expanded'),'true');assert.equal(focused,'bMode');
-node('bSide').onclick();assert.equal(details,1);assert.equal(node('side').inert,false);assert.ok(node('side').classList.contains('on'));assert.equal(focused,'sideX');
-assert.equal(node('bar').classList.contains('show'),false);
-node('sideX').onclick();assert.equal(node('side').inert,true);assert.equal(focused,'menu');
-node('menu').onclick();events.pointerdown({target:node('outside')});assert.equal(node('bar').classList.contains('show'),false);
-node('menu').onclick();events.keydown({key:'Escape',preventDefault(){}});assert.equal(node('menu').getAttribute('aria-expanded'),'false');
-node('bSide').onclick();node('sideBg').onclick();assert.equal(node('side').inert,true);
-node('bSide').onclick();events.keydown({key:'Escape',preventDefault(){}});assert.equal(node('side').inert,true);
+const toggle=node('sideToggleBtn');
+toggle.onclick();assert.equal(toggle.getAttribute('aria-expanded'),'true');
+assert.equal(details,1);assert.equal(node('side').inert,false);assert.ok(node('side').classList.contains('on'));assert.equal(focused,'sideX');
+node('sideX').onclick();assert.equal(node('side').inert,true);assert.equal(focused,'sideToggleBtn');
+toggle.onclick();toggle.onclick();assert.equal(toggle.getAttribute('aria-expanded'),'false');
+toggle.onclick();node('sideBg').onclick();assert.equal(node('side').inert,true);
+toggle.onclick();events.keydown({key:'Escape',preventDefault(){}});assert.equal(node('side').inert,true);
 """
         result = subprocess.run(['node', '-e', script], cwd=Path(__file__).resolve().parents[1],
                                 capture_output=True, text=True, timeout=15)
