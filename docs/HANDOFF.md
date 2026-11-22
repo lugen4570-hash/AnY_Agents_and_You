@@ -2,6 +2,27 @@
 
 最近更新：2026-11-22。
 
+## AnY (Cojam) 2.8.15 正式发布（2026-11-22）
+
+- **本版内容**：
+  - **官网与品牌视觉**：官网全面更新为大卫·霍克尼明亮花园多色版，首页使用手绘斜体 `AnY` 错版阴影字标（[website/assets/wordmark.svg](../website/assets/wordmark.svg)）、多场景协作演示与平台下载页。
+  - **客户端 GUI 与桌面壳**：[index.html](../index.html)、[static/studio.css](../static/studio.css)、[static/harness-ui.css](../static/harness-ui.css)、[static/app-meeting.js](../static/app-meeting.js) 统一为霍克尼明亮多色画室浅/深双主题，拉开用户池水浅蓝气泡、Agent 彩色徽章与左竖线白卡、暖鹅黄共同目标与右侧看板语义色标层次，同步 [static/connections.js](../static/connections.js) 版本校验为 `2.8.15` 及桌面壳（[desktop_shell/main.py](../desktop_shell/main.py)、[desktop_tauri/src-tauri/src/platform.rs](../desktop_tauri/src-tauri/src/platform.rs)）`AnY` 标题与 Windows 11 标题栏颜色。
+  - **CLI 终端界面**：[bridge/terminal.py](../bridge/terminal.py) 升级为泳池松林画室主题，使用圆角边框卡片区分你、Agent、人类成员与系统分割线，`F3` 看板拆分为带色标头与分割线的会议目标、待办、公告、已完成、正在改的文件、论道与成员，支持按单元格宽度折行及开关侧栏/窗口缩放自动重排。
+  - **macOS 图标与打包适配**：[make_icon.py](../make_icon.py) 新增导出 `roundtable.icns` 与 `desktop_tauri/src-tauri/icons/icon.icns`，[packaging/build_macos.sh](../packaging/build_macos.sh) 为 `Cojam.app` 接入 `--icon roundtable.icns` 与 `CFBundleDisplayName="AnY"`，[packaging/build_macos_python.py](../packaging/build_macos_python.py) 随分发包打包 `roundtable.icns`。
+- **测试与实测验证**：
+  - 发布工作树提交 [`a48649d`](https://github.com/lugen4570-hash/Cojam/commit/a48649dcae7a04b8ba0fcbda283970957838ccfc)（清单更新提交 [`dd4e4d7`](https://github.com/lugen4570-hash/Cojam/commit/dd4e4d735c0685f31b16418f622db33c325e0d87)）：117 项 Python 测试、8 项 Rust Tauri 测试、`node --check website/site.js` 与 `static/connections.js` 全部通过。
+  - 隔离端口 `18765` / `18766` 验证 `CojamCore.exe` 与 `Cojam-Portable-2.8.15.exe` 启动、`/api/server/info`（`2.8.15`）、内置静态资源字节一致性及 `/api/server/exit` 正常退出；`Cojam-Setup-2.8.15-test.exe` 静默安装、覆盖重装与卸载均保留 `data/sentinel.txt`；3 份 Windows ZIP 与 `Cojam-2.8.15-macOS-Python.zip` 完整性及零私人数据校验通过。
+- **GitHub Release 与线上核验**：
+  - [GitHub Release v2.8.15](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.15) 已上传并核对全部 7 个未签名 Windows 附件（不覆盖已有版本）：
+    - `Cojam-Setup-2.8.15.exe`（`13,358,291` 字节，`522ea9f88b4b7d4bd587d34490d61e88f4d0ab908275f9fa7ec97ce98fb0afb4`）
+    - `Cojam-Desktop-2.8.15-win64.zip`（`15,892,864` 字节，`e136094633330d9ec4ae01e1894dceb7a7722257542048882d6b95515cf3729e`）
+    - `Cojam-2.8.15-win64.zip`（`13,047,303` 字节，`e23118f4da0281dc781657946979222eef456730168fcca69f6f11aed261bb55`）
+    - `Cojam-Member-2.8.15.zip`（`252,649` 字节，`80c0eb2e66bec8e0bcc7f52a0d2238c9037fcae6ae9d9cbe7b16bea0d60ce290`）
+    - `Cojam-Portable-2.8.15.exe`（`13,310,155` 字节，`41605ad49c7e351327199f59a241483dfa20ad56c27bfd58f5303437a29503f8`）
+    - `SHA256SUMS-2.8.15.txt`（`462` 字节）与 `build-report-2.8.15.json`（`1,821` 字节）
+  - GitHub Pages [Deploy website 45012787163](https://github.com/lugen4570-hash/Cojam/actions/runs/45012787163) 部署成功；实测拉取线上首页、`download.html`、`update.json`（`2.8.15`）、`macos-update.json`（`2.8.15`，`722,423` 字节，SHA-256 `fb097f39f4e128d22220120bdc63af91462c8ac1c01a827a9a6403af68fbb4dc`，含 `Cojam/roundtable.icns`），并实际下载线上 `Cojam-Setup-2.8.15.exe`、`Cojam-Portable-2.8.15.exe` 与 `Cojam-2.8.15-macOS-Python.zip`，大小与 SHA-256 100% 一致。
+  - macOS 云端构建验证 [Verify macOS desktop builds 45012788570](https://github.com/lugen4570-hash/Cojam/actions/runs/45012788570)：`build (macos-15)`（Apple Silicon）打包含新版 `.icns` 图标的 `Cojam.app`、签名校验与启动后台均通过；`build (macos-15-intel)` 完成打包与 `codesign` 校验，但启动后台探测 `curl /api/server/info` 超时（exit code 28）。
+
 ## Cojam 2.8.14 Windows 正式发布（2026-11-22）
 
 - 发布包含按会议隔离草稿、会话跨项目迁移和空项目删除、成员模型与思考强度显示、CLI 首页隐藏归档会话，以及撤回后恢复带图草稿并取消对应 Agent 任务。构建源码为 [`33ad801`](https://github.com/lugen4570-hash/Cojam/commit/33ad801de14268b1837fa78c4c19c53e6b5b63ea)。
