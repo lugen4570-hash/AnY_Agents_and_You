@@ -1,6 +1,18 @@
 # Cojam 交接摘要
 
-最近更新：2026-11-21。
+最近更新：2026-11-22。
+
+## Cojam 2.8.11 Windows 正式发布（2026-11-22）
+
+- **问题修复与测试**：修复 `bridge/detached_jobs.py` 在回收独立 CLI 任务结果时将 24 位十六进制 `model_revision` 强转为 `int` 导致抛错并吞掉回复（如 Antigravity 连续触发 `invalid literal for int() with base 10` 内部错误）的问题，并在 `tests/test_detached_jobs.py` 新增 `test_detached_job_handles_hex_model_revision`。验证情况：`tests/test_detached_jobs.py` 在发布工作树与主工作区均 3/3 通过（首次合并跑 `tests.test_model_catalog`/`test_icons`/`test_updater`/`test_desktop_shell` 共 66 项通过，`test_cli_job_survives_cojam_shutdown_and_collects_on_reopen` 曾因 Windows 临时目录清理占用偶发失败，单独复跑已通过）；`mypy` 检查 `detached_jobs.py`/`version.py`/`model_catalog.py` 通过；`ruff` 检查 `tests/test_detached_jobs.py`/`version.py` 通过；`node --check static/connections.js` 与 `cargo test --locked`（8 项 Rust 测试）全部通过。
+- **源码与 Release 发布**：`2.8.11` 源码提交 [`a753dd383dc3bdc4b1ecde3853518d6aa5b35607`](https://github.com/lugen4570-hash/Cojam/commit/a753dd383dc3bdc4b1ecde3853518d6aa5b35607) 推送至 `lugen4570-hash/Cojam` `main`，对应 [GitHub Release v2.8.11](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.11) 上传并核对 7 项未签名附件（未覆盖历史版本）：
+  - `Cojam-Setup-2.8.11.exe`（`13,398,721` 字节，`3e85851f46fb6ef4faee3858e23b2d1ac5f4c70301c140768d85d10c0e507893`）
+  - `Cojam-Desktop-2.8.11-win64.zip`（`15,915,125` 字节，`29e0f41c36c2f9b931f8630218c72432742878590fb428767a6d2b8cad79933e`）
+  - `Cojam-2.8.11-win64.zip`（`13,048,340` 字节，`7d0ee25681b26fe62e80a0370e0d3bd68672c0acb15a613268df7bdfd50158a6`）
+  - `Cojam-Member-2.8.11.zip`（`245,548` 字节，`33d46ba544800faf5dd69df190fd5828c756651fd2ab68828f6826d65641c4e7`）
+  - `Cojam-Portable-2.8.11.exe`（`13,311,165` 字节，`44bda2a0138d455fed70292b9aa2c345b9c3d2002eb983c3836450ce15891db7`）
+  - `SHA256SUMS-2.8.11.txt`（`462` 字节）与 `build-report-2.8.11.json`（`1,692` 字节）
+- **实测打包与线上核验**：在隔离端口 `18765` 与独立临时测试安装路径完成 `CojamCore.exe` / `Cojam-Portable-2.8.11.exe` 启停与资源校验、3 份 ZIP 完整性与零隐私校验、以及 `Cojam-Setup-2.8.11-test.exe` 静默安装/覆盖重装/卸载保留 `data/sentinel.txt` 与注册表清理。官网提交 [`083102c`](https://github.com/lugen4570-hash/Cojam/commit/083102c) 触发 [Deploy website 44977413908](https://github.com/lugen4570-hash/Cojam/actions/runs/44977413908) 部署成功；实测拉取 `https://lugen4570-hash.github.io/Cojam/`、`download.html`、`update.json` 与官网 `Cojam-Setup-2.8.11.exe`、`Cojam-Portable-2.8.11.exe`，字节数与 SHA-256 100% 一致。
 
 ## Cojam 2.8.10 Windows 正式发布
 
