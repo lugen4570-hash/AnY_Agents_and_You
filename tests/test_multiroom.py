@@ -129,6 +129,27 @@ class MultiRoom(unittest.TestCase):
         self.assertEqual(call("POST", rp(a, "open"), {})[0], 200)
         self.assertEqual(R.last_room(), a.id)
 
+    def test_owner_recall_preserves_cursor_and_redacts_old_quotes_on_reload(self):
+        room = R.rooms.create("撤回", "", WD, participants=[])
+        path = rp(room, "recall")
+        room.add_message("你", "请撤回", [{"path": "private.png"}])
+        room.add_message("claude", "后续消息", reply_to=room.make_reply(0))
+        self.assertEqual(call("POST", path, {"id": 0}, auth=False)[0], 403)
+        self.assertEqual(call("POST", path, {"id": 1})[0], 403)
+        self.assertEqual(call("POST", path, {"id": True})[0], 404)
+        for _ in range(2):
+            self.assertEqual(call("POST", path, {"id": 0})[0], 200)
+        update = call("GET", rp(room, "messages") + "?since=2")[1]
+        self.assertEqual((update["next"], update["messages"], update["recalled"]), (2, [], [0]))
+        self.assertIsNone(room.make_reply(0, "原文"))
+        with R.rooms.lock:
+            R.rooms.loaded.pop(room.id)
+        room.close()
+        loaded = R.rooms.get(room.id)
+        self.assertEqual(loaded.messages[0]["text"], "消息已撤回")
+        self.assertNotIn("attachments", loaded.messages[0])
+        self.assertEqual(loaded.messages[1]["reply_to"]["text"], "消息已撤回")
+
     def test_goal_in_prompt(self):
         a = R.rooms.create("目标", "把第三章写完", WD)
         seen = []

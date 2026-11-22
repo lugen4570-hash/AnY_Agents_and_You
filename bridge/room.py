@@ -204,6 +204,9 @@ class Room:
     def __init__(self, rid, d, meta, messages):
         self.id, self.dir, self.meta, self.messages = rid, d, meta, messages
         self.lock = threading.RLock()
+        self.recalled = set(read_json(os.path.join(d, "recalled.json")) or [])
+        if self.recalled:
+            self._apply_recalls()
         self.pending = []      # 已排上（队列里或在等自己的锁）还没开始的 ai，避免同一个人被重复叫
         self.state: dict[str, Any] = {
             "running": [], "chain": 0,         # running：正在跑的名字列表（压缩时是 "compact:claude" 这样）
@@ -320,6 +323,8 @@ class Room:
             if not_for:
                 m["not_for"] = not_for
             if reply_to:
+                if reply_to["id"] in self.recalled:
+                    reply_to = {"id": reply_to["id"], "speaker": reply_to["speaker"], "text": "消息已撤回"}
                 m["reply_to"] = reply_to
             self.messages.append(m)
             self.touched = time.time()
@@ -334,6 +339,28 @@ class Room:
                 with open(os.path.join(self.dir, "log.jsonl"), "a", encoding="utf-8") as f:
                     f.write(json.dumps(m, ensure_ascii=False) + "\n")
         return m
+
+    def _apply_recalls(self):
+        for index, message in enumerate(self.messages):
+            if message["id"] in self.recalled:
+                self.messages[index] = {**{k: message[k] for k in ("id", "speaker", "time")},
+                                        "text": "消息已撤回", "recalled": True}
+            elif (reply := message.get("reply_to")) and reply["id"] in self.recalled:
+                self.messages[index] = {**message, "reply_to": {
+                    "id": reply["id"], "speaker": reply["speaker"], "text": "消息已撤回"}}
+
+    def recall_message(self, mid, speaker):
+        with self.lock:
+            if self.closed or type(mid) is not int or not 0 <= mid < len(self.messages):
+                return 404, {"error": "没有这条消息"}
+            if self.messages[mid]["speaker"] != speaker:
+                return 403, {"error": "只能撤回自己发的消息"}
+            if mid not in self.recalled:
+                recalled = self.recalled | {mid}
+                write_json(os.path.join(self.dir, "recalled.json"), sorted(recalled))
+                self.recalled = recalled
+                self._apply_recalls()
+            return 200, {"ok": True}
 
     def system_note(self, text):
         self.add_message("系统", text, quiet=True)
@@ -1066,7 +1093,7 @@ class Room:
         except (TypeError, ValueError):
             return None
         with self.lock:
-            if not 0 <= mid < len(self.messages):
+            if not 0 <= mid < len(self.messages) or mid in self.recalled:
                 return None
             m = self.messages[mid]
         if m["speaker"] not in ("你",) + tuple(AIS):
@@ -1666,6 +1693,7 @@ class Room:
     def messages_since(self, since):
         with self.lock:
             return {"meeting": self.id, "messages": self.messages[since:], "next": len(self.messages),
+                    "recalled": sorted(self.recalled),
                     "running": list(self.state["running"]), "queued": self.queued_count()}
 
 

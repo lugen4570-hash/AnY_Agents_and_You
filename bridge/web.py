@@ -345,6 +345,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._guard(path[len("/api/guard/"):])
         if path == "/api/post":
             return self._external_post()
+        if path == "/api/external/recall":
+            return self._external_post(recall=True)
         if path.startswith("/api/external/member/"):
             data = self._read_json()
             if data is None:
@@ -754,6 +756,8 @@ class Handler(BaseHTTPRequestHandler):
             R.set_last(r.id)
             r.handle_message("你", text, atts, reply_to=reply)
             return self._json(200, {"ok": True})
+        if act == "recall":
+            return self._recall(r, data.get("id"), "你")
         if act in ("debate/start", "debate/finish"):
             try:
                 state = debate.start(r, data) if act == "debate/start" else debate.finish(r)
@@ -866,7 +870,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "ais": todo})
         return self._send(404, b"not found", "text/plain")
 
-    def _external_post(self):
+    def _recall(self, room, mid, speaker):
+        try:
+            code, result = room.recall_message(mid, speaker)
+        except OSError:
+            return self._json(500, {"error": "无法保存撤回，请检查数据目录的写入权限"})
+        return self._json(code, result)
+
+    def _external_post(self, recall=False):
         """给外部程序用：桌面应用里的 Claude、终端里的 Claude / Codex 等。room 不填 = 用户最近打开的那场。"""
         from . import updater
         if updater.status().get('state') == 'installing':
@@ -888,6 +899,10 @@ class Handler(BaseHTTPRequestHandler):
         if not access.external_allowed(r, speaker, str(data.get("worker") or self.headers.get("X-Cojam-Worker") or ""),
                                        str(data.get("binding_token") or self.headers.get("X-Cojam-Execution") or "")):
             return self._json(403, {"error": "此会话属于另一个执行端"})
+        if recall:
+            if (registry.get(speaker) or {}).get("kind") != "user":
+                return self._json(403, {"error": "只有真人联系人能撤回自己的消息"})
+            return self._recall(r, data.get("id"), speaker)
         text = str(data.get("text", "")).strip()
         if not text:
             return self._json(400, {"error": "empty"})
@@ -910,7 +925,8 @@ class Handler(BaseHTTPRequestHandler):
             connections.seen(pid, self._bearer(), "http")
             result = r.messages_since(_int(q, "since"))
             # External clients receive text and message metadata, never local file paths.
-            result["messages"] = [{k: m[k] for k in ("id", "time", "speaker", "text", "to_user") if k in m} for m in result["messages"] if not m.get("quiet")]
+            result["messages"] = [{k: m[k] for k in ("id", "time", "speaker", "text", "to_user", "recalled") if k in m} for m in result["messages"] if not m.get("quiet")]
+            result["self"] = pid if (registry.get(pid) or {}).get("kind") == "user" else ""
             result["permissions"] = access.permissions(r, pid)
             return self._json(200, result)
         return self._json(404, {"error": "unknown endpoint"})

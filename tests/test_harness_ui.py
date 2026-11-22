@@ -34,6 +34,32 @@ class HarnessUiTests(unittest.TestCase):
         ):
             self.assertIn(marker, html, f'Missing marker {marker} in index.html')
 
+    def test_agent_settings_fold_unconfigured_presets(self):
+        self.run_node(r'''
+const fs=require('fs'), vm=require('vm'), assert=require('assert/strict');
+const settings=fs.readFileSync('static/agent-settings.js','utf8');
+const harness=fs.readFileSync('static/harness-ui.js','utf8');
+const contacts=[
+  {id:'codex',driver:'codex',enabled:true},
+  {id:'uninstalled',driver:'cli',enabled:false},
+  {id:'desktop',driver:'external',enabled:true},
+  {id:'paired',driver:'external',enabled:true},
+  {id:'manual',driver:'cli',enabled:false,user:true},
+  {id:'configured',driver:'cli',enabled:false,configured:true},
+  {id:'alice',kind:'user',driver:'external',enabled:true}
+];
+const ctx=vm.createContext({CONTACTS:contacts,agCat:{connections:{paired:{has_key:true}}},esc:String});
+vm.runInContext(settings.slice(settings.indexOf('function groupAgentSettings'),settings.indexOf('async function openAgentManager')),ctx);
+vm.runInContext(harness.slice(harness.indexOf('function renderAgentsTab'),harness.indexOf('function renderExtensionsContent')),ctx);
+const html=ctx.renderAgentsTab(), [visible,folded]=html.split('<details');
+for(const id of ['codex','paired','manual','configured'])assert.ok(visible.includes('data-settings-agent="'+id+'"'));
+for(const id of ['uninstalled','desktop']){
+  assert.ok(!visible.includes('data-settings-agent="'+id+'"'));
+  assert.ok(folded.includes('data-settings-agent="'+id+'"'));
+}
+assert.ok(!html.includes('@alice'));
+''')
+
     def test_codex_cli_plus_antigravity_desktop_model_chip_and_slash_skills(self):
         self.run_node(r'''
 const assert = require('assert/strict');

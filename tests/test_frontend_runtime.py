@@ -8,6 +8,104 @@ from unittest import mock
 
 
 class ContactRoutes(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test saved drafts')
+    def test_drafts_survive_new_windows_and_stay_in_their_room(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const chat=fs.readFileSync('static/app-chat.js','utf8');
+const source=chat.slice(chat.indexOf('let pend=[];'),chat.indexOf('const pendEl='));
+function storage(){const data=new Map();return {getItem:key=>data.get(key)||null,setItem:(key,val)=>data.set(key,val),removeItem:key=>data.delete(key)}}
+const localStorage=storage();
+function windowContext(sessionStorage){
+  const context=vm.createContext({RID:'first',ta:{},localStorage,sessionStorage,renderQuote(){},resizeComposer(){},drawPend(){}});
+  vm.runInContext(source+'\nlet quote=null;',context);return context;
+}
+const session=storage();
+session.setItem('cojam.draft.first',JSON.stringify({text:'旧草稿',attachments:[],quote:null}));
+let context=windowContext(session);context.restoreDraft();assert.equal(context.ta.value,'旧草稿');
+vm.runInContext("ta.value='会话一';pend.push({name:'粘贴.png',path:'one.png'});quote={id:4};saveDraft()",context);
+context.RID='second';context.restoreDraft();assert.equal(context.ta.value,'');
+context.ta.value='会话二';context.saveDraft();
+context=windowContext(storage());context.restoreDraft();assert.equal(context.ta.value,'会话一');
+assert.equal(vm.runInContext('pend[0].name',context),'粘贴.png');assert.equal(vm.runInContext('quote.id',context),4);
+vm.runInContext("ta.value='';pend=[];quote=null;saveDraft()",context);
+assert.equal(localStorage.getItem('cojam.draft.first'),null);
+context.RID='second';context.restoreDraft();assert.equal(context.ta.value,'会话二');
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test draft uploads')
+    def test_interrupted_paste_upload_resumes_in_its_original_room(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const chat=fs.readFileSync('static/app-chat.js','utf8');
+const draft=chat.slice(chat.indexOf('let pend=[];'),chat.indexOf('const pendEl='));
+const upload=chat.slice(chat.indexOf('async function upload('),chat.indexOf("document.getElementById('clip').onclick"));
+const metadata=new Map(),files=new Map(),localStorage={getItem:k=>metadata.get(k)||null,
+ setItem:(k,v)=>metadata.set(k,v),removeItem:k=>metadata.delete(k)};
+const picture={name:'粘贴.png',size:256};
+function openWindow(fetch){
+  const context=vm.createContext({RID:'room-one',ta:{value:'保留的文字'},localStorage,
+    sessionStorage:{getItem(){},removeItem(){}},renderQuote(){},resizeComposer(){},drawPend(){},
+    crypto:{getRandomValues:()=>[1,2,3,4]},alert:message=>{throw Error(message)},fetch});
+  vm.runInContext(draft+'\nlet quote=null;\n'+upload,context);
+  context.draftUploadTransaction=async (_,op)=>op({put:entry=>files.set(entry.id,entry),delete:id=>files.delete(id),
+    index:()=>({getAll:rid=>[...files.values()].filter(entry=>entry.rid===rid)})});
+  return context;
+}
+(async()=>{
+  let started=false;
+  const beforeClose=openWindow((url,{body})=>{assert.match(url,/room-one\/upload/);assert.equal(body,picture);
+    started=true;return new Promise(()=>{});});
+  beforeClose.saveDraft();void beforeClose.upload(picture);await new Promise(setImmediate);
+  assert.equal(started,true);assert.equal(files.size,1);
+  const reopened=openWindow(async (url,{body})=>{assert.match(url,/room-one\/upload/);assert.equal(body,picture);
+    return {ok:true,json:async()=>({name:picture.name,path:'files/one.png',kind:'image'})};});
+  reopened.RID='room-two';reopened.restoreDraft();await reopened.resumeDraftUploads('room-two');
+  assert.equal(reopened.ta.value,'');assert.equal(files.size,1);
+  reopened.RID='room-one';reopened.restoreDraft();await reopened.resumeDraftUploads('room-one');
+  assert.equal(reopened.ta.value,'保留的文字');assert.equal(files.size,0);
+  assert.equal(JSON.parse(localStorage.getItem('cojam.draft.room-one')).attachments[0].name,picture.name);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test draft sending')
+    def test_send_preserves_text_entered_before_response(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const chat=fs.readFileSync('static/app-chat.js','utf8');
+const draft=chat.slice(chat.indexOf('let pend=[];'),chat.indexOf('const pendEl='));
+const send=chat.slice(chat.indexOf('async function send(){'),chat.indexOf("document.getElementById('send').onclick"));
+const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};
+let value='第一条',writes=0,finish;
+const ta={get value(){return value},set value(next){writes++;value=next}};
+const context=vm.createContext({RID:'first',ta,localStorage:storage,sessionStorage:{getItem(){},removeItem(){}},
+ renderQuote(){},resizeComposer(){},drawPend(){},poll(){},setTimeout(){},api:()=>'/api/send',
+ alert:message=>{throw Error(message)},fetch:(url,{body})=>{
+   assert.equal(JSON.parse(body).text,'第一条');
+   return new Promise(resolve=>{finish=()=>resolve({ok:true})});
+ }});
+vm.runInContext(draft+'\nlet quote=null;\n'+send,context);
+(async()=>{
+  vm.runInContext("pend.push({path:'sent.png',kind:'image'});",context);
+  const sending=context.send();
+  value='正在输入第二条';
+  vm.runInContext("pend.push({path:'next.png',kind:'image'});",context);
+  finish();await sending;
+  const saved=JSON.parse(storage.getItem('cojam.draft.first'));
+  assert.equal(saved.text,value);assert.deepEqual(saved.attachments,[{path:'next.png',kind:'image'}]);
+  assert.equal(writes,0);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test contact refresh')
     def test_contact_refresh_ignores_stale_responses_and_preserves_list(self):
         root = Path(__file__).resolve().parents[1]
@@ -654,6 +752,7 @@ assert.ok(roomMatch, 'switchRoom missing');
 let pushed = null;
 const roomContext = vm.createContext({
   RID: null, roomViewGeneration: 0, resetRoomView: () => {}, post: () => {}, api: () => '', drawRooms: () => {},
+  saveDraft: () => {}, restoreDraft: () => {}, resumeDraftUploads: () => {},
   poll: () => Promise.resolve(), feed: {scrollTop: 0, scrollHeight: 0}, queueJump: () => {},
   location: {search: '?owner_tab=' + valid},
   history: {replaceState: (state, title, url) => { pushed = url; },
@@ -1126,6 +1225,33 @@ assert.equal(typeof context.render, 'function');
 
 
 class AttachmentAndModalInteractions(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to verify image tools')
+    def test_mosaic_reduces_selected_pixels_before_export(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const viewer=fs.readFileSync('static/app-viewer.js','utf8');
+assert.match(fs.readFileSync('index.html','utf8'),/data-tool="mosaic"[^>]*>马赛克/);
+const source=viewer.slice(viewer.indexOf('function applyEdit('),viewer.indexOf('function replay('));
+const calls=[];
+function canvas(name,width,height){
+  const ctx={save(){},restore(){},clearRect(...args){calls.push([name,'clear',...args])},
+    drawImage(image,...args){calls.push([name,image.name,this.imageSmoothingEnabled,...args])}};
+  return {name,width,height,getContext:()=>ctx};
+}
+const base=canvas('base',100,100),layer=canvas('layer',100,100),preview=canvas('preview',100,100);
+const context=vm.createContext({ed:{base,layer},vCv:preview,vctx:preview.getContext(),fitCanvas(){},
+ document:{createElement:()=>canvas('pixels')}});
+vm.runInContext(source,context);
+context.applyEdit({tool:'mosaic',rect:{x:4,y:8,w:32,h:24},block:8});
+context.drawEditedImage();
+assert.deepEqual(calls,[['pixels','base',undefined,4,8,32,24,0,0,4,3],
+ ['base','clear',4,8,32,24],['base','pixels',false,4,8,32,24],['preview','clear',0,0,100,100],
+ ['preview','base',undefined,0,0],['preview','layer',undefined,0,0]]);
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to verify UI gestures')
     def test_dragging_out_of_modal_does_not_dismiss_it(self):
         root = Path(__file__).resolve().parents[1]

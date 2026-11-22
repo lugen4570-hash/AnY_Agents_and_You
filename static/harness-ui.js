@@ -774,8 +774,8 @@
   }
 
   function renderAgentsTab() {
-    const list = (typeof CONTACTS !== 'undefined' ? CONTACTS : []).filter(a => a && a.kind !== 'user');
-    const rows = list.map(a => {
+    const {active,presets} = groupAgentSettings(CONTACTS, agCat);
+    const rows = agents => agents.map(a => {
       const status = typeof contactStatusLabel === 'function' ? contactStatusLabel(a) : '';
       const channel = typeof contactChannelLabel === 'function' ? contactChannelLabel(a) : (a.driver || '');
       return '<div class="ext-item"><div class="ext-item-top"><b>' + esc(a.label || a.id) + '</b>'
@@ -783,10 +783,11 @@
         + '<span class="ext-badge">' + esc(channel) + '</span>'
         + (status ? '<span class="ext-badge">' + esc(status) + '</span>' : '')
         + '<button type="button" style="margin-left:auto" data-settings-agent="' + esc(a.id) + '">配置</button></div></div>';
-    }).join('') || '<p class="hint">尚未配置任何 Agent。</p>';
+    }).join('');
     return '<div class="ext-toolbar"><p class="hint" style="margin:0">修改 Agent 的程序路径、默认模型、思考强度与桌面 MCP 接入。</p>'
       + '<div class="ext-actions"><button type="button" id="settingsOpenManager">管理与扫描</button><button type="button" class="pri" id="settingsAddAgent">＋ 接入</button></div></div>'
-      + '<div class="ext-list">' + rows + '</div>';
+      + '<div class="ext-list">' + (rows(active) || '<p class="hint">尚未接入 Agent。</p>') + '</div>'
+      + (presets.length ? '<details class="connection-advanced"><summary>其他预置 Agent（' + presets.length + '）</summary><div class="ext-list">' + rows(presets) + '</div></details>' : '');
   }
 
   function renderExtensionsContent(data, errorMsg) {

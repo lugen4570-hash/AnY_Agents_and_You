@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>加入会话 · 合拍 Cojam</title>
-<link rel="icon" href="/static/icon-192.png?v=cojam-2811"><link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2811">
+<link rel="icon" href="/static/icon-192.png?v=cojam-2812"><link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2812">
 <meta name="theme-color" content="#6022e8">
 <style>
 :root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:light dark;background:#151517;color:#ececf1}*{box-sizing:border-box}body{margin:0;height:100dvh;display:grid;grid-template-columns:260px 1fr}aside{padding:24px 16px;background:#1b1b1e;border-right:1px solid #333;overflow:auto}h2{font-size:18px}small{color:#aaa}button,input,textarea{font:inherit;padding:10px;border:1px solid #444;border-radius:8px;background:#232328;color:inherit}input{width:100%;margin:12px 0}button{cursor:pointer}#list button{display:block;width:100%;text-align:left;margin:8px 0}#list button.on{border-color:#6495ff;background:#263656}main{display:flex;flex-direction:column;min-width:0;padding:24px;overflow:hidden}#feed{flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.msg{padding:16px 0;border-bottom:1px solid #333}.who{font-size:12px;color:#aaa;margin-bottom:6px}form{display:flex;gap:8px;padding-top:16px}textarea{flex:1;resize:vertical}#error{color:#fca5a5;white-space:pre-wrap}#status{color:#aaa}#namePrompt{border:1px solid #444;border-radius:12px;padding:16px;margin-top:16px;background:#232328}#namePrompt[hidden]{display:none}@media(max-width:650px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{padding:12px;max-height:42vh}main{padding:16px}h2{margin:0}#list button{display:inline-block;width:auto}}
@@ -26,10 +26,48 @@ async function request(url,body,auth){const r=await fetch(url,{method:body?'POST
 function clear(){generation++;rid='';since=0;permission=false;el('feed').replaceChildren();el('text').value='';el('text').disabled=el('submit').disabled=true;el('title').textContent='选择一个会话'}
 function openRoom(room){clear();rid=room.id;save(KEYS.room,rid);el('title').textContent=room.title;poll();refresh()}
 async function refresh(){if(!token)return;const gen=generation;try{const j=await request('/api/external/rooms');if(gen!==generation)return;el('identity').textContent='当前身份：'+j.contact.label+' · 此设备已记住';el('list').replaceChildren();for(const room of j.rooms){const b=document.createElement('button');b.textContent=room.title;b.classList.toggle('on',room.id===rid);b.onclick=()=>openRoom(room);el('list').append(b)}const first=autoOpen;autoOpen=false;const wanted=presetRoom&&j.rooms.find(r=>r.id===presetRoom);presetRoom='';if(wanted){openRoom(wanted);return}if(first&&!rid&&j.rooms.length===1){openRoom(j.rooms[0]);return}if(rid&&!j.rooms.some(r=>r.id===rid)){clear();el('status').textContent='此会话的访问权限已撤销'}else if(!rid)el('status').textContent=j.rooms.length?'选择左侧会话开始交流':'还没有受邀的会话，请联系管理员。';el('error').textContent=''}catch(e){autoOpen=false;if(e.status===401){clear();el('list').replaceChildren();el('identity').textContent='';el('error').textContent='身份暂时无法验证或已被撤销，请检查连接或联系管理员。';return}clear();el('list').replaceChildren();el('error').textContent=e.message}}
-async function poll(){if(!rid||busy)return;const gen=generation,room=rid;busy=true;try{const j=await request('/api/external/messages?room='+encodeURIComponent(room)+'&since='+since);if(gen!==generation)return;for(const m of j.messages){const box=document.createElement('div');box.className='msg';const who=document.createElement('div');who.className='who';who.textContent=m.speaker+' · '+m.time;const text=document.createElement('div');text.textContent=m.text;box.append(who,text);el('feed').append(box)}if(j.messages.length)el('feed').scrollTop=el('feed').scrollHeight;since=j.next;permission=j.permissions.post;el('text').disabled=el('submit').disabled=!permission;el('status').textContent=permission?'以自己的联系人身份发言':'此会话为只读'}catch(e){if(gen===generation){clear();el('error').textContent=e.message}}finally{busy=false}}
+function showRecalls(ids){
+  for(const id of ids||[]){
+    const box=el('feed').querySelector('.msg[data-id="'+id+'"]');
+    if(!box||box.dataset.recalled==='true')continue;
+    box.dataset.recalled='true';
+    box.querySelector('.message-text').textContent='消息已撤回';
+    box.querySelector('.recall')?.remove();
+  }
+}
+async function recall(id){
+  const room=rid,gen=generation;
+  if(!confirm('撤回这条消息？已经发给 AI 的内容不会收回。'))return;
+  try{await request('/api/external/recall',{room,id});if(gen===generation)showRecalls([id])}
+  catch(e){if(gen===generation)el('error').textContent=e.message}
+}
+async function poll(){
+  if(!rid||busy)return;
+  const gen=generation,room=rid;busy=true;
+  try{
+    const j=await request('/api/external/messages?room='+encodeURIComponent(room)+'&since='+since);
+    if(gen!==generation)return;
+    for(const m of j.messages){
+      const box=document.createElement('div');box.className='msg';box.dataset.id=m.id;box.dataset.recalled=!!m.recalled;
+      const who=document.createElement('div');who.className='who';who.textContent=m.speaker+' · '+m.time;
+      if(m.speaker===j.self&&!m.recalled){
+        const button=document.createElement('button');button.type='button';button.className='recall';button.textContent='撤回';
+        button.onclick=()=>recall(m.id);who.append(' ',button);
+      }
+      const text=document.createElement('div');text.className='message-text';text.textContent=m.text;
+      box.append(who,text);el('feed').append(box);
+    }
+    showRecalls(j.recalled);
+    if(j.messages.length)el('feed').scrollTop=el('feed').scrollHeight;
+    since=j.next;permission=j.permissions.post;
+    el('text').disabled=el('submit').disabled=!permission;
+    el('status').textContent=permission?'以自己的联系人身份发言':'此会话为只读';
+  }catch(e){if(gen===generation){clear();el('error').textContent=e.message}}
+  finally{busy=false}
+}
 async function redeemInvite(invite){clear();el('error').textContent='';try{const body={invite,device_key:guestDeviceKey(),name:saved(KEYS.name),device:guestDeviceName()};if(token)body.token=token;const j=await request('/api/guest/redeem',body,'');if(j.token){token=j.token;save(KEYS.token,token)}save(KEYS.name,j.contact.label);el('key').value='';history.replaceState(null,'',location.pathname+location.search);presetRoom=j.room||'';autoOpen=!presetRoom;await refresh()}catch(e){el('error').textContent=e.message}}
 function askName(invite){pendingInvite=invite;el('namePrompt').hidden=false;el('guestName').value=saved(KEYS.name)||'访客';el('guestName').focus();el('nameConfirm').onclick=()=>{const name=el('guestName').value.trim()||'访客';save(KEYS.name,name);el('namePrompt').hidden=true;const value=pendingInvite;pendingInvite='';redeemInvite(value)}}
-async function connectClient(key){clear();token=invitationKey(key);autoOpen=false;el('key').value='';el('error').textContent='';try{await request('/api/external/hello',{client:'Cojam 游客'});save(KEYS.token,token);save(KEYS.deviceKey,'');el('identity').textContent='';autoOpen=true;await refresh()}catch(e){autoOpen=false;token='';el('error').textContent=e.message}}
+async function connectClient(key){clear();token=invitationKey(key);autoOpen=false;el('key').value='';el('error').textContent='';try{await request('/api/external/hello',{client:'AnY 游客'});save(KEYS.token,token);save(KEYS.deviceKey,'');el('identity').textContent='';autoOpen=true;await refresh()}catch(e){autoOpen=false;token='';el('error').textContent=e.message}}
 function invitationKey(value) {
   const text=(value||'').trim();
   try{const key=new URLSearchParams(new URL(text).hash.slice(1)).get('key');if(key)return key}catch(e){}

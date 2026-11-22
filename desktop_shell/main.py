@@ -155,7 +155,10 @@ def open_window(url, on_closing, module=None):
     window.events.shown += tint_title_bar
     kwargs = {}
     try:
-        if "open_external_links_in_browser" in inspect.signature(webview.start).parameters:
+        parameters = inspect.signature(webview.start).parameters
+        if "private_mode" in parameters:
+            kwargs["private_mode"] = False
+        if "open_external_links_in_browser" in parameters:
             kwargs["open_external_links_in_browser"] = True
     except (TypeError, ValueError):
         pass

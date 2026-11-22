@@ -1,4 +1,4 @@
-let polling=null, roomViewGeneration=0;   // 渲染时也保持单次轮询，切换会话后丢弃旧批次
+let polling=null, roomViewGeneration=0, recallCount=0;   // 渲染时也保持单次轮询，切换会话后丢弃旧批次
 async function poll(){
   if(!RID||(polling&&polling.rid===RID&&polling.generation===roomViewGeneration))return;
   const rid=RID, generation=roomViewGeneration, request={rid,generation};polling=request;
@@ -15,6 +15,7 @@ async function poll(){
       add(j.messages[i]);
       if((i+1)%20===0&&i+1<j.messages.length)await new Promise(resolve=>setTimeout(resolve,0));
     }
+    if((j.recalled?.length||0)!==recallCount){recallCount=j.recalled?.length||0;applyMessageRecalls(j.recalled)}
     syncUndo();since=j.next;
     if(j.messages.length&&atBottom)feed.scrollTop=feed.scrollHeight;
     lastRun={running:j.running||[],queued:j.queued||0};
@@ -48,18 +49,20 @@ roomList.addEventListener('click',e=>{
   e.preventDefault();switchRoom(a.dataset.id);
 });
 function resetRoomView(){
-  hideMenu();selectionTools.hidden=true;closeMeetingTools();setMeetingSide(false);
-  since=0;curMeeting=undefined;S=null;feed.innerHTML='';
+  hideMenu();selectionTools.hidden=true;setMeetingSide(false);
+  since=0;recallCount=0;curMeeting=undefined;S=null;feed.innerHTML='';
   for(const k in msgById)delete msgById[k];
-  pend=[];drawPend();setQuote(null);lastRun={running:[],queued:0};
+  liveCards.clear();
+  restoreDraft();lastRun={running:[],queued:0};
   annVal='';showAnn();boardSig='';closeEdit();
   if(typeof closeToc==='function')closeToc();
-  if(vw.classList.contains('on')){endEdit();vw.classList.remove('on')}
+  if(vw.classList.contains('on')){if(ed?.dirty)saveImageEdit(ed);endEdit();vw.classList.remove('on')}
   document.getElementById('stops').dataset.k='';
 }
 function switchRoom(id,replace){
   if(!id)return;
-  if(id!==RID){roomViewGeneration++;RID=id;resetRoomView()}
+  if(id!==RID){saveDraft();roomViewGeneration++;RID=id;resetRoomView();resumeDraftUploads(id)}
+  else if(!S){restoreDraft();resumeDraftUploads(id)}
   const params=new URLSearchParams(location.search);
   params.set('r',id);
   const u='?'+params.toString();
@@ -68,7 +71,7 @@ function switchRoom(id,replace){
   drawRooms();
   poll().then(()=>{feed.scrollTop=feed.scrollHeight;queueJump()});
 }
-addEventListener('popstate',()=>{const id=new URLSearchParams(location.search).get('r');if(id&&id!==RID){roomViewGeneration++;RID=id;resetRoomView();drawRooms();poll().then(()=>{feed.scrollTop=feed.scrollHeight})}});
+addEventListener('popstate',()=>{const id=new URLSearchParams(location.search).get('r');if(id&&id!==RID){saveDraft();roomViewGeneration++;RID=id;resetRoomView();resumeDraftUploads(id);drawRooms();poll().then(()=>{feed.scrollTop=feed.scrollHeight})}});
 let goneShown=false;
 function roomGone(){
   if(goneShown)return;goneShown=true;

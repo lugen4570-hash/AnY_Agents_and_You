@@ -108,6 +108,21 @@ class Contacts(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertNotIn("quiet secret", json.dumps(data))
 
+    def test_human_contact_can_recall_only_own_message(self):
+        self.r.set_members(["alice", "bot"], {"alice": {"trigger": False}, "bot": {"post": True}})
+        owner_id = self.r.add_message("你", "管理员的话")["id"]
+        bot_id = self.r.add_message("bot", "AI 的话")["id"]
+        self.assertEqual(call("/api/post", {"room": self.r.id, "text": "访客的话"}, self.key)[0], 200)
+        guest_id = self.r.messages[-1]["id"]
+        path = "/api/external/recall"
+        self.assertEqual(call(path, {"room": self.r.id, "id": owner_id}, self.key)[0], 403)
+        self.assertEqual(call(path, {"room": self.r.id, "id": bot_id}, self.bot_key)[0], 403)
+        self.assertEqual(call(path, {"room": self.r.id, "id": guest_id}, self.key)[0], 200)
+        status, data = call("/api/external/messages?room=" + quote(self.r.id), key=self.key)
+        self.assertEqual(status, 200)
+        self.assertEqual((data["self"], data["recalled"]), ("alice", [guest_id]))
+        self.assertEqual(data["messages"][-1]["text"], "消息已撤回")
+
     def test_rotation_revocation_and_hash_storage(self):
         self.assertNotIn(self.key, Path(DATA, "contact_keys.json").read_text(encoding="utf-8"))
         new = access.credential("alice")

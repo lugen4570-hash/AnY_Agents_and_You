@@ -72,23 +72,48 @@ function attHtml(list){
     return '<span class="file-actions"><a class="file" href="'+u+'" data-name="'+n+'" title="预览文件">'+n+' · '+fmtSize(a.size)+'</a><a class="file-download" href="'+u+'" download="'+n+'" aria-label="下载 '+n+'">下载</a></span>';
   }).join('')+'</div>';
 }
-function add(m){
-  const d=document.createElement('div');
+function add(m,existing){
+  const d=existing||document.createElement('div');
   const cls=m.speaker==='你'?'me':isAgent(m.speaker)?'ai':'sys';
   d.className='msg '+cls+(m.to_user?' touser':'')+(m.step!=null?' step':'');
   if(cls==='ai'){d.style.setProperty('--c',agentColor(m.speaker));d.dataset.l=agentLetter(m.speaker)}
-  const tag=m.to_user?'<span class="tag">→ 用户</span>':'';
-  const who=cls==='sys'?'':'<div class="who"><span class="nm">'+esc((agentMeta(m.speaker)||{}).label||m.speaker)+'</span><span class="tm">'+esc(m.time)+'</span>'+tag+'<span class="message-actions"><button type="button" class="mc" title="复制消息文字">复制</button><button type="button" class="rp" title="选中文字可引用片段">引用</button></span></div>';
+  const tag=m.origin==='debate-summary'?'<span class="tag">论道总结</span>':m.to_user?'<span class="tag">→ 用户</span>':'';
+  const actions=m.recalled?'':'<span class="message-actions"><button type="button" class="mc" title="复制消息文字">复制</button><button type="button" class="rp" title="选中文字可引用片段">引用</button>'+(cls==='me'?'<button type="button" class="recall">撤回</button>':'')+'</span>';
+  const who=cls==='sys'?'':'<div class="who"><span class="nm">'+esc((agentMeta(m.speaker)||{}).label||m.speaker)+'</span><span class="tm">'+esc(m.time)+'</span>'+tag+actions+'</div>';
   const q=m.reply_to?'<div class="qt" data-to="'+m.reply_to.id+'">'+esc(m.reply_to.speaker)+'：'+(m.reply_to.part?'“'+esc(m.reply_to.text)+'”':esc(m.reply_to.text))+'</div>':'';
   d.dataset.id=m.id;msgById[m.id]=m;
   const md=cls==='ai';
   d.innerHTML=who+q+(m.text?'<div class="body'+(md?' md':'')+'">'+render(m.text,md)+'</div>':'')+attHtml(m.attachments)+(m.step!=null?'<button type="button" class="undo" data-step="'+m.step+'">撤回这一步</button>':'');
-  feed.appendChild(d);
+  if(typeof attachAgentProgress==='function')attachAgentProgress(m,d);
+  if(!existing)feed.appendChild(d);
   const ub=d.querySelector('.undo');if(ub)ub.onclick=()=>undoStep(m.step);
   d.querySelectorAll('.message-actions button').forEach(b=>b.onmousedown=e=>e.preventDefault());
   const rb=d.querySelector('.rp');if(rb)rb.onclick=()=>{const selected=selIn();setQuote(m,selected&&selected.id===m.id?selected.text:'')};
   const cb=d.querySelector('.mc');if(cb)cb.onclick=()=>copyMessageText(m.text||'');
+  const rc=d.querySelector('.recall');if(rc)rc.onclick=()=>recallMessage(m.id);
   const qb=d.querySelector('.qt');if(qb)qb.onclick=()=>{const o=feed.querySelector('.msg[data-id="'+qb.dataset.to+'"]');if(o){o.scrollIntoView({block:'center',behavior:'smooth'});o.classList.add('flash');setTimeout(()=>o.classList.remove('flash'),1200)}};
+}
+function applyMessageRecalls(ids){
+  if(!ids?.length)return;
+  const recalled=new Set(ids);
+  if(quote&&recalled.has(quote.id))setQuote(null);
+  for(const m of Object.values(msgById)){
+    if(recalled.has(m.id)&&!m.recalled){
+      add({id:m.id,speaker:m.speaker,time:m.time,text:'消息已撤回',recalled:true},feed.querySelector('.msg[data-id="'+m.id+'"]'));
+    }else if(m.reply_to&&recalled.has(m.reply_to.id)){
+      m.reply_to={id:m.reply_to.id,speaker:m.reply_to.speaker,text:'消息已撤回'};
+      const q=feed.querySelector('.msg[data-id="'+m.id+'"] .qt');
+      if(q)q.textContent=m.reply_to.speaker+'：消息已撤回';
+    }
+  }
+  hideMenu();
+}
+async function recallMessage(id){
+  const rid=RID;
+  if(!rid||!confirm('撤回这条消息？已经发给 AI 的内容不会收回。'))return;
+  const [ok,j]=await post(api('recall'),{id});
+  if(rid!==RID)return;
+  if(ok){applyMessageRecalls([id]);poll()}else alert(j.error||'撤回失败');
 }
 let attachmentPreviewController=null;
 function stopAttachmentPreview(){
@@ -163,30 +188,116 @@ feed.addEventListener('click',e=>{
   e.preventDefault();openAttachment(a.getAttribute('href'),a.dataset.name||a.textContent);
 });
 // 附件
-let pend=[],uploading=0;
+let pend=[];
+const drafts=new Map(), uploads=new Map(), sendingRooms=new Set();
+const draftKey=rid=>'cojam.draft.'+rid;
+let uploadStore;
+const activeUploads=new Set(), uploadTransfers=new Map();
+function draftUploadStore(){
+  if(!uploadStore)uploadStore=new Promise((resolve,reject)=>{
+    const request=indexedDB.open('cojam-draft-uploads',1);
+    request.onupgradeneeded=()=>request.result.createObjectStore('uploads',{keyPath:'id'}).createIndex('room','rid');
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+  return uploadStore;
+}
+async function draftUploadTransaction(mode,operation){
+  const db=await draftUploadStore();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction('uploads',mode),request=operation(tx.objectStore('uploads'));
+    tx.oncomplete=()=>resolve(request.result);
+    tx.onabort=()=>reject(tx.error);
+  });
+}
+async function resumeDraftUploads(rid){
+  try{
+    const records=await draftUploadTransaction('readonly',s=>s.index('room').getAll(rid));
+    await Promise.all(records.map(record=>{
+      if(activeUploads.has(record.id))return;
+      const attachments=getDraft(rid).attachments;
+      const replace=record.replacePath&&attachments.find(a=>a.path===record.replacePath);
+      if(attachments.some(a=>a.uploadId===record.id)||(record.replacePath&&!replace)){
+        return draftUploadTransaction('readwrite',s=>s.delete(record.id));
+      }
+      return upload(record.file,rid,replace,record.edit,record);
+    }));
+  }catch(e){}
+}
+function getDraft(rid){
+  if(!drafts.has(rid)){
+    let saved;
+    try{saved=JSON.parse(sessionStorage.getItem(draftKey(rid))||localStorage.getItem(draftKey(rid)))}catch(e){}
+    drafts.set(rid,saved&&Array.isArray(saved.attachments)?saved:{text:'',attachments:[],quote:null});
+    if(saved)persistDraft(rid,drafts.get(rid));
+  }
+  return drafts.get(rid);
+}
+function persistDraft(rid,draft){
+  if(!rid)return;
+  try{
+    if(draft.text||draft.attachments.length||draft.quote)localStorage.setItem(draftKey(rid),JSON.stringify(draft));
+    else localStorage.removeItem(draftKey(rid));
+    sessionStorage.removeItem(draftKey(rid));
+  }catch(e){try{sessionStorage.setItem(draftKey(rid),JSON.stringify(draft))}catch(e){}}
+}
+function saveDraft(){
+  if(!RID)return;
+  const draft=getDraft(RID);
+  Object.assign(draft,{text:ta.value,attachments:pend,quote});persistDraft(RID,draft);
+}
+function restoreDraft(){
+  const draft=RID?getDraft(RID):{text:'',attachments:[],quote:null};
+  if(ta.value!==draft.text)ta.value=draft.text;
+  pend=draft.attachments;quote=draft.quote;
+  renderQuote();resizeComposer();drawPend();
+}
 const pendEl=document.getElementById('pend'),fileEl=document.getElementById('file');
 function drawPend(){
+  const uploading=uploads.get(RID)||0;
   pendEl.innerHTML='';pendEl.style.display=(pend.length||uploading)?'flex':'none';
   pend.forEach((a,i)=>{
     const c=document.createElement('div');c.className='chip';
-    c.innerHTML=(a.kind==='image'?'<img src="'+esc(a.url)+'"><span>'+esc(a.name)+'</span>':'<button class="chip-open" type="button" title="预览文件">'+esc(a.name)+'</button>')+'<button class="x" type="button">&times;</button>';
-    c.querySelector('.x').onclick=()=>{pend.splice(i,1);drawPend()};
+    c.innerHTML=(a.kind==='image'?'<button type="button" class="chip-image" aria-label="查看或编辑 '+esc(a.name)+'"><img src="'+esc(a.url)+'" alt=""></button><span>'+esc(a.name)+'</span>':'<button class="chip-open" type="button" title="预览文件">'+esc(a.name)+'</button>')+'<button class="x" type="button" aria-label="移除 '+esc(a.name)+'">&times;</button>';
+    c.querySelector('.x').onclick=()=>{pend.splice(i,1);saveDraft();drawPend()};
     const fileButton=c.querySelector('.chip-open');if(fileButton)fileButton.onclick=()=>openAttachment(a.url,a.name);
-    const im=c.querySelector('img');
-    if(im)im.onclick=()=>{const ims=pend.map((p,k)=>({url:p.url,name:p.name,pend:k})).filter(p=>pend[p.pend].kind==='image');openViewer(ims,ims.findIndex(p=>p.pend===i))};
+    const im=c.querySelector('.chip-image');
+    if(im)im.onclick=()=>{const ims=pend.filter(p=>p.kind==='image').map(p=>({url:p.url,name:p.name,attachment:p}));openViewer(ims,ims.findIndex(p=>p.attachment===a))};
     pendEl.appendChild(c);
   });
   if(uploading){const c=document.createElement('div');c.className='chip';c.textContent='上传中 '+uploading+' 个…';pendEl.appendChild(c)}
 }
-async function upload(f){
-  uploading++;drawPend();
+async function upload(f,rid=RID,replace=null,edit=null,saved=null){
+  if(!rid)return false;
+  if(!f.size||f.size>25*1024*1024){if(rid===RID)alert('附件必须大于 0 字节且不超过 25 MB：'+f.name);return false}
+  const record=saved||{id:crypto.getRandomValues(new Uint32Array(4)).join('-'),rid,file:f,replacePath:replace?.path,edit};
+  const previous=uploadTransfers.get(rid);
+  let release;
+  const transfer=new Promise(resolve=>{release=resolve});
+  uploadTransfers.set(rid,transfer);
+  activeUploads.add(record.id);
+  uploads.set(rid,(uploads.get(rid)||0)+1);if(rid===RID)drawPend();
   try{
-    const r=await fetch(api('upload')+'?name='+encodeURIComponent(f.name||'file'),{method:'POST',body:f});
+    if(!saved)await draftUploadTransaction('readwrite',s=>s.put(record)).catch(()=>{});
+    await previous;
+    const r=await fetch('/api/r/'+encodeURIComponent(rid)+'/upload?name='+encodeURIComponent(f.name||'file'),{method:'POST',body:f});
     const j=await r.json();
     if(!r.ok)throw new Error(j.error||r.status);
-    pend.push(j);
-  }catch(e){alert('上传失败：'+f.name+'\n'+e.message)}
-  uploading--;drawPend();
+    const draft=getDraft(rid),attachments=draft.attachments;
+    const at=attachments.indexOf(replace);
+    if(edit)j.edit=edit;
+    j.uploadId=record.id;
+    if(!replace)attachments.push(j);else if(at>=0)attachments.splice(at,1,j);
+    persistDraft(rid,draft);
+    await draftUploadTransaction('readwrite',s=>s.delete(record.id)).catch(()=>{});
+    return !replace||at>=0;
+  }catch(e){if(rid===RID)alert('上传失败：'+f.name+'\n'+e.message);return false}
+  finally{
+    release();if(uploadTransfers.get(rid)===transfer)uploadTransfers.delete(rid);
+    activeUploads.delete(record.id);
+    const count=uploads.get(rid)-1;if(count)uploads.set(rid,count);else uploads.delete(rid);
+    if(rid===RID)drawPend();
+  }
 }
 document.getElementById('clip').onclick=()=>fileEl.click();
 // 粘贴：剪贴板里有图片 / 文件就当附件传；同时有文字时文字照常粘
@@ -196,9 +307,10 @@ ta.addEventListener('paste',e=>{
   if(!fs.length)return;
   if(!cd.getData('text/plain'))e.preventDefault();
   const t=new Date(),stamp=[t.getHours(),t.getMinutes(),t.getSeconds()].map(n=>String(n).padStart(2,'0')).join('');
-  (async()=>{for(let i=0;i<fs.length;i++){let f=fs[i];
+  const rid=RID;
+  fs.forEach((file,i)=>{let f=file;
     if(!f.name||/^image\.\w+$/i.test(f.name)){const ext=(f.type.split('/')[1]||'png').replace('jpeg','jpg');f=new File([f],'粘贴_'+stamp+(fs.length>1?'_'+(i+1):'')+'.'+ext,{type:f.type})}
-    await upload(f)}})();
+    upload(f,rid)});
 });
 // 拖文件到页面上也行
 let dragN=0;
@@ -208,19 +320,23 @@ document.addEventListener('dragover',e=>{if([...(e.dataTransfer||{}).types||[]].
 document.addEventListener('drop',async e=>{
   if(!e.dataTransfer||!e.dataTransfer.files.length)return;
   e.preventDefault();dragN=0;document.body.classList.remove('drag');
-  for(const f of [...e.dataTransfer.files])await upload(f);
+  const rid=RID;
+  await Promise.all([...e.dataTransfer.files].map(f=>upload(f,rid)));
 });
 // 引用回复
 let quote=null;
 const quoteEl=document.getElementById('quote');
+function renderQuote(){
+  quoteEl.classList.toggle('on',!!quote);
+  if(quote)quoteEl.querySelector('.qtx').textContent=quote.label||'回复 '+quote.speaker;
+}
 function setQuote(m,part){
-  if(!m){quote=null;quoteEl.classList.remove('on');return}
+  if(!m){quote=null;renderQuote();saveDraft();return}
+  if(m.recalled)return;
   part=(part||'').replace(/\s+/g,' ').trim();
-  if(part){quote={id:m.id,speaker:m.speaker,part};quoteEl.querySelector('.qtx').textContent='回复 '+m.speaker+' 这段：“'+part+'”';quoteEl.classList.add('on');ta.focus();return}
   const t=(m.text||'').replace(/\*\*|__|~~|`+/g,'').replace(/^\s*(#+|[-*>])\s+/gm,'').replace(/\s+/g,' ').trim()||((m.attachments||[]).length?'（附件）':'');
-  quote={id:m.id,speaker:m.speaker};
-  quoteEl.querySelector('.qtx').textContent='回复 '+m.speaker+'：'+t;
-  quoteEl.classList.add('on');ta.focus();
+  quote={id:m.id,speaker:m.speaker,part,label:part?'回复 '+m.speaker+' 这段：“'+part+'”':'回复 '+m.speaker+'：'+t};
+  renderQuote();saveDraft();ta.focus();
 }
 document.getElementById('quoteX').onclick=()=>setQuote(null);
 // 选中的文字落在哪条消息里
@@ -255,7 +371,7 @@ function placeMessageTools(element,x,y){
 function hideMenu(){cmenu.classList.remove('on')}
 function updateSelectionTools(){
   const selected=selIn();
-  if(!selected||!msgById[selected.id]||cmenu.classList.contains('on')){selectionTools.hidden=true;return}
+  if(!selected||!msgById[selected.id]||msgById[selected.id].recalled||cmenu.classList.contains('on')){selectionTools.hidden=true;return}
   const rect=getSelection().getRangeAt(0).getBoundingClientRect(),bounds=feed.getBoundingClientRect();
   if(rect.bottom<bounds.top||rect.top>bounds.bottom){selectionTools.hidden=true;return}
   selectionTools.hidden=false;
@@ -271,12 +387,14 @@ selectionTools.onclick=e=>{
 feed.addEventListener('contextmenu',e=>{
   const el=e.target.closest('.msg[data-id]');if(!el)return;
   const m=msgById[+el.dataset.id];if(!m)return;
+  if(m.recalled)return;
   const x=selIn(),part=x&&x.id===m.id?x.text:'';
   e.preventDefault();selectionTools.hidden=true;
   const items=[];
   if(part){items.push(['复制选中文字',()=>copyMessageText(part)]);items.push(['引用选中片段',()=>setQuote(m,part)])}
   items.push(['复制整条消息',()=>copyMessageText(m.text||'')]);
   if(m.speaker==='你'||isAgent(m.speaker))items.push(['引用整条消息',()=>setQuote(m)]);
+  if(m.speaker==='你')items.push(['撤回消息',()=>recallMessage(m.id)]);
   cmenu.innerHTML='';
   items.forEach(([t,f])=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>{hideMenu();f()};cmenu.appendChild(b)});
   cmenu.classList.add('on');placeMessageTools(cmenu,e.clientX,e.clientY);
@@ -287,24 +405,33 @@ document.addEventListener('mousedown',e=>{if(!cmenu.contains(e.target))hideMenu(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideMenu();selectionTools.hidden=true;}});
 feed.addEventListener('scroll',()=>{hideMenu();updateSelectionTools()});
 addEventListener('resize',()=>{hideMenu();updateSelectionTools()});
-fileEl.onchange=async()=>{const fs=[...fileEl.files];fileEl.value='';for(const f of fs)await upload(f)};
+fileEl.onchange=()=>{const fs=[...fileEl.files],rid=RID;fileEl.value='';fs.forEach(f=>upload(f,rid))};
 async function send(){
-  const text=ta.value.trim();
-  if(uploading){alert('附件还在上传，稍等一下');return}
+  const rid=RID,original=ta.value,text=original.trim();
+  if(!rid||sendingRooms.has(rid))return;
+  if(uploads.get(rid)){alert('附件还在上传，稍等一下');return}
   if(!text&&!pend.length)return;
-  const atts=pend,qm=quote;
-  ta.value='';ta.style.height='auto';pend=[];drawPend();quote=null;quoteEl.classList.remove('on');
+  const atts=pend.slice(),qm=quote;
+  saveDraft();sendingRooms.add(rid);
   try{
     const body={text,attachments:atts.map(a=>({path:a.path,kind:a.kind}))};
     if(qm){body.reply_to=qm.id;if(qm.part)body.reply_part=qm.part}
     const r=await fetch(api('send'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!r.ok)throw 0;
-  }catch(e){ta.value=text;pend=atts;drawPend();if(qm){quote=qm;quoteEl.classList.add('on')}}
-  poll();setTimeout(()=>{feed.scrollTop=feed.scrollHeight},100);
+    if(!r.ok)throw new Error((await r.json()).error||'发送失败');
+    if(rid===RID)saveDraft();
+    const draft=getDraft(rid);
+    if(draft.text===original)draft.text='';
+    draft.attachments=draft.attachments.filter(a=>!atts.includes(a));
+    if(draft.quote===qm)draft.quote=null;
+    persistDraft(rid,draft);
+    if(rid===RID){restoreDraft();poll();setTimeout(()=>{if(rid===RID)feed.scrollTop=feed.scrollHeight},100)}
+  }catch(e){if(rid===RID)alert(e.message||'发送失败，草稿已保留')}
+  finally{sendingRooms.delete(rid)}
 }
 document.getElementById('send').onclick=send;
 ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!touch&&!e.isComposing){e.preventDefault();send()}});
-ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px'});
+function resizeComposer(){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px'}
+ta.addEventListener('input',()=>{resizeComposer();saveDraft()});
 // 跳到我的发言：点 = 上一条 / 下一条"你"说的话，长按 = 到顶 / 到底
 const jumpEl=document.getElementById('jump'),jUp=document.getElementById('jUp'),jDn=document.getElementById('jDn');
 function feedTop(){return feed.getBoundingClientRect().top+12}

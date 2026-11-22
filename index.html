@@ -6,8 +6,8 @@
 <meta name="color-scheme" content="light dark">
 <meta name="rt-token" content="__RT_TOKEN__">
 <meta name="theme-color" content="#6022e8">
-<link rel="icon" href="/static/icon-192.png?v=cojam-2811">
-<link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2811">
+<link rel="icon" href="/static/icon-192.png?v=cojam-2812">
+<link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2812">
 <title>会议室</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/workspace.css">
@@ -62,11 +62,11 @@
 <div id="viewer">
   <div class="vbar vview"><span class="grow" id="vInfo"></span><button type="button" id="vEdit">标注 / 裁剪</button><a class="vb" id="vOrig" target="_blank" rel="noopener">原图</a><button type="button" id="vClose">关闭</button></div>
   <div class="vbar vedit" id="vTools">
-    <button type="button" data-tool="pen" class="on">画笔</button><button type="button" data-tool="arrow">箭头</button><button type="button" data-tool="rect">框</button><button type="button" data-tool="text">文字</button><button type="button" data-tool="crop">裁剪</button>
+    <button type="button" data-tool="pen" class="on">画笔</button><button type="button" data-tool="arrow">箭头</button><button type="button" data-tool="rect">框</button><button type="button" data-tool="text">文字</button><button type="button" data-tool="crop">裁剪</button><button type="button" data-tool="erase">橡皮擦</button><button type="button" data-tool="mosaic">马赛克</button>
     <span class="sep"></span>
     <button type="button" class="sw on" data-color="#ef4444" style="background:#ef4444" aria-label="红"></button><button type="button" class="sw" data-color="#facc15" style="background:#facc15" aria-label="黄"></button><button type="button" class="sw" data-color="#22c55e" style="background:#22c55e" aria-label="绿"></button><button type="button" class="sw" data-color="#3b82f6" style="background:#3b82f6" aria-label="蓝"></button><button type="button" class="sw" data-color="#ffffff" style="background:#ffffff" aria-label="白"></button><button type="button" class="sw" data-color="#111111" style="background:#111111" aria-label="黑"></button>
     <span class="sep"></span>
-    <button type="button" id="vThick" title="线条粗细">中</button><button type="button" id="vUndo" disabled>撤销</button>
+    <button type="button" id="vThick" title="线条粗细">中</button><button type="button" id="vUndo" disabled>撤销</button><button type="button" id="vRedo" disabled>重做</button>
     <span class="grow"></span>
     <button type="button" id="vSave" title="下载到本机">存到本机</button><button type="button" id="vCancel">取消</button><button type="button" id="vDone" class="pri">放进输入框</button>
   </div>

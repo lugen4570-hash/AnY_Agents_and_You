@@ -112,6 +112,7 @@ class ModelCatalog(unittest.TestCase):
             'gemini-4-hydrogen-xhigh',
             'gemini-4-hydrogen-medium',
             'gemini-4-hydrogen-low',
+            'gemini-pro-orchestrator-neon\tOrchestrator (Neon)',
             'gemini-pro-orchestrator-g1-pro - Orchestrator (Argon)',
             'gemini-3.8-flash-high',
             'gemini-3.8-flash-medium',
@@ -152,18 +153,28 @@ class ModelCatalog(unittest.TestCase):
         self.assertEqual(agy['models'], [
             'gemini-4-argon',
             'gemini-4-hydrogen',
+            'gemini-pro-orchestrator-neon',
             'gemini-pro-orchestrator-g1-pro',
             'gemini-3.8-flash',
             'claude-opus-5-5',
             'claude-sonnet-5-5',
             'gpt-oss-120b-medium',
         ])
+        self.assertEqual(agy['efforts_by_model']['gemini-pro-orchestrator-neon'], ['low', 'medium', 'high', 'xhigh', 'max'])
         self.assertEqual(agy['efforts_by_model']['gemini-pro-orchestrator-g1-pro'], [])
         self.assertEqual(agy['efforts_by_model']['gpt-oss-120b-medium'], [])
         self.assertEqual(agy['efforts_by_model']['gemini-4-hydrogen'], ['low', 'medium', 'high', 'xhigh'])
         for mid in ('gemini-4-argon', 'gemini-3.8-flash', 'claude-opus-5-5', 'claude-sonnet-5-5'):
             self.assertEqual(agy['efforts_by_model'][mid], ['low', 'medium', 'high'])
+        self.assertEqual(agy['model_labels'].get('gemini-pro-orchestrator-neon'), 'Orchestrator (Neon)')
         self.assertEqual(agy['model_labels'].get('gemini-pro-orchestrator-g1-pro'), 'Orchestrator (Argon)')
+        key = model_catalog._key('antigravity', self.r)
+        stale_entry = dict(model_catalog._cached(key))
+        stale_entry['efforts_by_model'] = dict(stale_entry.get('efforts_by_model') or {}, **{'gemini-pro-orchestrator-neon': []})
+        model_catalog._store(key, stale_entry)
+        caps = model_catalog.capabilities(self.r, 'antigravity')
+        self.assertEqual(caps['efforts_by_model']['gemini-pro-orchestrator-neon'], ['low', 'medium', 'high', 'xhigh', 'max'])
+        self.assertTrue(self.r.set_models('antigravity', 'gemini-pro-orchestrator-neon', 'high')[0])
         self.assertEqual(cur['models'], ['gpt-5.5', 'gpt-5.5-fast', 'claude-4.6-sonnet-medium'])
         self.assertEqual(cur['efforts_by_model']['gpt-5.5'], ['low', 'medium', 'high', 'xhigh'])
         self.assertEqual(cur['efforts_by_model']['gpt-5.5-fast'], ['low', 'high'])
@@ -228,6 +239,7 @@ class ModelCatalog(unittest.TestCase):
         from bridge import drivers
         agy_spec = {'id': 'antigravity', 'driver': 'antigravity', 'args': {'model': ['--model', '{model}'], 'effort': ['--effort', '{effort}']}}
         self.assertEqual(drivers._resolve_cli_model_effort('antigravity', 'agy.exe', agy_spec, 'gemini-4-argon-high', 'low'), ('gemini-4-argon', 'low'))
+        self.assertEqual(drivers._resolve_cli_model_effort('antigravity', 'agy.exe', agy_spec, 'gemini-pro-orchestrator-neon', 'high'), ('gemini-pro-orchestrator-neon', 'high'))
         self.assertEqual(drivers._resolve_cli_model_effort('antigravity', 'agy.exe', agy_spec, 'gemini-pro-orchestrator-g1-pro', 'high'), ('gemini-pro-orchestrator-g1-pro', ''))
         self.assertEqual(drivers._resolve_cli_model_effort('antigravity', 'agy.exe', agy_spec, 'gpt-oss-120b-medium', 'low'), ('gpt-oss-120b-medium', ''))
         cur_spec = {'id': 'cursor', 'driver': 'cursor', 'args': {'model': ['--model', '{model}'], 'effort': []}}

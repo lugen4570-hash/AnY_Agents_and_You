@@ -205,6 +205,27 @@ def _parse_cli_models(stdout):
     return [token for token, _ in _parse_cli_model_rows(stdout)]
 
 
+_AGY_NO_EFFORT_MODELS = frozenset({"gemini-pro-orchestrator-g1-pro"})
+
+
+def _apply_agy_default_efforts(models, efforts_by_model, fallback_efforts, explicit_model_efforts=None):
+    """Fill preset efforts for Antigravity models that have no collapsed effort-suffix variants."""
+    changed = False
+    if not fallback_efforts:
+        return False
+    explicit = explicit_model_efforts or {}
+    for model in models or ():
+        if (
+            not efforts_by_model.get(model)
+            and not _VARIANT_RE.match(model)
+            and model not in _AGY_NO_EFFORT_MODELS
+            and model not in explicit
+        ):
+            efforts_by_model[model] = list(fallback_efforts)
+            changed = True
+    return changed
+
+
 def _collapse_effort_variants(rows):
     """Collapse <model>-<effort>[-fast] variants into base model + per-model efforts."""
     base_counts: dict[str, int] = {}
@@ -332,7 +353,13 @@ def _probe_cli_catalog(pid, spec, room):
         if proc.returncode != 0:
             return None
         rows = _parse_cli_model_rows(proc.stdout)
-        return _collapse_effort_variants(rows) if rows else None
+        if not rows:
+            return None
+        res = _collapse_effort_variants(rows)
+        fallback_efforts = agents._sort_efforts(spec.get("efforts") or [])
+        if _apply_agy_default_efforts(res["models"], res["efforts_by_model"], fallback_efforts):
+            res["effort_supported"] = True
+        return res
     if names & {"cursor", "cursor-agent", "agent"}:
         try:
             proc = _run_probe(exe, ["--list-models"], spec, room, timeout=15)
@@ -492,6 +519,13 @@ def capabilities(room, pid):
     explicit = agents.user_explicit_models(spec)
     models = list(dict.fromkeys(list(cached["models"]) + explicit)) if cached.get("models") else base["models"]
     effort_map = dict(base["efforts_by_model"], **(cached.get("efforts_by_model") or {}))
+    if pid in ("antigravity", "agy"):
+        _apply_agy_default_efforts(
+            models,
+            effort_map,
+            agents._sort_efforts(spec.get("efforts") or []),
+            spec.get("model_efforts") or {},
+        )
     # Explicit per-model preferences remain editable, including an empty effort list.
     effort_map.update(spec.get("model_efforts") or {})
     model_labels = dict(cached.get("model_labels") or {})

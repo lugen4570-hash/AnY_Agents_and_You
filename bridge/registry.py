@@ -413,6 +413,7 @@ def public(spec):
     return {"id": spec["id"], "label": spec["label"], "letter": spec["letter"], "color": spec["color"], "driver": spec["driver"],
             "kind": spec["kind"],
             "enabled": spec["enabled"], "caps": dict(spec["caps"]), "models": list(spec["models"]),
+            "configured": bool(spec.get("settings_fields")),
             "cli_available": spec.get("cli_available", False),
             "efforts": list(spec["efforts"]), "default": list(spec["default"]),
             "source": spec["source"], "builtin": spec["builtin"],

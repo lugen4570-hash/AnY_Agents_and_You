@@ -234,6 +234,17 @@ function bindAgentSettings(config) {
     root.querySelectorAll('[data-agent-room]').forEach(button=>button.onclick=async()=>{if(Object.keys(collectAgentSettings(root,config)).length && !await save())return;if(current())openAgentMembership(config.id,button.dataset.agentRoom);});
   };membership().catch(error=>message(error.message));
 }
+function groupAgentSettings(contacts, catalog){
+  const active=[], presets=[];
+  for(const agent of contacts){
+    if(!agent||agent.kind==='user')continue;
+    const connection=catalog.connections?.[agent.id],member=catalog.members?.[agent.id];
+    const installed=agent.driver!=='external'&&agent.enabled;
+    const configured=agent.user||agent.configured||connection?.has_key||connection?.state==='ready'||member?.automatic||member?.standby;
+    (installed||configured?active:presets).push(agent);
+  }
+  return {active,presets};
+}
 async function openAgentManager() {
   document.body.classList.remove('nav-open');
   showModal('<div id="agentManagerLoading"><h3>正在读取 Agent 与连接…</h3><div class="btns"><button onclick="hideModal()">关闭</button></div></div>');
@@ -241,12 +252,14 @@ async function openAgentManager() {
   try{await refreshContacts(null,true)}catch(error){if(document.getElementById('agentManagerLoading')===loading)loading.innerHTML='<h3>暂时无法读取</h3><p role="alert">'+esc(error.message)+'</p><div class="btns"><button onclick="openAgentManager()">重试</button><button onclick="hideModal()">关闭</button></div>';return;}
   if(document.getElementById('agentManagerLoading')!==loading)return;
   const local=agCat.local_workspace!==false;
-  const agents=CONTACTS.filter(a=>a.kind!=='user');
+  const {active,presets}=groupAgentSettings(CONTACTS,agCat);
+  const agentRows=agents=>agents.map(a=>'<div class="agent-room-row"><span><b>'+esc(a.label)+'</b><small>'+esc(a.enabled?contactStatusLabel(a):'未找到程序，可修改路径')+'</small></span><button type="button" data-agent-settings="'+esc(a.id)+'">详情</button></div>').join('');
   showModal('<div id="agentManager"><div class="connection-heading"><div><span class="eyebrow">应用设置</span><h3>Agent 与连接</h3></div><button id="agentManagerClose" aria-label="关闭设置">×</button></div>'
     +'<p class="hint">选择联系人查看状态，或添加新的 AI。</p>'
     +'<div class="agent-manager-tools">'+(local?'<button id="contactsScan">查找已安装的 AI</button>':'')+'<details><summary>高级设置</summary><button id="connSettingsBtn">连接与心跳</button></details><button id="managerDevices">我的设备</button></div>'
-    +'<h4>我的 Agent <span class="badge">'+agents.length+'</span></h4>'
-    +(agents.map(a=>'<div class="agent-room-row"><span><b>'+esc(a.label)+'</b><small>'+esc(a.enabled?contactStatusLabel(a):'未找到程序，可修改路径')+'</small></span><button type="button" data-agent-settings="'+esc(a.id)+'">详情</button></div>').join('')||'<p class="nav-empty">还没有 Agent，添加后可邀请加入会议。</p>')
+    +'<h4>我的 Agent <span class="badge">'+active.length+'</span></h4>'
+    +(agentRows(active)||'<p class="nav-empty">还没有接入 Agent。</p>')
+    +(presets.length?'<details class="connection-advanced"><summary>其他预置 Agent（'+presets.length+'）</summary>'+agentRows(presets)+'</details>':'')
     +'<div class="btns agent-settings-actions"><button id="agentManagerDone">完成</button><button id="agentManagerAdd" class="pri">添加 Agent</button></div></div>');
   mbox.querySelectorAll('[data-agent-settings]').forEach(b=>b.onclick=()=>openAgentSettings(b.dataset.agentSettings));
   document.getElementById('agentManagerAdd').onclick=()=>startConnectionWizard('','local');
