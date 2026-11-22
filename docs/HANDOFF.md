@@ -2,6 +2,18 @@
 
 最近更新：2026-11-22。
 
+## Cojam 2.8.13 Windows 正式发布（2026-11-22）
+
+- **问题修复与测试**：在 `bridge/drivers.py` 新增 `_live_text_from_cli_line()` 与 `_extract_assistant_content()`，在 `call_cli()` 流式读取 `on_line` 时过滤 `ndjson`/`json` 预设输出的纯协议事件行（如 `step_update`）及不完整 JSON 片段，仅提取可读文本或思考摘要推送至实时状态条；普通纯文本 CLI 保持透传。在 `tests/test_agents_registry.py` 新增 `test_ndjson_live_stream_hides_raw_protocol_json` 与 `test_live_text_extractor_supports_text_and_assistant_content`。验证情况：`tests.test_agents_registry`（47 项）、`tests.test_icons`、`tests.test_updater`、`tests.test_desktop_shell` 共 99 项通过，`tests/test_detached_jobs.py` 在 CPU 空闲下独立复跑 3/3 通过（首次高负载并发时因未设置 `ROUNDTABLE_LOG_DIR` 写入临时 `data` 且子进程超时偶发失败）；`mypy bridge/drivers.py bridge/version.py`、`ruff check bridge/drivers.py tests/test_agents_registry.py bridge/version.py`、`node --check static/connections.js` 与 `cargo test --locked`（8 项 Rust 测试）全部通过。
+- **源码与 Release 发布**：基于 `2.8.12` 最新主线提交 [`c1af1516701e417165f23c919a877674c84e9cc1`](https://github.com/lugen4570-hash/Cojam/commit/c1af1516701e417165f23c919a877674c84e9cc1) 从干净工作树重新构建 Windows 全套产物（未签名），[GitHub Release v2.8.13](https://github.com/lugen4570-hash/Cojam/releases/tag/v2.8.13) 上传并逐项核对全部 7 个附件（未覆盖历史版本）：
+  - `Cojam-Setup-2.8.13.exe`（`13,410,263` 字节，`04f8ed72f75ac067658a754084496b662f7b7b0b8240234d1c97bad1a3db2a0e`）
+  - `Cojam-Desktop-2.8.13-win64.zip`（`15,923,368` 字节，`4bf2a152a6457f21cc97da5d28de8aa8ce9d7951577f6ac517c5070e164e3ac9`）
+  - `Cojam-2.8.13-win64.zip`（`13,059,285` 字节，`de408e7e63564e5c99f593f07f506e0e4f1f41e4773986bd010d4e344446bc73`）
+  - `Cojam-Member-2.8.13.zip`（`247,048` 字节，`5bd589684596efaf3edccb922f6582366ee7167962d6ebaef29c354a612e1`）
+  - `Cojam-Portable-2.8.13.exe`（`13,321,879` 字节，`94e1689c95d84166879a76d7870e62df7b4dfa07059eac5a9f7d3458c57acea1`）
+  - `SHA256SUMS-2.8.13.txt`（`462` 字节）与 `build-report-2.8.13.json`（`1,684` 字节）
+- **实测打包与线上核验**：隔离端口 `18765` 完成 `CojamCore.exe` 与 `Cojam-Portable-2.8.13.exe` 启动退出、`/api/server/info`（`2.8.13`）及内置静态资源字节核对；3 份发布 ZIP 完整性与零私人数据校验通过；`Cojam-Setup-2.8.13-test.exe` 静默安装/覆盖重装/卸载均保留 `data/sentinel.txt` 并清理测试卸载注册表。官网提交 [`8a278c7`](https://github.com/lugen4570-hash/Cojam/commit/8a278c7) 触发 [Deploy website 44992186704](https://github.com/lugen4570-hash/Cojam/actions/runs/44992186704) 部署成功；线上核对 `https://lugen4570-hash.github.io/Cojam/`（`15,045` 字节）、`download.html`（`4,701` 字节）、`update.json`（`2.8.13`）、`macos-update.json`（`2.8.13`，`664,274` 字节）并实际下载线上 `Cojam-Setup-2.8.13.exe` 与 `Cojam-Portable-2.8.13.exe`，大小与 SHA-256 100% 一致。
+
 ## Cojam 2.8.12 Windows 正式发布（2026-11-22）
 
 - 修复 Antigravity Orchestrator (Neon) 的思考强度选择，折叠未安装且未配置的 Agent 预设，加入图片马赛克和编辑重做，按会议恢复文字、引用和图片草稿，支持房主和真人访客撤回自己发出的消息。独立 CLI 回收十六进制模型版本标识的修复随本版保留。
