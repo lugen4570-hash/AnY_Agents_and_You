@@ -108,12 +108,53 @@ function applyMessageRecalls(ids){
   }
   hideMenu();
 }
+function restoreRecalledDraft(rid,recalled){
+  if(!rid||!recalled)return;
+  const draft=getDraft(rid);
+  const text=typeof recalled.text==='string'?recalled.text:'';
+  if(text)draft.text=draft.text?text+'\n'+draft.text:text;
+  for(const att of (recalled.attachments||[])){
+    if(att&&att.path&&!draft.attachments.some(item=>item&&item.path===att.path)){
+      draft.attachments.push({...att});
+    }
+  }
+  const rt=recalled.reply_to;
+  if(!draft.quote&&rt&&rt.id!=null&&rt.text!=='消息已撤回'){
+    const known=rid===RID?msgById[rt.id]:null;
+    if(!known||!known.recalled){
+      const partText=rt.part&&typeof rt.text==='string'?rt.text:'';
+      const qText=typeof rt.text==='string'?rt.text:'';
+      draft.quote={
+        id:rt.id,
+        speaker:rt.speaker||'',
+        part:partText,
+        label:partText?'回复 '+(rt.speaker||'')+' 这段：“'+partText+'”':'回复 '+(rt.speaker||'')+'：'+qText,
+      };
+    }
+  }
+  persistDraft(rid,draft);
+  if(rid===RID){
+    restoreDraft();
+    if(typeof syncComposerBar==='function')syncComposerBar();
+    if(typeof ta.focus==='function')ta.focus();
+    if(typeof ta.setSelectionRange==='function')ta.setSelectionRange(ta.value.length,ta.value.length);
+  }
+}
+const recallingMessages=new Set();
 async function recallMessage(id){
   const rid=RID;
-  if(!rid||!confirm('撤回这条消息？已经发给 AI 的内容不会收回。'))return;
-  const [ok,j]=await post(api('recall'),{id});
-  if(rid!==RID)return;
-  if(ok){applyMessageRecalls([id]);poll()}else alert(j.error||'撤回失败');
+  if(!rid)return;
+  const key=rid+':'+id;
+  const cached=msgById[id];
+  if(cached?.recalled||recallingMessages.has(key)||!confirm('撤回这条消息并放回输入框？合拍也会取消这条消息触发的任务。'))return;
+  const orig=cached?{text:cached.text||'',attachments:Array.isArray(cached.attachments)?cached.attachments:[],reply_to:cached.reply_to||null}:null;
+  recallingMessages.add(key);
+  try{
+    const [ok,j]=await post(api('recall'),{id});
+    if(ok)restoreRecalledDraft(rid,j.draft||orig);
+    if(rid!==RID)return;
+    if(ok){applyMessageRecalls([id]);if(j.stop_error)alert(j.stop_error);poll()}else alert(j.error||'撤回失败');
+  }finally{recallingMessages.delete(key)}
 }
 let attachmentPreviewController=null;
 function stopAttachmentPreview(){
@@ -253,6 +294,7 @@ function restoreDraft(){
   renderQuote();resizeComposer();drawPend();
 }
 const pendEl=document.getElementById('pend'),fileEl=document.getElementById('file');
+let filePickerRoom=null;
 function drawPend(){
   const uploading=uploads.get(RID)||0;
   pendEl.innerHTML='';pendEl.style.display=(pend.length||uploading)?'flex':'none';
@@ -299,7 +341,7 @@ async function upload(f,rid=RID,replace=null,edit=null,saved=null){
     if(rid===RID)drawPend();
   }
 }
-document.getElementById('clip').onclick=()=>fileEl.click();
+document.getElementById('clip').onclick=()=>{filePickerRoom=RID;fileEl.click()};
 // 粘贴：剪贴板里有图片 / 文件就当附件传；同时有文字时文字照常粘
 ta.addEventListener('paste',e=>{
   const cd=e.clipboardData;if(!cd)return;
@@ -405,7 +447,7 @@ document.addEventListener('mousedown',e=>{if(!cmenu.contains(e.target))hideMenu(
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideMenu();selectionTools.hidden=true;}});
 feed.addEventListener('scroll',()=>{hideMenu();updateSelectionTools()});
 addEventListener('resize',()=>{hideMenu();updateSelectionTools()});
-fileEl.onchange=()=>{const fs=[...fileEl.files],rid=RID;fileEl.value='';fs.forEach(f=>upload(f,rid))};
+fileEl.onchange=()=>{const fs=[...fileEl.files],rid=filePickerRoom;filePickerRoom=null;fileEl.value='';fs.forEach(f=>upload(f,rid))};
 async function send(){
   const rid=RID,original=ta.value,text=original.trim();
   if(!rid||sendingRooms.has(rid))return;

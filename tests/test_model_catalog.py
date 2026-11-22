@@ -80,6 +80,24 @@ class ModelCatalog(unittest.TestCase):
         self.assertEqual(state['apply_status'],'failed')
         self.assertIn('unsupported',state['apply_error'])
 
+    def test_antigravity_member_label_uses_cli_settings_and_room_overrides(self):
+        self.assertTrue(registry.save_agent({"id": "antigravity", "driver": "cli",
+                                             "bin": [sys.executable]})[0])
+        settings = Path(support.DATA, "antigravity-settings.json")
+        settings.write_text(json.dumps({"model": "Orchestrator (Neon)"}), encoding="utf-8")
+        with patch.object(model_catalog.os.path, "expanduser", return_value=str(settings)):
+            info = self.r.model_info("antigravity")
+            self.assertEqual(info["label"], "Orchestrator (Neon) · 思考强度未回报")
+            self.assertEqual(info["requested"]["model"], "")
+            settings.write_text(json.dumps({"model": "Orchestrator (Neon)", "orchestrator": {"planner": "Gemini 4 Neon (Medium)"}}), encoding="utf-8")
+            self.assertEqual(self.r.model_info("antigravity")["label"], "Orchestrator (Neon) · medium")
+            settings.write_text(json.dumps({"model": "Custom Model", "orchestrator": {"planner": "Gemini 4 Neon (Medium)"}}), encoding="utf-8")
+            self.assertEqual(self.r.model_info("antigravity")["label"], "Custom Model · 思考强度未回报")
+            settings.write_text(json.dumps({"model": "Orchestrator (Neon)", "effort": "high"}), encoding="utf-8")
+            self.assertEqual(self.r.model_info("antigravity")["label"], "Orchestrator (Neon) · high")
+            self.r.meta["models"]["antigravity"] = {"model": "custom-model", "effort": "low"}
+            self.assertEqual(self.r.model_info("antigravity")["label"], "custom-model · low")
+
     def test_acp_index_comes_from_real_declared_config_options(self):
         from bridge import acp
         registry.save_agent({'id':'index-acp','driver':'acp','bin':[sys.executable],'args':{'acp':['fake']}})

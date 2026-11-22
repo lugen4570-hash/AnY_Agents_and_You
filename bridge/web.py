@@ -253,12 +253,17 @@ class Handler(BaseHTTPRequestHandler):
             from .server_runtime import installation
             return self._json(200, {"install": installation(), "data": os.path.realpath(LOG_DIR)})
         if path == "/api/rooms":
-            rows = R.rooms.listing()
+            with R.rooms.lock:
+                rows = R.rooms.listing()
+                for row in rows:
+                    row["project"] = row.get("project") or projects.legacy_id(row["workdir"])
+                groups = projects.listing(rows)
+            return self._json(200, {"rooms": rows, "projects": groups, "last": R.last_room(), "default_workdir": PROJECT})
+        if path == "/api/trash":
+            rows = R.list_trash()
             for row in rows:
                 row["project"] = row.get("project") or projects.legacy_id(row["workdir"])
-            return self._json(200, {"rooms": rows, "projects": projects.listing(rows), "last": R.last_room(), "default_workdir": PROJECT})
-        if path == "/api/trash":
-            return self._json(200, {"trash": R.list_trash()})
+            return self._json(200, {"trash": rows})
         if path == "/api/devices":
             return self._json(200, {"account": devices.account(),
                                     "devices": devices.listing(getattr(self, "_device_id", ""))})
@@ -678,6 +683,20 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "project": p})
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
+        if path in ("/api/projects/delete", "/api/rooms/move"):
+            try:
+                with R.rooms.lock:
+                    rows = R.rooms.listing()
+                    if path == "/api/projects/delete":
+                        ok, msg = projects.delete(str(data.get("id") or ""), rows + R.list_trash())
+                    else:
+                        pid = str(data.get("project") or "")
+                        if not any(p["id"] == pid for p in projects.listing(rows)):
+                            return self._json(404, {"error": "目标项目不存在"})
+                        ok, msg = R.rooms.move_project(str(data.get("id") or ""), pid)
+            except OSError:
+                return self._json(500, {"error": "无法保存项目变更，请检查数据目录的写入权限和剩余空间"})
+            return self._json(200 if ok else 409, {"ok": ok, "error": msg})
         if path == "/api/rooms/new":
             if data.get("workdir") and (not self._is_local_owner() or getattr(self, "_device_id", "")):
                 return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹。"})
@@ -685,17 +704,18 @@ class Handler(BaseHTTPRequestHandler):
             if len(ann.encode("utf-8")) > MAX_ANN:
                 return self._json(413, {"error": "too large (max 16KB)"})
             pid = str(data.get("project") or "")
-            project = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
-            if pid and project is None:
-                return self._json(400, {"error": "项目不存在"})
             member_ids = data.get("participants")
             if member_ids is not None and (not isinstance(member_ids, list) or any(not isinstance(a, str) or a not in registry.enabled_ids() for a in member_ids)):
                 return self._json(400, {"error": "请选择已有且启用的联系人"})
-            wd = (project["workdir"] if project else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
-            wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
-            if not os.path.isabs(wd) or not os.path.isdir(wd):
-                return self._json(400, {"error": "工作文件夹不存在：" + wd})
-            r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids)
+            with R.rooms.lock:
+                project = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
+                if pid and project is None:
+                    return self._json(400, {"error": "项目不存在"})
+                wd = (project["workdir"] if project else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
+                wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
+                if not os.path.isabs(wd) or not os.path.isdir(wd):
+                    return self._json(400, {"error": "工作文件夹不存在：" + wd})
+                r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids)
             return self._json(200, {"ok": True, "id": r.id})
         if path == "/api/rooms/archive":
             ok, msg = R.set_archived(str(data.get("id", "")), bool(data.get("on")))
@@ -870,11 +890,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "ais": todo})
         return self._send(404, b"not found", "text/plain")
 
-    def _recall(self, room, mid, speaker):
+    def _recall(self, room, mid, speaker, external=False):
         try:
             code, result = room.recall_message(mid, speaker)
         except OSError:
             return self._json(500, {"error": "无法保存撤回，请检查数据目录的写入权限"})
+        if external and code == 200:
+            result = dict(result)
+            for key in ("draft", "restored"):
+                if isinstance(result.get(key), dict):
+                    result[key] = {"text": result[key].get("text", "")}
         return self._json(code, result)
 
     def _external_post(self, recall=False):
@@ -902,7 +927,7 @@ class Handler(BaseHTTPRequestHandler):
         if recall:
             if (registry.get(speaker) or {}).get("kind") != "user":
                 return self._json(403, {"error": "只有真人联系人能撤回自己的消息"})
-            return self._recall(r, data.get("id"), speaker)
+            return self._recall(r, data.get("id"), speaker, external=True)
         text = str(data.get("text", "")).strip()
         if not text:
             return self._json(400, {"error": "empty"})

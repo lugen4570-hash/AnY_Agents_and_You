@@ -106,6 +106,66 @@ vm.runInContext(draft+'\nlet quote=null;\n'+send,context);
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    @unittest.skipUnless(shutil.which('node'), 'Node is needed to test message recall draft restoration')
+    def test_recall_restores_text_images_and_quote_to_original_room_composer(self):
+        root = Path(__file__).resolve().parents[1]
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const chat=fs.readFileSync('static/app-chat.js','utf8');
+const draft=chat.slice(chat.indexOf('let pend=[];'),chat.indexOf('const pendEl='));
+const recallPart=chat.slice(chat.indexOf('function applyMessageRecalls('),chat.indexOf('let attachmentPreviewController'));
+const store=new Map();
+const localStorage={getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};
+const img={name:'shot.png',path:'room-a/files/shot.png',url:'/files/room-a/files/shot.png',kind:'image'};
+const origMsg={id:5,speaker:'你',time:'15:00',text:'撤回这句话',attachments:[img],reply_to:{id:2,speaker:'claude',text:'上文'}};
+const ta={value:'',selection:null,focused:false,focus(){this.focused=true},setSelectionRange(a,b){this.selection=[a,b]}};
+let pendingResolve,synced=0,polled=0;
+const feedMap=new Map([[5,{className:'msg me'}]]);
+const ctx=vm.createContext({
+  RID:'room-a',ta,localStorage,sessionStorage:{getItem(){},removeItem(){}},
+  renderQuote(){},resizeComposer(){},drawPend(){},hideMenu(){},poll(){polled++;},
+  syncComposerBar(){synced++;},confirm:()=>true,alert:m=>{throw Error(m)},api:a=>'/api/r/'+ctx.RID+'/'+a,
+  feed:{querySelector:sel=>{const m=sel.match(/data-id="(\d+)"/);return m?feedMap.get(+m[1])||null:null}},
+  msgById:{2:{id:2,speaker:'claude',text:'上文'},5:origMsg},
+  add(m,el){ctx.msgById[m.id]=m;if(el)el.recalled=m},
+  post:()=>new Promise(r=>{pendingResolve=r}),
+});
+vm.runInContext(draft+'\nlet quote=null;\n'+recallPart,ctx);
+(async()=>{
+  // 1. Same-room recall restores text, image, quote into composer and localStorage
+  const p1=ctx.recallMessage(5);
+  pendingResolve([true,{ok:true,draft:{text:'撤回这句话',attachments:[img],reply_to:{id:2,speaker:'claude',text:'上文'}}}]);
+  await p1;
+  assert.equal(ctx.ta.value,'撤回这句话');
+  assert.equal(vm.runInContext('pend',ctx).length,1);
+  assert.equal(vm.runInContext('pend[0].path',ctx),img.path);
+  assert.equal(vm.runInContext('quote.id',ctx),2);
+  assert.equal(ctx.ta.focused,true);
+  assert.deepEqual(ctx.ta.selection,[5,5]);
+  assert.equal(synced,1);
+  assert.equal(polled,1);
+  const saved=JSON.parse(localStorage.getItem('cojam.draft.room-a'));
+  assert.equal(saved.text,'撤回这句话');
+  assert.equal(saved.attachments[0].path,img.path);
+
+  // 2. Switching rooms before recall response finishes only updates original room draft
+  ctx.ta.value='草稿尾部';ctx.saveDraft();
+  ctx.msgById[6]={id:6,speaker:'你',time:'15:01',text:'另一条撤回',attachments:[{name:'p2.png',path:'room-a/files/p2.png',kind:'image'}]};
+  const p2=ctx.recallMessage(6);
+  ctx.RID='room-b';ctx.restoreDraft();
+  assert.equal(ctx.ta.value,'');
+  pendingResolve([true,{ok:true,draft:{text:'另一条撤回',attachments:[{name:'p2.png',path:'room-a/files/p2.png',kind:'image'}],reply_to:null}}]);
+  await p2;
+  assert.equal(ctx.ta.value,'','room-b composer must stay clean');
+  assert.equal(vm.runInContext('pend',ctx).length,0);
+  const savedA=JSON.parse(localStorage.getItem('cojam.draft.room-a'));
+  assert.equal(savedA.text,'另一条撤回\n草稿尾部');
+  assert.equal(savedA.attachments.length,2);
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test contact refresh')
     def test_contact_refresh_ignores_stale_responses_and_preserves_list(self):
         root = Path(__file__).resolve().parents[1]
@@ -750,9 +810,12 @@ assert.equal(nativeListeners.length, 0);
 const roomMatch = runtimeJs.match(/function switchRoom\(id,replace\)\{[\s\S]*?\n\}/);
 assert.ok(roomMatch, 'switchRoom missing');
 let pushed = null;
+const draftByRoom = {'room-1':'第一场', 'room-2':''};
+const composer = {value:'', blur(){}};
 const roomContext = vm.createContext({
-  RID: null, roomViewGeneration: 0, resetRoomView: () => {}, post: () => {}, api: () => '', drawRooms: () => {},
-  saveDraft: () => {}, restoreDraft: () => {}, resumeDraftUploads: () => {},
+  RID: null, roomViewGeneration: 0, ta: composer,
+  resetRoomView: () => {composer.value=draftByRoom[roomContext.RID]}, post: () => {}, api: () => '', drawRooms: () => {},
+  saveDraft: () => {throw Error('switching rooms must not save the visual field into a draft')}, resumeDraftUploads: () => {},
   poll: () => Promise.resolve(), feed: {scrollTop: 0, scrollHeight: 0}, queueJump: () => {},
   location: {search: '?owner_tab=' + valid},
   history: {replaceState: (state, title, url) => { pushed = url; },
@@ -763,6 +826,12 @@ vm.runInContext(roomMatch[0], roomContext);
 roomContext.switchRoom('room-1', true);
 assert.ok(pushed.includes('owner_tab=' + valid), pushed);
 assert.ok(pushed.includes('r=room-1'), pushed);
+assert.equal(composer.value, '第一场');
+roomContext.switchRoom('room-2');
+assert.equal(composer.value, '');
+composer.value='浏览器恢复的旧值';
+roomContext.switchRoom('room-1');
+assert.equal(composer.value, '第一场');
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

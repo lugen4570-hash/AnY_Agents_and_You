@@ -37,8 +37,21 @@ function showRecalls(ids){
 }
 async function recall(id){
   const room=rid,gen=generation;
-  if(!confirm('撤回这条消息？已经发给 AI 的内容不会收回。'))return;
-  try{await request('/api/external/recall',{room,id});if(gen===generation)showRecalls([id])}
+  if(!confirm('撤回这条消息？原内容会放回输入框，正在进行的 AI 回复会立即停止。'))return;
+  const fallback=el('feed').querySelector('.msg[data-id="'+id+'"] .message-text')?.textContent||'';
+  try{
+    const res=await request('/api/external/recall',{room,id});
+    if(gen!==generation)return;
+    showRecalls([id]);
+    const restoredText=typeof res?.restored?.text==='string'?res.restored.text:(typeof res?.draft?.text==='string'?res.draft.text:fallback);
+    if(restoredText){
+      const input=el('text');
+      input.value=input.value?restoredText+'\n'+input.value:restoredText;
+      input.focus();
+    }
+    if(res?.stop_error)el('error').textContent=res.stop_error;
+    poll();
+  }
   catch(e){if(gen===generation)el('error').textContent=e.message}
 }
 async function poll(){

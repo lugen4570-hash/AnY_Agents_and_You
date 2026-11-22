@@ -150,6 +150,7 @@ def spawn_job(
     pre_tree: str | None,
     t0: float,
     model_revision: str = "",
+    source: int | None = None,
 ) -> str:
     """Persist job spec to disk and launch a detached worker process. Returns job_path."""
     jdir = jobs_dir(room.dir)
@@ -180,6 +181,7 @@ def spawn_job(
         "pre_tree": pre_tree,
         "t0": t0,
         "model_revision": model_revision,
+        "source_message": source,
         "status": "starting",
         "pid": 0,
         "live": "",
@@ -237,12 +239,12 @@ def wait_for_job(
         time.sleep(poll_interval)
 
 
-def cancel_jobs(room: Any, targets: list[str] | None = None) -> int:
+def cancel_jobs(room: Any, targets: list[str] | None = None, *, source: int | None = None) -> int:
     """Explicitly cancel and terminate detached jobs for targets (user clicked Stop)."""
     jdir = jobs_dir(room.dir)
     if not os.path.isdir(jdir):
         return 0
-    wanted = set(targets) if targets else None
+    wanted = set(targets) if targets is not None else None
     killed = 0
     for name in sorted(os.listdir(jdir)):
         if not name.endswith(".json"):
@@ -254,6 +256,8 @@ def cancel_jobs(room: Any, targets: list[str] | None = None) -> int:
         if data.get("status") not in ("starting", "running"):
             continue
         if wanted is not None and data.get("ai") not in wanted:
+            continue
+        if source is not None and data.get("source_message") != source:
             continue
         pid = int(data.get("pid") or 0)
         data["status"] = "cancelled"
@@ -303,6 +307,11 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
     pre_tree = data.get("pre_tree")
     t0 = float(data.get("t0") or time.time())
     t1 = float(data.get("finished_at") or time.time())
+    source = data.get("source_message")
+    if source in room.recalled:
+        if pre_tree is not None:
+            room.record_step(ai, pre_tree, edits, t0, t1)
+        return True
 
     from . import model_catalog
     model_catalog.result(room, ai, str(data.get("model_revision") or ""), ok, out, new_sid)
@@ -328,7 +337,7 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
             room.board_note(ai, ch, not_for=ai)
             room.send_note(ai, errs)
         else:
-            room.handle_message(ai, out)
+            room.handle_message(ai, out, source=source)
     else:
         if new_sid and new_sid != data.get("sid"):
             with room.lock:
@@ -359,6 +368,10 @@ def collect_for_room(room: Any) -> int:
             if apply_job_result(room, path, data):
                 collected += 1
         elif status in ("starting", "running"):
+            source = data.get("source_message")
+            if source in room.recalled:
+                cancel_jobs(room, source=source)
+                continue
             pid = int(data.get("pid") or 0)
             if pid and pid_alive(pid):
                 _reattach_watcher(room, path, data)
@@ -385,19 +398,24 @@ def _reattach_watcher(room: Any, job_path: str, data: dict[str, Any]) -> None:
             return
         _reattached.add(job_path)
     ai = data.get("ai") or ""
+    source = data.get("source_message")
 
     def watch() -> None:
         try:
             with room.ai_lock(ai):
-                with room.lock:
+                with room.turn_ready:
+                    room.turn_ready.wait_for(lambda: ai not in room.interrupting)
+                    if source in room.recalled:
+                        return
                     if ai not in room.state["running"]:
                         room.state["running"].append(ai)
+                    room.turn_sources[ai] = source
                     room.live[ai] = {"text": data.get("live") or "", "time": data.get("live_time") or "", "since": float(data.get("t0") or time.time())}
                 try:
                     state, final_data = wait_for_job(
                         job_path,
                         on_live=lambda rr: room.push_live(ai, rr),
-                        is_cancelled=lambda: ai in room.state["stopped"],
+                        is_cancelled=lambda: ai in room.state["stopped"] or room.turn_recalled(ai),
                     )
                     if state == "done" and isinstance(final_data, dict):
                         with room.lock:
@@ -412,6 +430,8 @@ def _reattach_watcher(room: Any, job_path: str, data: dict[str, Any]) -> None:
                     with room.lock:
                         if ai in room.state["running"]:
                             room.state["running"].remove(ai)
+                        room.turn_sources.pop(ai, None)
+                        room.state["stopped"].discard(ai)
                         room.live.pop(ai, None)
         finally:
             with _reattach_lock:

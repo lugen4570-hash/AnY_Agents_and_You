@@ -513,14 +513,17 @@ class CojamTerminal(App):
             return
         self.rooms, self.projects = rooms, projects
         groups = {p["id"]: p["name"] for p in projects}
-        buckets: dict[tuple[str, bool], list[dict[str, Any]]] = {(p["id"], False): [] for p in projects}
+        archived_projects = {room.get("project", "") for room in rooms if room.get("archived")}
+        buckets: dict[str, list[dict[str, Any]]] = {pid: [] for pid in groups}
         for room in rooms:
-            bucket = (room.get("project", ""), bool(room.get("archived")))
-            buckets.setdefault(bucket, []).append(room)
+            if not room.get("archived"):
+                buckets.setdefault(room.get("project", ""), []).append(room)
         options = []
-        for (project, archived), rows in buckets.items():
+        for project, rows in buckets.items():
+            if not rows and project in archived_projects:
+                continue
             name = groups.get(project, "独立会话")
-            heading = f"{name} · 已归档" if archived else name if rows else f"{name} · 暂无会话"
+            heading = name if rows else f"{name} · 暂无会话"
             options.append(Option(Text(plain(heading), style="bold"), disabled=True))
             for row in rows:
                 state, color = room_status(row)

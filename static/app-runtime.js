@@ -27,8 +27,8 @@ async function poll(){
   drawStatus();
 }
 async function loadState(){
-  if(!RID)return;const rid=RID;
-  try{const r=await fetch(api('state'),{cache:'no-store'});if(r.status===404)return roomGone();const j=await r.json();if(rid!==RID)return;S=j;drawState()}catch(e){}
+  if(!RID)return;const generation=roomViewGeneration;
+  try{const r=await fetch(api('state'),{cache:'no-store'});if(generation!==roomViewGeneration)return;if(r.status===404)return roomGone();const j=await r.json();if(generation!==roomViewGeneration)return;S=j;drawState()}catch(e){}
 }
 // ===== 几场会议：切换、列表、谁在跑、哪场在等你 =====
 const roomList=document.getElementById('roomList');
@@ -61,8 +61,9 @@ function resetRoomView(){
 }
 function switchRoom(id,replace){
   if(!id)return;
-  if(id!==RID){saveDraft();roomViewGeneration++;RID=id;resetRoomView();resumeDraftUploads(id)}
-  else if(!S){restoreDraft();resumeDraftUploads(id)}
+  if(id!==RID){
+    ta.blur();roomViewGeneration++;RID=id;resetRoomView();resumeDraftUploads(id);
+  }else if(!S){restoreDraft();resumeDraftUploads(id)}
   const params=new URLSearchParams(location.search);
   params.set('r',id);
   const u='?'+params.toString();
@@ -71,7 +72,11 @@ function switchRoom(id,replace){
   drawRooms();
   poll().then(()=>{feed.scrollTop=feed.scrollHeight;queueJump()});
 }
-addEventListener('popstate',()=>{const id=new URLSearchParams(location.search).get('r');if(id&&id!==RID){saveDraft();roomViewGeneration++;RID=id;resetRoomView();resumeDraftUploads(id);drawRooms();poll().then(()=>{feed.scrollTop=feed.scrollHeight})}});
+addEventListener('popstate',()=>{
+  const id=new URLSearchParams(location.search).get('r');
+  if(id&&id!==RID)switchRoom(id,true);
+});
+addEventListener('pageshow',event=>{if(event.persisted)restoreDraft()});
 let goneShown=false;
 function roomGone(){
   if(goneShown)return;goneShown=true;

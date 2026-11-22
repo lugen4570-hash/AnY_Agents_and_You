@@ -68,8 +68,8 @@ class T(unittest.TestCase):
             ROOM.enqueue("claude", user=False)
             ROOM.enqueue("codex", user=False)
             ROOM.stop_ais(["codex"])
-            self.assertIn("claude", ROOM.pending)
-            self.assertNotIn("codex", ROOM.pending)
+            self.assertTrue(ROOM.busy_for("claude"))
+            self.assertFalse(ROOM.busy_for("codex"))
         finally:
             hold.release()
             ROOM.ai_locks.update(real)

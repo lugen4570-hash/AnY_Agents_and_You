@@ -69,12 +69,11 @@ class T(unittest.TestCase):
         gate = threading.Event()
         orig = ROOM.process_job
         # 串行队列被一个卡住的活占着
-        ROOM.jobs.put((ROOM.id, "reply", "codex"))
-        ROOM.pending.append("codex")
         hold = threading.Lock(); hold.acquire()
         real_locks = dict(ROOM.ai_locks)
         ROOM.ai_locks["codex"] = hold          # 让队列里的 codex 一直拿不到锁
         try:
+            ROOM.enqueue("codex")
             ROOM.enqueue("claude", user=False)  # claude 排在队列里、codex 后面
             n = len(calls)
             ROOM.handle_message("你", "@claude 卡了吗")

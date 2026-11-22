@@ -862,7 +862,7 @@ def call_ai(ai, prompt, session_id=None, images=(), mode=None, room=None):
 
             def reg(p):
                 if room is not None:
-                    room.procs[ai] = p
+                    getattr(room, "register_process", room.procs.__setitem__)(ai, p)
 
             def on_line(l):
                 parse_claude_line(l, edits, res)
@@ -886,7 +886,7 @@ def call_ai(ai, prompt, session_id=None, images=(), mode=None, room=None):
             try:
                 cmd = build_cmd(ai, mode, sid, exe, images, outf, mo_m, mo_e)
                 rc, so, se, to = run_stream(cmd, prompt, lambda l: parse_codex_line(l, edits, res), timeout_for(mode, ai), cwd=wd,
-                                            reg=(lambda p: room.procs.__setitem__(ai, p)) if room is not None else None)
+                                            reg=(lambda p: getattr(room, "register_process", room.procs.__setitem__)(ai, p)) if room is not None else None)
                 sid = res.get("sid") or sid
                 try:
                     with open(outf, encoding="utf-8", errors="replace") as f:
@@ -1485,6 +1485,8 @@ def start_reaper():
 def call_codex_appserver(room, prompt, sid, images, mode, model, effort, edits, res):
     try:
         srv = codex_for(room, mode)
+        if room is not None and getattr(room, "turn_recalled", lambda _: False)("codex"):
+            return False, "", sid
         goal = room.goal() if room is not None else None
         on_live = (lambda rr: room.push_live("codex", rr)) if room is not None else None
         ok, out, new_sid = srv.run_turn(sid, prompt, list(images), mode, model, effort, edits, res,

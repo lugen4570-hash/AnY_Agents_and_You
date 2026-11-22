@@ -20,6 +20,28 @@ TTL = 300
 MAX_CATALOG_ENTRIES = 128
 
 
+def cli_settings(pid):
+    """Read the model and effort that Antigravity CLI exposes in its local settings."""
+    if pid != "antigravity":
+        return "", ""
+    settings = read_json(os.path.expanduser("~/.gemini/antigravity-cli/settings.json"), {})
+    if not isinstance(settings, dict):
+        return "", ""
+    model, effort = settings.get("model"), settings.get("effort")
+    model = model.strip() if isinstance(model, str) else ""
+    effort = effort.strip().lower() if isinstance(effort, str) else ""
+    suffix = r"(?:-|\s+\()(low|medium|high|xhigh|max)\)?$"
+    match = re.search(suffix, model, re.I)
+    if not effort and not match and model.lower().startswith(("orchestrator", "gemini-pro-orchestrator-")):
+        orchestrator = settings.get("orchestrator")
+        planner = orchestrator.get("planner") if isinstance(orchestrator, dict) else ""
+        if isinstance(planner, str):
+            match = re.search(suffix, planner.strip(), re.I)
+    if not effort and match:
+        effort = match[1].lower()
+    return model, effort if effort in {"low", "medium", "high", "xhigh", "max"} else ""
+
+
 def _key(pid, room=None):
     spec = registry.get(pid) or {}
     fields: dict[str, Any] = {"v": 2}

@@ -502,7 +502,7 @@
       const endpointLabel = desktop ? t('composer.desktopManaged') : ((state.execution && state.execution[id] && state.execution[id].endpoint) || 'CLI').toUpperCase();
       const modelDesc = desktop
         ? (mo.observed && mo.observed.model ? '实际回报：' + mo.observed.model : t('composer.desktopManaged'))
-        : (mo.label || mo.model || mo.default_model || '默认模型');
+        : (mo.label || mo.model || mo.default_model || '模型未回报');
       const ctxDesc = typeof ctxTitle === 'function' ? ctxTitle(x) : '';
       const permBlocked = state.mode === 'work' && state.permissions && state.permissions[id] && state.permissions[id].work === false;
       return '<div class="side-agent-card" data-side-agent="' + esc(id) + '">'

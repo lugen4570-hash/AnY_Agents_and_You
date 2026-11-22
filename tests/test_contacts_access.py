@@ -78,6 +78,33 @@ class Contacts(unittest.TestCase):
         with patch.object(web.sys, "platform", "win32"):
             self.assertEqual(call(path, {}, owner=True)[0], 404)
 
+    def test_delete_empty_project_after_moving_live_and_archived_rooms(self):
+        with tempfile.TemporaryDirectory(dir=DATA) as destination_dir:
+            source = projects.create("源项目", DATA)
+            destination = projects.create("目标项目", destination_dir)
+            active = R.rooms.create("进行中", wd=DATA, project=source["id"], participants=[])
+            archived = R.rooms.create("已归档", wd=DATA, project=source["id"], participants=[])
+            active.add_message("用户", "迁移后仍可读取")
+            R.set_archived(archived.id, True)
+            R.rooms.unload(archived.id)
+            delete = "/api/projects/delete"
+            move = "/api/rooms/move"
+            self.assertEqual(call(delete, {"id": source["id"]}, owner=True)[0], 409)
+            self.assertEqual(call(move, {"id": active.id, "project": destination["id"]}, key=self.key)[0], 403)
+            self.assertEqual(call(move, {"id": active.id, "project": "invalid"}, owner=True)[0], 404)
+            for meeting in (active, archived):
+                self.assertEqual(call(move, {"id": meeting.id, "project": destination["id"]}, owner=True)[0], 200)
+                self.assertEqual(common.read_json(os.path.join(meeting.dir, "meeting.json"))["project"], destination["id"])
+            self.assertEqual(call(delete, {"id": source["id"]}, owner=True)[0], 200)
+            _, listing = call("/api/rooms", owner=True)
+            self.assertNotIn(source["id"], {p["id"] for p in listing["projects"]})
+            rows = {r["id"]: r for r in listing["rooms"]}
+            self.assertEqual(rows[active.id]["project"], destination["id"])
+            self.assertEqual(rows[active.id]["workdir"], DATA)
+            self.assertTrue(rows[archived.id]["archived"])
+            self.assertEqual(active.messages[-1]["text"], "迁移后仍可读取")
+            self.assertTrue(Path(DATA).is_dir())
+
     def test_legacy_projects_are_stable(self):
         legacy = R.rooms.create("旧会话", "", DATA)
         rows = projects.listing([legacy.summary()])
@@ -117,7 +144,9 @@ class Contacts(unittest.TestCase):
         path = "/api/external/recall"
         self.assertEqual(call(path, {"room": self.r.id, "id": owner_id}, self.key)[0], 403)
         self.assertEqual(call(path, {"room": self.r.id, "id": bot_id}, self.bot_key)[0], 403)
-        self.assertEqual(call(path, {"room": self.r.id, "id": guest_id}, self.key)[0], 200)
+        status, recalled = call(path, {"room": self.r.id, "id": guest_id}, self.key)
+        self.assertEqual(status, 200)
+        self.assertEqual(recalled.get("draft"), {"text": "访客的话"})
         status, data = call("/api/external/messages?room=" + quote(self.r.id), key=self.key)
         self.assertEqual(status, 200)
         self.assertEqual((data["self"], data["recalled"]), ("alice", [guest_id]))

@@ -83,6 +83,29 @@ class CojamCliTest(unittest.TestCase):
                         LocalClient(port).call("/api/server/exit", {})
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_terminal_home_hides_archived_rooms_and_archived_only_projects(self):
+        from textual.widgets import OptionList
+        from bridge.terminal import CojamTerminal, SessionPicker
+
+        async def run():
+            app = CojamTerminal(LocalClient(self.port))
+            groups = [{"id": "archive", "name": "旧项目"}, {"id": "mixed", "name": "混合项目"},
+                      {"id": "empty", "name": "新项目"}]
+            rows = [{"id": "archived", "project": "archive", "title": "旧会话", "archived": True},
+                    {"id": "old", "project": "mixed", "title": "另一场旧会话", "archived": True},
+                    {"id": "active", "project": "mixed", "title": "当前会话"}]
+            async with app.run_test(size=(80, 22)):
+                app.render_rooms({"rooms": rows, "projects": groups, "last": "archived"}, force=True)
+                options = app.query_one("#rooms", OptionList)
+                self.assertEqual([str(options.get_option_at_index(i).prompt) for i in range(options.option_count)],
+                                 ["混合项目", "  ○ 当前会话  ·  空闲", "新项目 · 暂无会话"])
+                self.assertEqual(options.highlighted_option.id, "active")
+                self.assertEqual([row["id"] for row in SessionPicker(app.rooms, app.projects, app.room).rooms],
+                                 ["archived", "old", "active"])
+
+        asyncio.run(run())
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_create_send_and_receive(self):
         from textual.widgets import Footer, Input, OptionList, RichLog, Static
         from bridge.terminal import CojamTerminal

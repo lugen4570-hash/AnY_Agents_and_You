@@ -180,6 +180,8 @@ class Broker:
         digest = current_digest(pid)
         now = time.time()
         with self.condition:
+            if getattr(room, "turn_recalled", lambda _: False)(pid):
+                return False, "", session, []
             # Bound both active jobs and retained completions.
             active = sum(t["state"] in ("queued", "claimed") for t in self.tasks.values())
             if active >= MAX_ACTIVE_TASKS:

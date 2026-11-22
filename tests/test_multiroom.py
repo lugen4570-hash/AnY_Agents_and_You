@@ -150,6 +150,58 @@ class MultiRoom(unittest.TestCase):
         self.assertNotIn("attachments", loaded.messages[0])
         self.assertEqual(loaded.messages[1]["reply_to"]["text"], "消息已撤回")
 
+    def test_recall_restores_message_with_image_and_stops_active_agents(self):
+        room = R.rooms.create("撤回停AI", "", WD, participants=["claude", "codex"])
+        ai_msg = room.add_message("claude", "之前的回答")
+        req = urllib.request.Request(
+            "http://127.0.0.1:%d%s?name=shot.png" % (PORT, rp(room, "upload")),
+            method="POST",
+            data=b"\x89PNG\r\n\x1a\nfake",
+            headers={"X-RT-Token": web.RT_TOKEN},
+        )
+        with urllib.request.urlopen(req) as resp:
+            uploaded = json.loads(resp.read().decode())
+        gate[room.id] = threading.Event()
+        self.addCleanup(gate[room.id].set)
+        status, _ = call("POST", rp(room, "send"), {
+            "text": "@claude 看下这张图",
+            "attachments": [{"path": uploaded["path"], "kind": uploaded["kind"]}],
+            "reply_to": ai_msg["id"],
+        })
+        self.assertEqual(status, 200)
+        msg_id = room.messages[-1]["id"]
+        deadline = time.time() + 5
+        while time.time() < deadline and (room.id, "claude") not in started:
+            time.sleep(0.02)
+        self.assertIn((room.id, "claude"), started)
+        room.handle_message("你", "@claude 另一条请求")
+        queued_id = room.messages[-1]["id"]
+        status, payload = call("POST", rp(room, "recall"), {"id": msg_id})
+        self.assertEqual(status, 200, payload)
+        self.assertEqual(payload["draft"]["text"], "@claude 看下这张图")
+        self.assertEqual(payload["draft"]["attachments"][0]["path"], uploaded["path"])
+        self.assertEqual(payload["draft"]["attachments"][0]["kind"], "image")
+        self.assertEqual(payload["draft"]["reply_to"]["id"], ai_msg["id"])
+        self.assertIn("claude", payload["stopped"])
+        self.assertTrue(any(job[2] == queued_id for job in room.pending))
+        gate[room.id].set()
+        self.assertTrue(idle(room, t=5))
+        replies = [m for m in room.messages if m["speaker"] == "claude" and "claude 回" in m["text"]]
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(len(room.clean_attachments([{"path": uploaded["path"]}])), 1)
+
+    def test_recall_removes_queued_turn_and_leaves_another_message_queued(self):
+        meeting = R.rooms.create("排队撤回", "", WD, participants=["claude"])
+        with meeting.ai_lock("claude"):
+            meeting.handle_message("你", "@claude 待撤回")
+            meeting.handle_message("你", "@claude 保留")
+            self.assertEqual(meeting.queued_count(), 2)
+            status, result = call("POST", rp(meeting, "recall"), {"id": 0})
+            self.assertEqual((status, result["stopped"]), (200, ["claude"]))
+            self.assertEqual(meeting.queued_count(), 1)
+        self.assertTrue(idle(meeting))
+        self.assertEqual([m["speaker"] for m in meeting.messages].count("claude"), 1)
+
     def test_goal_in_prompt(self):
         a = R.rooms.create("目标", "把第三章写完", WD)
         seen = []

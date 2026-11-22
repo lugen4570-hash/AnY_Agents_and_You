@@ -477,7 +477,7 @@ def call_cli(pid, spec, prompt, session_id, images, mode, room):
 
     try:
         rc, so, se, to = run_stream(cmd, stdin_text, on_line, timeout_for(mode, pid), cwd=ctx["cwd"], env=env,
-                                    reg=(lambda p: room.procs.__setitem__(pid, p)) if room is not None else None)
+                                    reg=(lambda p: getattr(room, "register_process", room.procs.__setitem__)(pid, p)) if room is not None else None)
     finally:
         for path in cleanup:
             try:

@@ -473,6 +473,8 @@ def call(pid, spec, prompt, session_id=None, images=(), mode="discuss", room=Non
             except Exception as e:
                 return False, "%s 的 ACP 进程启动失败：%s" % (pid, e), session_id, []
     assert proc is not None
+    if room is not None and getattr(room, "turn_recalled", lambda _: False)(pid):
+        return False, "", session_id, []
     try:
         reply, sid, edits = proc.prompt(prompt, images, mode, room, wanted_sid=session_id)
     except TimeoutError:

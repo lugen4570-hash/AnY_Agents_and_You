@@ -207,7 +207,10 @@ class Room:
         self.recalled = set(read_json(os.path.join(d, "recalled.json")) or [])
         if self.recalled:
             self._apply_recalls()
-        self.pending = []      # 已排上（队列里或在等自己的锁）还没开始的 ai，避免同一个人被重复叫
+        self.pending: list[tuple[str, str, int | None]] = []  # Agent、队列代数、触发消息
+        self.turn_sources: dict[str, int | None] = {}
+        self.interrupting: set[str] = set()
+        self.turn_ready = threading.Condition(self.lock)
         self.state: dict[str, Any] = {
             "running": [], "chain": 0,         # running：正在跑的名字列表（压缩时是 "compact:claude" 这样）
             "compacting": set(),                # 排上或正在压缩的 AI（每个 AI 各压各的）
@@ -355,12 +358,31 @@ class Room:
                 return 404, {"error": "没有这条消息"}
             if self.messages[mid]["speaker"] != speaker:
                 return 403, {"error": "只能撤回自己发的消息"}
-            if mid not in self.recalled:
-                recalled = self.recalled | {mid}
-                write_json(os.path.join(self.dir, "recalled.json"), sorted(recalled))
-                self.recalled = recalled
-                self._apply_recalls()
-            return 200, {"ok": True}
+            if mid in self.recalled:
+                return 200, {"ok": True}
+            message = self.messages[mid]
+            draft = {key: message[key] for key in ("text", "attachments", "reply_to") if key in message}
+            recalled = self.recalled | {mid}
+            write_json(os.path.join(self.dir, "recalled.json"), sorted(recalled))
+            self.recalled = recalled
+            self._apply_recalls()
+            queued = {job[0] for job in self.pending if job[2] == mid}
+            self.pending[:] = [job for job in self.pending if job[2] != mid]
+            self._retain_queued_replies(lambda job: job[2] != mid)
+            running = [ai for ai, source in self.turn_sources.items() if source == mid]
+            self.interrupting.update(running)
+        result = {"ok": True, "draft": draft, "stopped": sorted(queued.union(running))}
+        try:
+            self._interrupt_turns(running, running)
+            detached_jobs.cancel_jobs(self, source=mid)
+        except OSError:
+            logger.warning("Could not interrupt all work for recalled message %s in %s", mid, self.id, exc_info=True)
+            result["stop_error"] = "部分任务未能停止，请检查会议运行状态。"
+        finally:
+            with self.turn_ready:
+                self.interrupting.difference_update(running)
+                self.turn_ready.notify_all()
+        return 200, result
 
     def system_note(self, text):
         self.add_message("系统", text, quiet=True)
@@ -684,30 +706,41 @@ class Room:
             de = ""
         return (m or dm), (e or de)
 
-    def model_label(self, ai, model_labels=None):
-        m, e = self.effective_models(ai)
+    def model_label(self, ai, model_labels=None, state=None, live=None):
+        state = state or model_catalog.state(self, ai)
+        m, e = state["requested"]["model"], state["requested"]["effort"]
+        if ai == "antigravity" and execution.binding(self, ai)["endpoint"] == "cli" and not (m and e):
+            configured_model, configured_effort = model_catalog.cli_settings(ai)
+            if not m or m == configured_model or (model_labels or {}).get(m) == configured_model:
+                m, e = m or configured_model, e or configured_effort
+        actual = live or state["observed"] or {}
+        if state["apply_status"] == "read_only":
+            m, e = actual.get("model"), actual.get("effort")
+        elif (live or state["apply_status"] == "applied") and actual.get("model"):
+            e = actual.get("effort") or (e if actual["model"] == m else "")
+            m = actual["model"]
         if model_labels is None:
             model_labels = model_catalog.capabilities(self, ai).get("model_labels")
         shown = model_catalog.display_model_name(m, model_labels) if m else ""
-        return "%s · %s" % (shown or "默认", e or "默认")
+        return "%s · %s" % (shown or "模型未回报", e or "思考强度未回报")
 
     def model_info(self, ai):
         m, e = self.own_models(ai)
         capabilities = model_catalog.capabilities(self, ai)
         model_labels = capabilities.get("model_labels")
-        effective_model = self.effective_models(ai)[0]
+        state = model_catalog.state(self, ai)
+        live = capabilities.get("observed")
+        effective_model = state["requested"]["model"]
         if capabilities["effort_supported"]:
             capabilities["efforts_by_model"].setdefault(effective_model, agents.effort_options(ai, effective_model))
-        label = self.model_label(ai, model_labels=model_labels) if capabilities["model_supported"] or capabilities["effort_supported"] else "模型未回报"
-        actual = capabilities.get("observed")
-        if actual and actual.get("model"):
-            actual_name = model_catalog.display_model_name(actual["model"], model_labels)
-            label = actual_name + (" · " + actual["effort"] if actual.get("effort") else "")
+        label = self.model_label(ai, model_labels=model_labels, state=state, live=live)
+        if live is not None:
+            state["observed"] = live
         return {"model": m, "effort": e, "label": label, "default": " · ".join(agents.ROOM_DEFAULTS[ai]),
                 "default_model": agents.ROOM_DEFAULTS[ai][0],
                 "default_effort": agents.ROOM_DEFAULTS[ai][1],
                 "efforts": capabilities["efforts_by_model"].get(effective_model, agents.effort_options(ai, effective_model)) if capabilities["effort_supported"] else [],
-                **capabilities, **model_catalog.state(self, ai), **({"observed": actual} if actual else {})}
+                **capabilities, **state}
 
     def set_models(self, ai, model, effort):
         """改某个 AI 在这场会议的模型 / effort（空 = 用会议室默认）。返回 (ok, 错误, 是否换了模型)。"""
@@ -1064,27 +1097,27 @@ class Room:
         with self.lock:
             if ai is None:
                 return bool(self.state["running"] or self.pending or self.state["compacting"] or self.state.get("debate_active"))
-            return ai in self.state["running"] or ai in self.pending or ai in self.state["compacting"]
+            return ai in self.state["running"] or any(job[0] == ai for job in self.pending) or ai in self.state["compacting"]
 
     def queued_count(self):
         """排着还没开始的：等着回话的 AI + 等着压缩的 AI。"""
         return len(self.pending) + len([a for a in self.state["compacting"] if "compact:" + a not in self.state["running"]])
 
-    def enqueue(self, ai, user=False):
+    def enqueue(self, ai, user=False, source=None):
         """排上一个 AI 的回复。已排上还没开始的不重复排（它开始时才取增量，自然会看到新消息）。
         user=True（用户发言触发）：立刻开线程，和另一个 AI 并行；
         user=False（AI 之间的对话）：进这场会议的串行队列，一个跑完下一个才开始。两种都要等自己 AI 的锁（同一个 AI 永远串行）。"""
         with self.lock:
             # 用户发话不能被串行队列挡住：它已经排在 AI 之间的队列里（前面可能是别人的长活）时，照样马上另开一个并行的。
             # 队列里那份轮到时发现该看的都看过了，会自己跳过。
-            if ai in self.pending and not user:
+            job = (ai, self.job_tag(ai), source)
+            if job in self.pending and not user:
                 return
-            self.pending.append(ai)
-            tag = self.job_tag(ai)
+            self.pending.append(job)
             if user:
-                threading.Thread(target=self.run_job, args=(ai, tag, True), daemon=True).start()
+                threading.Thread(target=self.run_job, args=(job, True), daemon=True).start()
             else:
-                self.jobs.put((tag, "reply", ai))
+                self.jobs.put(job)
 
     def make_reply(self, mid, part=None):
         """用户引用的那条：只认会议里真有的、人或 AI 说的话；摘一段原文（太长截断）。part = 用户在那条里选中的一段（右键引用），有就只引这段。"""
@@ -1108,11 +1141,11 @@ class Room:
             t = "（附件）" if m.get("attachments") else ""
         return {"id": mid, "speaker": m["speaker"], "text": t[:QUOTE_LEN] + ("…" if len(t) > QUOTE_LEN else "")}
 
-    def handle_message(self, speaker, text, attachments=None, origin="room", reply_to=None):
+    def handle_message(self, speaker, text, attachments=None, origin="room", reply_to=None, source=None):
         """记录一条消息并按 @ 路由。origin：room = 用户或会议室自己叫起来的 AI；external = 会议室外的 claude/codex（/api/post、MCP）。"""
         external = origin == "external"
         with self.lock:
-            if self.closed:
+            if self.closed or source in self.recalled:
                 return False
             cmd = text.strip().lower().split()
             if speaker == "你" and not attachments and cmd and cmd[0] == "/compact" and len(cmd) <= 2 and set(cmd[1:]) <= set(AIS):
@@ -1147,7 +1180,9 @@ class Room:
                 if not access.permissions(self, speaker)["trigger"]:
                     targets = []
             if text or attachments or not (changes or send_errs):
-                self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to)
+                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to)
+                if human:
+                    source = message["id"]
             self.board_note(speaker, changes, not_for=None if external else speaker)
             self.send_note(speaker, send_errs)
             if speaker == "你":
@@ -1164,59 +1199,62 @@ class Room:
                 if self.meta["handed_off"][t]:
                     self.system_note("%s 现在在终端里，回来后会补看" % t)
                 else:
-                    self.enqueue(t, user=human)
+                    self.enqueue(t, user=human, source=source)
         return True
 
     def post_progress(self, ai, text, atts):
         """AI 一轮中途经 bridge 发进来的一句进度 / 文件：照登，但里面的 @ 不叫人（它这一轮还没说完）。"""
         text = (text or "").strip()
-        if not text and not atts:
-            return None
-        return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai))
+        with self.lock:
+            if self.turn_recalled(ai) or (not text and not atts):
+                return None
+            return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai))
 
     def push_live(self, ai, res):
         """AI 一轮里中途说的话（claude 的文字块、codex 的 commentary）放进 live，页面状态行显示最近一句；不进会议记录。"""
         t = res.pop("live", None)
-        if t and ai in self.live:
+        if t and ai in self.live and not self.turn_recalled(ai):
             t = t.strip()
             self.live[ai]["text"] = t if len(t) <= 400 else t[:400] + "…"
             self.live[ai]["time"] = datetime.now().strftime("%H:%M:%S")
 
-    def run_job(self, ai, tag, user):
+    def run_job(self, job, user):
+        ai, tag, source = job
         try:
-            self.process_job(ai, tag, user)
+            self.process_job(ai, tag, user, job=job, source=source)
         except Exception as e:
-            self.add_message("系统", "内部错误：%s" % e)
+            if source not in self.recalled:
+                self.add_message("系统", "内部错误：%s" % e)
 
     def _worker(self):
         while True:
             item = self.jobs.get()
             if item is None:
                 return
-            tag, kind, ai = item
-            try:
-                self.process_job(ai, tag, False)
-            except Exception as e:
-                self.add_message("系统", "内部错误：%s" % e)
+            self.run_job(item, False)
 
-    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False):
+    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False, job=None, source=None):
         """叫一次 AI。整个过程持有这个 AI 自己的锁（同一个 AI 永远串行）；增量在拿到锁之后才取快照。"""
         with self.ai_lock(ai):
-            with self.lock:
-                if ai in self.pending:
-                    self.pending.remove(ai)
+            with self.turn_ready:
+                self.turn_ready.wait_for(lambda: ai not in self.interrupting)
+                if job is not None:
+                    if job not in self.pending:
+                        return
+                    self.pending.remove(job)
                 forced = ai in self.state["force_work"]   # 先取走：下面提前返回时也不能留到下一轮
                 self.state["force_work"].discard(ai)
-                if self.closed or ai not in self.ais or not access.allowed(self, ai, "read") or not access.allowed(self, ai, "post") or tag != self.job_tag(ai) or self.meta.get("handed_off", {}).get(ai):
+                if self.closed or source in self.recalled or ai not in self.ais or not access.allowed(self, ai, "read") or not access.allowed(self, ai, "post") or tag != self.job_tag(ai) or self.meta.get("handed_off", {}).get(ai):
+                    return
+                if debate_prompt and self.state.get("debate_cancelled"):
                     return
                 if execution.binding(self, ai)["phase"] != "ready":
                     self.system_note("%s 正在交接执行端，本条消息已保留；接管完成后再 @ 它处理" % ai)
                     return
-                if debate_prompt and self.state.get("debate_cancelled"):
-                    return
                 if not user and not debate_prompt and self.meta.get(ai + "_session") and not self.delta_for(ai)[0]:
                     return   # AI 之间的对话排到它时，该看的它已经看过了，不白叫
                 self.state["running"].append(ai)
+                self.turn_sources[ai] = source
                 self.live[ai] = {"text": "", "time": "", "since": time.time()}
             try:
                 mode = self.member_mode(ai, "discuss" if debate_prompt else "work" if forced else self.mode())
@@ -1243,14 +1281,17 @@ class Room:
                 sid = self.meta.get(ai + "_session")
                 model_revision = model_catalog.request_id(self, ai)
                 if not debate_prompt and detached_jobs.should_detach(self, ai, ai_caller):
-                    job_path = detached_jobs.spawn_job(
-                        self, ai, prompt, sid, imgs, mode,
-                        upto=upto, ver=ver, pre_tree=pre, t0=t0, model_revision=model_revision,
-                    )
+                    with self.lock:
+                        if self.turn_recalled(ai):
+                            return
+                        job_path = detached_jobs.spawn_job(
+                            self, ai, prompt, sid, imgs, mode,
+                            upto=upto, ver=ver, pre_tree=pre, t0=t0, model_revision=model_revision, source=source,
+                        )
                     jstate, jdata = detached_jobs.wait_for_job(
                         job_path,
                         on_live=lambda rr: self.push_live(ai, rr),
-                        is_cancelled=lambda: ai in self.state["stopped"],
+                        is_cancelled=lambda: ai in self.state["stopped"] or self.turn_recalled(ai),
                     )
                     if jstate == "detached":
                         # Cojam is shutting down; leave the detached CLI worker running to be collected on reopen.
@@ -1264,17 +1305,25 @@ class Room:
                     if jstate == "cancelled":
                         with self.lock:
                             self.state["stopped"].discard(ai)
-                        self.add_message("系统", "%s 被你打断了" % ai)
+                        if not self.turn_recalled(ai):
+                            self.add_message("系统", "%s 被你打断了" % ai)
                         return
                     self.add_message("系统", "%s 后台任务意外退出，未返回结果。" % ai)
                     return
                 try:
+                    if self.turn_recalled(ai):
+                        return
                     res = ai_caller(ai, prompt, sid, imgs, mode, self)   # 明着传：落盘那一轮是强制干活模式，跟会议的模式不一样
                 except BaseException:
                     if pre is not None:
                         self.add_message("系统", "%s 调用中途崩了，这一步改了什么没能记录" % ai)
                     raise
                 ok, out, new_sid = res[0], res[1], res[2]
+                edits = res[3] if len(res) > 3 else []
+                if self.turn_recalled(ai):
+                    if pre is not None:
+                        self.record_step(ai, pre, edits, t0, time.time())
+                    return
                 model_catalog.result(self, ai, model_revision, ok, out, new_sid)
                 with self.lock:
                     was_stopped = ai in self.state["stopped"]
@@ -1282,7 +1331,7 @@ class Room:
                 if was_stopped and not ok:
                     ok, out = False, "%s 被你打断了" % ai
                 edits = res[3] if len(res) > 3 else []
-                if not ok and not was_stopped and (registry.get(ai) or {}).get("driver") == "acp" and new_sid is None:
+                if not ok and not was_stopped and not self.turn_recalled(ai) and (registry.get(ai) or {}).get("driver") == "acp" and new_sid is None:
                     # ACP 会话已失效（欠费、过期等）：丢掉旧会话，按"第一次叫"带完整上下文重试一次。
                     # 只认这个结构化信号；CLI / HTTP / external 驱动出错时仍走下面的原逻辑。
                     with self.lock:
@@ -1290,6 +1339,8 @@ class Room:
                         self.meta["last_seen"][ai] = -1   # 新会话没看过任何东西，下次也要给整份记录
                         self.save_meta()
                     prompt, upto, ver, imgs = self.build_prompt(ai, mode, fresh=True)
+                    if self.turn_recalled(ai):
+                        return
                     res = ai_caller(ai, prompt, None, imgs, mode, self)
                     ok, out, new_sid = res[0], res[1], res[2]
                     edits = res[3] if len(res) > 3 else []
@@ -1324,7 +1375,7 @@ class Room:
                         self.board_note(ai, ch, not_for=ai)
                         self.send_note(ai, errs)
                     else:
-                        self.handle_message(ai, out)
+                        self.handle_message(ai, out, source=source)
                 else:
                     if new_sid and new_sid != sid:   # 会话建好了但回复出错（比如额度不足）：记下会话 id，下轮接着用，不再开新的
                         with self.lock:
@@ -1337,6 +1388,8 @@ class Room:
                 with self.lock:
                     if ai in self.state["running"]:
                         self.state["running"].remove(ai)
+                    self.turn_sources.pop(ai, None)
+                    self.state["stopped"].discard(ai)
                     self.live.pop(ai, None)
                 guard.release_turn((self.id, ai))
 
@@ -1550,6 +1603,40 @@ class Room:
         return True, ""
 
     # ---------- 停 ----------
+    def turn_recalled(self, ai):
+        return self.turn_sources.get(ai) in self.recalled
+
+    def register_process(self, ai, proc):
+        with self.lock:
+            self.procs[ai] = proc
+            cancelled = self.turn_recalled(ai)
+        if cancelled and proc.poll() is None:
+            kill_tree(proc)
+
+    def _retain_queued_replies(self, keep):
+        retained = []
+        while True:
+            try:
+                job = self.jobs.get_nowait()
+            except queue.Empty:
+                break
+            if job is None or keep(job):
+                retained.append(job)
+        for job in retained:
+            self.jobs.put(job)
+
+    def _interrupt_turns(self, running, targets):
+        from . import acp
+        from .members import broker
+        broker.cancel(self.id, targets)
+        for ai in running:
+            proc = self.procs.get(ai)
+            if proc is not None and proc.poll() is None:
+                kill_tree(proc)
+            if ai == "codex":
+                agents.stop_codex(self)
+            acp.stop(self, ai)
+
     def stop_ais(self, targets=None):
         """用户按"停"：targets 里正在跑的 AI 连同它起的命令（git push 之类）一起杀掉，它们排着的全部作废；别的 AI、别的会议不受影响。
         返回给人看的描述。"""
@@ -1559,32 +1646,14 @@ class Room:
                 self.state["debate_cancelled"] = True
             for a in targets:
                 self.state["epoch"][a] = self.state["epoch"].get(a, 0) + 1     # 已经排上的（队列里、等锁的）开跑时对不上计数，自己放弃
-            self.pending[:] = [a for a in self.pending if a not in targets]
-            keep = []
-            while True:
-                try:
-                    item = self.jobs.get_nowait()
-                except queue.Empty:
-                    break
-                if item is None or item[1] != "reply" or item[2] not in targets:
-                    keep.append(item)       # 压缩、别的 AI 的不归这次"停"管
-            for item in keep:
-                self.jobs.put(item)
+            self.pending[:] = [job for job in self.pending if job[0] not in targets]
+            self._retain_queued_replies(lambda job: job[0] not in targets)
             running = [a for a in self.state["running"] if a in targets]
             self.state["stopped"].update(running)
             for a in targets:
                 self.state["force_work"].discard(a)
-        from .members import broker
-        broker.cancel(self.id, targets)
         detached_jobs.cancel_jobs(self, targets)
-        from . import acp
-        for a in running:
-            p = self.procs.get(a)
-            if p is not None and p.poll() is None:
-                kill_tree(p)
-            if a == "codex":
-                agents.stop_codex(self)   # 杀掉这场会议的 app-server 进程树；下一轮自动重起，会话从记录里接上
-            acp.stop(self, a)
+        self._interrupt_turns(running, targets)
         who = "、".join(targets)
         if running:
             msg = "你强行打断了：%s。%s排着的也清掉了。" % ("、".join(running), who)
@@ -1928,6 +1997,26 @@ class Rooms:
         out.sort(key=lambda x: x["archived"])   # 稳定排序：归档的沉到底部
         return out
 
+    def move_project(self, rid, project_id):
+        """Change the room's project without rebinding its native sessions or workdir."""
+        with self.lock:
+            row = next((item for item in scan(MEET_DIR) if item["id"] == rid), None)
+            if row is None:
+                return False, "没有这场会议"
+            r = self.loaded.get(rid)
+            if r is None:
+                path = os.path.join(MEET_DIR, rid, "meeting.json")
+                meta = read_json(path)
+                if not isinstance(meta, dict):
+                    return False, "无法读取会话设置"
+                write_json(path, {**meta, "project": project_id})
+            else:
+                with r.lock:
+                    updated = {**r.meta, "project": project_id}
+                    write_json(os.path.join(r.dir, "meeting.json"), updated)
+                    r.meta["project"] = project_id
+            return True, ""
+
     def busy_rooms(self):
         return [r for r in self.all() if r.busy_for()]
 
@@ -1979,19 +2068,20 @@ def set_last(rid):
 
 def set_archived(rid, on):
     """归档 / 取消归档：只改标记。返回 (ok, 错误)。"""
-    if rid not in [x["id"] for x in scan(MEET_DIR)]:
-        return False, "没有这场会议"
-    st = "archived" if on else "open"
-    r = rooms.loaded.get(rid)
-    if r is not None:
-        with r.lock:
-            r.meta["status"] = st
-            r.save_meta()
-    else:
-        p = os.path.join(MEET_DIR, rid, "meeting.json")
-        m = read_json(p) or {}
-        m["status"] = st
-        write_json(p, m)
+    with rooms.lock:
+        if rid not in [x["id"] for x in scan(MEET_DIR)]:
+            return False, "没有这场会议"
+        st = "archived" if on else "open"
+        r = rooms.loaded.get(rid)
+        if r is not None:
+            with r.lock:
+                r.meta["status"] = st
+                r.save_meta()
+        else:
+            p = os.path.join(MEET_DIR, rid, "meeting.json")
+            m = read_json(p) or {}
+            m["status"] = st
+            write_json(p, m)
     return True, ""
 
 

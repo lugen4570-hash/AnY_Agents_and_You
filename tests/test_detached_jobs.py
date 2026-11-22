@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class DetachedJobsTests(unittest.TestCase):
     def _run_isolated(self, script: str):
-        with tempfile.TemporaryDirectory() as tmp:
-            env = dict(os.environ, ROUNDTABLE_DATA=tmp, ROUNDTABLE_DETACHED_CLI='1')
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            env = dict(os.environ, ROUNDTABLE_LOG_DIR=tmp, ROUNDTABLE_DETACHED_CLI='1')
             result = subprocess.run(
                 [sys.executable, '-c', script],
                 cwd=ROOT,
@@ -120,6 +120,40 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as wd:
     while time.time() < deadline and detached_jobs.pid_alive(int(d.get('pid') or 0)):
         time.sleep(0.1)
     assert not detached_jobs.pid_alive(int(d.get('pid') or 0))
+    r.close()
+''')
+
+    def test_recall_stops_only_the_detached_worker_from_that_message(self):
+        self._run_isolated(r'''
+import os, sys, time
+from pathlib import Path
+from bridge import detached_jobs, registry, room as R
+from bridge.common import read_json
+
+wd = Path(os.environ['ROUNDTABLE_LOG_DIR'])
+worker_py = wd / 'recall_cli.py'
+worker_py.write_text('import time\ntime.sleep(30)\nprint("LATE_REPLY")\n', encoding='utf-8')
+registry.save_agent({'id': 'recall-cli', 'driver': 'cli', 'bin': [sys.executable],
+                     'args': {'base': [str(worker_py)]}, 'prompt': 'stdin'})
+r = R.rooms.create('recall', '', str(wd), participants=['recall-cli'])
+first = r.add_message('你', 'recall this')['id']
+second = r.add_message('你', 'keep this')['id']
+paths = [detached_jobs.spawn_job(r, 'recall-cli', 'test', None, [], 'discuss', upto=mid,
+                                ver=1, pre_tree=None, t0=time.time(), source=mid)
+         for mid in (first, second)]
+try:
+    code, result = r.recall_message(first, '你')
+    assert code == 200 and result['draft']['text'] == 'recall this', result
+    stopped, untouched = map(read_json, paths)
+    assert stopped['status'] == 'cancelled', stopped
+    assert untouched['status'] in ('starting', 'running'), untouched
+    deadline = time.monotonic() + 5
+    while detached_jobs.pid_alive(stopped['pid']) and time.monotonic() < deadline:
+        time.sleep(.05)
+    assert not detached_jobs.pid_alive(stopped['pid'])
+    assert detached_jobs.pid_alive(untouched['pid'])
+finally:
+    detached_jobs.cancel_jobs(r)
     r.close()
 ''')
 

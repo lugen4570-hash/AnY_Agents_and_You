@@ -235,31 +235,65 @@ async function toggleMode(){
   if(!ok)alert(j.error||'失败');
   closeMeetingTools();await loadState();poll();
 }
+function openMoveRoom(room,projects){
+  const destinations=projects.filter(p=>p.id!==room.project);
+  showModal('<h3>移动会话</h3><p class="hint">「'+esc(room.title)+'」的聊天记录、附件和工作目录会保留。</p><label>目标项目<select id="moveProject">'+destinations.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'</select></label><p id="moveError" role="alert"></p><div class="btns"><button type="button" id="moveBack">返回</button><button type="button" id="moveSave" class="pri">移动会话</button></div>');
+  document.getElementById('moveBack').onclick=()=>openList();
+  document.getElementById('moveSave').onclick=async e=>{
+    const button=e.currentTarget,project=document.getElementById('moveProject').value;
+    button.disabled=true;
+    const [ok,result]=await post('/api/rooms/move',{id:room.id,project});
+    if(ok)await pollRooms();
+    if(document.getElementById('moveSave')!==button)return;
+    if(ok)return openList();
+    button.disabled=false;
+    document.getElementById('moveError').textContent=result.error||'移动失败';
+  };
+}
 async function openList(showTrash){
   const j=await (await fetch('/api/rooms',{cache:'no-store'})).json();
   const tj=await (await fetch('/api/trash',{cache:'no-store'})).json();
-  const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
-    '<button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
-  const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small><button type="button" class="rb">恢复</button></span></div>').join('');
-  showModal('<h3>会议列表</h3>'+(rows||'<div class="hint">还没有会议</div>')+
+  const projects=j.projects||[],projectNames=new Map(projects.map(p=>[p.id,p.name]));
+  const projectRows=projects.map(p=>{
+    const count=j.rooms.filter(room=>room.project===p.id).length;
+    const inTrash=tj.trash.filter(room=>room.project===p.id).length;
+    return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+count+' 场会话'+(inTrash?' · 回收站 '+inTrash+' 场':'')+'</small></span><span class="acts"><button type="button" data-project-delete="'+esc(p.id)+'"'+(count||inTrash?' disabled':'')+'>删除项目</button></span></div>';
+  }).join('');
+  const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
+    '<button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
+  const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button></span></div>').join('');
+  showModal('<h3>项目与会话管理</h3><h4>项目</h4>'+(projectRows||'<p class="hint">还没有项目</p>')+
+    (projectRows?'<p class="hint">移走会话并处理回收站中的会话后，即可删除空项目。磁盘上的工作文件夹会保留。</p>':'')+
+    '<h4>会话</h4>'+(rows||'<div class="hint">还没有会议</div>')+
     '<div class="btns" style="margin-top:10px"><button type="button" id="lTrash">回收站（'+tj.trash.length+'）</button><button type="button" id="lClose">关闭</button></div>'+
     '<div id="trashBox" style="display:'+(showTrash?'block':'none')+'"><h3 style="margin-top:14px">回收站</h3>'+(trows||'<div class="hint">空的</div>')+
     (tj.trash.length?'<div class="btns" style="margin-top:8px"><button type="button" id="lPurge">清空回收站</button></div>':'')+
-    '<div class="hint">清空后找不回来，这些会议里 AI 自己的会话（~/.claude、~/.codex 下）也一起删；别的会议还在用的不删。</div></div>'+
+    '<div class="hint">彻底删除会尝试清理各 Agent 的对应会话，仍被其他会议使用的会话会保留。</div></div>'+
     '<div class="hint" style="margin-top:12px">几场会议可以同时跑。想并排看：在会议上按 Ctrl 点（或鼠标中键）在新标签页打开。</div>');
   document.getElementById('lClose').onclick=hideModal;
   document.getElementById('lTrash').onclick=()=>{const b=document.getElementById('trashBox');b.style.display=b.style.display==='none'?'block':'none'};
   const act=async(url,body)=>{const [ok,jj]=await post(url,body);if(!ok){alert(jj.error||'失败');return false}return true};
+  mbox.querySelectorAll('[data-project-delete]').forEach(button=>{
+    button.onclick=async()=>{
+      const id=button.dataset.projectDelete;
+      if(!confirm('删除空项目「'+projectNames.get(id)+'」？磁盘上的工作文件夹会保留。'))return;
+      button.disabled=true;
+      if(await act('/api/projects/delete',{id})){await pollRooms();if(button.isConnected)openList(showTrash)}
+      else button.disabled=false;
+    };
+  });
   mbox.querySelectorAll('#trashBox .item').forEach(el=>{
     el.querySelector('.rb').onclick=async e=>{e.stopPropagation();if(await act('/api/trash/restore',{id:el.dataset.id})){pollRooms();openList(true)}};
   });
   const pg=document.getElementById('lPurge');
   if(pg)pg.onclick=async()=>{if(!confirm('清空回收站？清空后找不回来。\n\n这些会议里 claude、codex 各自的会话（~/.claude、~/.codex 下的记录）也一起删掉；别的会议还在用的不删。'))return;if(await act('/api/trash/purge',{}))openList(true)};
-  mbox.querySelectorAll('.item').forEach(el=>{
+  mbox.querySelectorAll('.item[data-id]').forEach(el=>{
     if(el.closest('#trashBox'))return;
+    const room=j.rooms.find(room=>room.id===el.dataset.id);
+    el.querySelector('.mv').onclick=e=>{e.stopPropagation();openMoveRoom(room,projects)};
     el.querySelector('.ab').onclick=async e=>{e.stopPropagation();if(await act('/api/rooms/archive',{id:el.dataset.id,on:el.querySelector('.ab').dataset.on==='1'})){await loadState();pollRooms();openList()}};
     el.querySelector('.db').onclick=async e=>{e.stopPropagation();
-      if(!confirm('把「'+el.querySelector('.tt').textContent+'」移到回收站？（可以恢复）\n\n清空回收站时，这场会议里 claude、codex 各自的会话也会一起删掉。'))return;
+      if(!confirm('把「'+el.querySelector('.tt').textContent+'」移到回收站？（可以恢复）'))return;
       if(await act('/api/rooms/delete',{id:el.dataset.id})){
         if(el.dataset.id===RID){hideModal();roomViewGeneration++;RID=null;resetRoomView();const params=new URLSearchParams(location.search);params.delete('r');history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():''));await pickRoom()}
         else {await pollRooms();openList(true)}
