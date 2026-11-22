@@ -88,10 +88,10 @@ def write_launcher(root, interpreter):
     if sys.platform == "win32":
         launcher = root / "cojam.cmd"
         executable = str(interpreter.relative_to(root))
-        atomic_text(launcher, f'@echo off\n"%~dp0{executable}" -m bridge.cli_autostart %*\n')
+        atomic_text(launcher, f'@echo off\n"%~dp0{executable}" -I -m bridge.cli %*\n')
     else:
         launcher = root / "cojam"
-        atomic_text(launcher, f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} -m bridge.cli_autostart "$@"\n', executable=True)
+        atomic_text(launcher, f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} -I -m bridge.cli "$@"\n', executable=True)
     return launcher
 
 
@@ -129,7 +129,7 @@ def main(argv=None):
         interpreter, launcher = install(root)
         print(f"Cojam CLI 已就绪。下次也可运行：{launcher}", flush=True)
         if not args.install_only:
-            return subprocess.call([str(interpreter), "-m", "bridge.cli_autostart"])
+            return subprocess.call([str(interpreter), "-I", "-m", "bridge.cli"])
         return 0
     except KeyboardInterrupt:
         return 130

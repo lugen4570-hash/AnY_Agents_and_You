@@ -43,7 +43,7 @@ class LocalClient:
             response = conn.getresponse()
             return response.status, response.headers, response.read()
         except (OSError, http.client.HTTPException) as error:
-            raise CliError(f"无法连接本机 Cojam（127.0.0.1:{self.port}）。请打开桌面端或运行 cojam serve。") from error
+            raise CliError(f"无法连接本机 Cojam（127.0.0.1:{self.port}）。请运行 cojam 打开客户端，或运行 cojam serve 启动后台。") from error
         finally:
             conn.close()
 
@@ -135,6 +135,8 @@ def main(argv=None):
                 if error.name not in ("textual", "rich"):
                     raise
                 raise CliError('请先在源码目录运行 python -m pip install -e ".[cli]"。') from error
+            from .cli_autostart import ensure_backend
+            ensure_backend(args.port)
             CojamTerminal(client, getattr(args, "room", None)).run()
             return 0
         print(json.dumps(result))

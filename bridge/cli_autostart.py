@@ -1,5 +1,4 @@
-"""Launch the CLI installed by the website, with a local backend when needed."""
-import argparse
+"""Start or reuse the local backend for the interactive CLI."""
 import http.client
 import json
 import os
@@ -7,6 +6,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+from threading import Thread
 import time
 
 from . import cli
@@ -49,36 +49,35 @@ def ensure_backend(port):
             raise cli.CliError(f"无法使用端口 {port}。请稍后重试或设置 ROUNDTABLE_PORT。") from error
 
     directory = Path(os.environ.get("ROUNDTABLE_LOG_DIR", data_directory())).resolve()
-    directory.mkdir(parents=True, exist_ok=True)
     log = directory / "cli-server.log"
     env = dict(os.environ, ROUNDTABLE_LOG_DIR=str(directory), ROUNDTABLE_OWNER_LIFECYCLE="1")
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
-    with log.open("ab") as stream:
-        child = subprocess.Popen([sys.executable, "-m", "bridge.cli", "--port", str(port), "serve"],
-                                 stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, env=env, **options)
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline:
-        if server_ready(port):
-            return
-        if child.poll() is not None:
-            break
-        time.sleep(0.2)
-    if child.poll() is None:
-        child.terminate()
-        child.wait(timeout=5)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        with log.open("ab") as stream:
+            child = subprocess.Popen([sys.executable, "-m", "bridge.cli", "--port", str(port), "serve"],
+                                     cwd=Path(__file__).resolve().parents[1], stdin=subprocess.DEVNULL,
+                                     stdout=stream, stderr=stream, env=env, **options)
+        ready = False
+        try:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                ready = server_ready(port)
+                if ready:
+                    Thread(target=child.wait, daemon=True).start()
+                    return
+                if child.poll() is not None:
+                    break
+                time.sleep(0.2)
+        finally:
+            if not ready and child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise cli.CliError(f"无法启动 Cojam 后台（{error}）。启动日志：{log}") from error
     raise cli.CliError(f"无法启动 Cojam 后台。启动日志：{log}")
 
 
-def main():
-    args = sys.argv[1:]
-    try:
-        if not args or args[0] == "open":
-            ensure_backend(cli.port_number(os.environ.get("ROUNDTABLE_PORT", "8765")))
-        return cli.main(args)
-    except (argparse.ArgumentTypeError, cli.CliError, OSError, ValueError, subprocess.SubprocessError) as error:
-        print(error, file=sys.stderr)
-        return 1
-
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Existing website installations still use this module as their entry point.
+    raise SystemExit(cli.main())

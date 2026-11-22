@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -19,7 +20,8 @@ os.environ["ROUNDTABLE_LOG_DIR"] = DATA.name
 sys.path.insert(0, str(ROOT))
 
 from bridge import room, web
-from bridge.cli import LocalClient, room_path
+from bridge.cli import LocalClient, main, room_path
+from bridge.cli_autostart import server_ready
 
 
 class CojamCliTest(unittest.TestCase):
@@ -51,6 +53,34 @@ class CojamCliTest(unittest.TestCase):
         result = self.command("messages", meeting.id, "--since", str(batch["next"]))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["messages"], [])
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_interactive_entrypoint_starts_backend_on_selected_port_and_reuses_it(self):
+        with socket.socket() as reserved:
+            reserved.bind(("127.0.0.1", 0))
+            port = reserved.getsockname()[1]
+        with tempfile.TemporaryDirectory(dir=SCRATCH, ignore_cleanup_errors=True) as directory:
+            environment = {
+                "ROUNDTABLE_LOG_DIR": directory, "ROUNDTABLE_PORT": "1",
+                "ROUNDTABLE_LAN_PORT": "0", "ROUNDTABLE_TAILSCALE_PORT": "0",
+            }
+            with (patch.dict(os.environ, environment),
+                  patch("bridge.terminal.CojamTerminal") as terminal):
+                self.assertFalse(server_ready(port))
+                try:
+                    terminal.return_value.run.side_effect = lambda: self.assertTrue(server_ready(port))
+                    self.assertEqual(main(["--port", str(port), "open", "example-room"]), 0)
+                    client, room_id = terminal.call_args.args
+                    self.assertEqual((client.port, room_id), (port, "example-room"))
+                    original = client.call("/api/rooms")
+                    with patch("bridge.cli_autostart.subprocess.Popen") as start:
+                        os.environ["ROUNDTABLE_PORT"] = str(port)
+                        self.assertEqual(main([]), 0)
+                        start.assert_not_called()
+                    self.assertEqual(client.call("/api/rooms"), original)
+                finally:
+                    if server_ready(port):
+                        LocalClient(port).call("/api/server/exit", {})
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_create_send_and_receive(self):
