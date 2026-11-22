@@ -1,8 +1,8 @@
 {
   "app": "Cojam",
-  "version": "2.8.11",
-  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.11.exe",
-  "sha256": "3e85851f46fb6ef4faee3858e23b2d1ac5f4c70301c140768d85d10c0e507893",
-  "size": 13398721,
-  "notes": "修复独立 CLI 任务（如 Antigravity）回收回复时因十六进制模型版本标识触发 int 转换报错的问题，并补充回归测试。"
+  "version": "2.8.12",
+  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.12.exe",
+  "sha256": "2038cb2021aef06d79f87cc8bb69151bfce29438ee1762d4a42378c9f30017ad",
+  "size": 13407711,
+  "notes": "修复 Antigravity 思考强度选择，折叠未配置的 Agent 预设，新增图片马赛克、按会议恢复草稿和真人消息撤回。"
 }
