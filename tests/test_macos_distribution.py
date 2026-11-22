@@ -29,6 +29,7 @@ class MacDistribution(unittest.TestCase):
             archive = subprocess.check_output(['git', 'archive', 'HEAD', '--', *paths], cwd=ROOT)
             with tarfile.open(fileobj=io.BytesIO(archive)) as source:
                 source.extractall(fixture, filter='data')
+            (fixture / 'roundtable.icns').write_bytes((ROOT / 'roundtable.icns').read_bytes())
             for name in ('start-cojam.command', 'macos-python-readme.txt', 'build_macos.sh', 'build-cojam.command'):
                 (fixture / 'packaging' / name).write_bytes((ROOT / 'packaging' / name).read_bytes())
             subprocess.run(['git', 'init', '-q'], cwd=fixture, check=True)
@@ -61,6 +62,8 @@ class MacDistribution(unittest.TestCase):
                 self.assertNotIn(b'\r', bundle.read(packager))
                 self.assertIn(b'packaging/build_macos.sh', bundle.read(packager))
                 self.assertNotIn(b'\r', bundle.read('Cojam/packaging/build_macos.sh'))
+                self.assertIn('Cojam/roundtable.icns', names)
+                self.assertEqual(bundle.read('Cojam/roundtable.icns')[:4], b'icns')
                 for resource in ('desktop_launcher.py', 'desktop_shell/main.py', 'desktop_shell/backend.py',
                                  'pyproject.toml', 'packaging/member-readme.md',
                                  'packaging/start-member.command', 'packaging/start-member.bat'):

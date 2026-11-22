@@ -1,6 +1,5 @@
-"""Browser icons must reference the current Cojam artwork without PWA metadata."""
+"""Browser icons must reference the current AnY artwork without PWA metadata."""
 from pathlib import Path
-import tomllib
 import unittest
 import urllib.error
 import urllib.request
@@ -11,14 +10,18 @@ import test_contacts_access as support
 class CojamIcons(unittest.TestCase):
     def test_versioned_icons_are_served_with_current_artwork(self):
         root = Path(__file__).resolve().parents[1]
-        version = tomllib.loads((root / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
-        icon_path = '/static/icon-192.png?v=cojam-' + version.replace('.', '')
-        url = support.BASE + icon_path
+        url = support.BASE + '/static/icon-192.png?v=any-1'
         with urllib.request.urlopen(url) as response:
             self.assertEqual(response.headers.get_content_type(), 'image/png')
             self.assertEqual(response.read(), (root / 'static/icon-192.png').read_bytes())
         for name in ('index.html', 'static/join.html', 'static/enroll.html'):
-            self.assertIn(icon_path, (root / name).read_text(encoding='utf-8'))
+            self.assertIn('/static/icon-192.png?v=any-1', (root / name).read_text(encoding='utf-8'))
+        with urllib.request.urlopen(support.BASE + '/static/logo.svg') as response:
+            self.assertEqual(response.headers.get_content_type(), 'image/svg+xml')
+            self.assertEqual(response.read(), (root / 'static/logo.svg').read_bytes())
+        for icns_path in (root / 'roundtable.icns', root / 'desktop_tauri/src-tauri/icons/icon.icns'):
+            self.assertTrue(icns_path.is_file(), icns_path)
+            self.assertEqual(icns_path.read_bytes()[:4], b'icns')
 
     def test_pwa_manifest_and_service_worker_are_removed(self):
         root = Path(__file__).resolve().parents[1]

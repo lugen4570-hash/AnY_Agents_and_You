@@ -13,7 +13,7 @@ import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-INPUTS = ['bridge', 'static', 'index.html', 'roundtable.py', 'LICENSE', 'pyproject.toml',
+INPUTS = ['bridge', 'static', 'index.html', 'roundtable.py', 'roundtable.icns', 'LICENSE', 'pyproject.toml',
           'desktop_launcher.py', 'desktop_shell', 'packaging/build-cojam.command', 'packaging/build_macos.sh',
           'packaging/start-cojam.command', 'packaging/macos-python-readme.txt',
           'packaging/member-readme.md', 'packaging/start-member.command', 'packaging/start-member.bat']
@@ -52,7 +52,7 @@ def build(source_ref='HEAD', output_dir=None):
                  '构建合拍桌面版.command': (clean / 'packaging/build-cojam.command').read_bytes(),
                  'README.txt': (clean / 'packaging/macos-python-readme.txt').read_bytes(),
                  **{name: (clean / name).read_bytes() for name in
-                    ('index.html', 'roundtable.py', 'LICENSE', 'pyproject.toml', 'desktop_launcher.py',
+                    ('index.html', 'roundtable.py', 'roundtable.icns', 'LICENSE', 'pyproject.toml', 'desktop_launcher.py',
                      'packaging/build_macos.sh', 'packaging/member-readme.md',
                      'packaging/start-member.command', 'packaging/start-member.bat')}}
         for folder in ('bridge', 'static', 'desktop_shell'):

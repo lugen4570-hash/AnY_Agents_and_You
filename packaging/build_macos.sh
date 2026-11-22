@@ -27,7 +27,12 @@ python="$PWD/.venv-macos-build/bin/python"
   --add-data 'bridge/catalog:bridge/catalog' \
   --hidden-import bridge.web --hidden-import bridge.acp --hidden-import bridge.discovery \
   --hidden-import bridge.conn_settings --hidden-import bridge.mcp_stdio roundtable.py
+icon_args=()
+if [[ -f roundtable.icns ]]; then
+  icon_args=(--icon roundtable.icns)
+fi
 "$python" -m PyInstaller --noconfirm --clean --windowed --onedir --name Cojam \
+  "${icon_args[@]}" \
   --osx-bundle-identifier com.cojam.desktop --collect-all webview desktop_launcher.py
 cp dist/CojamCore dist/Cojam.app/Contents/MacOS/CojamCore
 version=$("$python" -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
@@ -39,7 +44,7 @@ import sys
 
 path = Path("dist/Cojam.app/Contents/Info.plist")
 info = plistlib.loads(path.read_bytes())
-info.update(CFBundleShortVersionString=sys.argv[1], CFBundleVersion=sys.argv[1])
+info.update(CFBundleShortVersionString=sys.argv[1], CFBundleVersion=sys.argv[1], CFBundleDisplayName="AnY")
 path.write_bytes(plistlib.dumps(info))
 PY
 codesign --force --deep --sign - dist/Cojam.app

@@ -1,241 +1,295 @@
 document.documentElement.classList.add('has-js');
 
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const topbar = document.querySelector('[data-topbar]');
-if (topbar) {
-  const syncTopbar = () => topbar.classList.toggle('scrolled', window.scrollY > 12);
-  syncTopbar();
-  window.addEventListener('scroll', syncTopbar, { passive: true });
-}
-
-const revealItems = [...document.querySelectorAll('.reveal')];
-if (revealItems.length) {
-  if ('IntersectionObserver' in window && !reducedMotion) {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            observer.unobserve(entry.target);
-          }
-        }
-      },
-      { threshold: 0.12, rootMargin: '0px 0px -24px 0px' }
-    );
-    for (const item of revealItems) observer.observe(item);
-  } else {
-    for (const item of revealItems) item.classList.add('is-visible');
-  }
-}
-
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 const stage = document.querySelector('[data-stage]');
 if (stage) {
   const scenarios = {
     discuss: {
+      target: '多个 Agent',
+      caption: '两位 Agent 在同一场会话里接上彼此的思路。',
       active: ['antigravity', 'codex'],
-      prompt: '@Claude @Gemini 继续补充各自视角，或在看板确认分工…',
+      prompt: '@Claude 帮忙补充跨设备测试。',
       messages: [
-        {
-          role: 'human',
-          name: '你 · 议题发起人',
-          text: '请 @Antigravity 梳理现有鉴权链路，@Codex 和 @Claude 先各给一版重构意见，不要急着改文件。',
-        },
-        {
-          role: 'ai',
-          name: 'Antigravity',
-          initial: 'A',
-          color: '#6022e8',
-          meta: '只读梳理 · 上下文 24%',
-          text: '已定位 3 处中间件与令牌校验入口，调用图和风险边界已发在看板里，请 @Codex 评估拆分方案。',
-        },
-        {
-          role: 'ai',
-          name: 'Codex',
-          initial: 'X',
-          color: '#10a37f',
-          meta: '方案评审 · 就绪',
-          text: '建议先抽离无状态校验层再迁移会话表，回归面最小。请 @Claude 复核并发刷新竞态。',
-        },
+        ['你', '发起讨论', '@Antigravity 梳理登录流程，@Codex 看看哪里可以简化。先讨论。'],
+        ['Antigravity', '流程梳理', '登录和设备连接各有一套检查，我把入口整理到了看板。'],
+        ['Codex', '方案建议', '可以先把共用校验抽出来，让登录和设备连接各自调用。'],
       ],
     },
     debate: {
+      target: '按轮发言',
+      caption: '围绕一个问题分轮发言，再收拢成共识。',
       active: ['claude', 'gemini'],
-      prompt: '论道第 2 轮完成，可点「总结收尾」形成可执行待办…',
+      prompt: '/debate 选择议题与参与者',
       messages: [
-        {
-          role: 'ai',
-          name: 'Claude',
-          initial: 'C',
-          color: '#d97757',
-          meta: '第 1 轮 · 架构视角',
-          text: '并发刷新竞态建议用单飞锁 + 短宽限期，避免全量锁阻塞正常读写请求。',
-        },
-        {
-          role: 'ai',
-          name: 'Gemini',
-          initial: 'G',
-          color: '#2563eb',
-          meta: '第 2 轮 · 边界反驳',
-          text: '补充离线成员与长连接重连场景：宽限期需按设备指纹隔离，否则跨设备成员会话会互挤。',
-        },
-        {
-          role: 'ai',
-          name: 'Cursor',
-          initial: 'R',
-          color: '#7c3aed',
-          meta: '第 2 轮 · 测试补充',
-          text: '同意双方结论，已整理 4 条回归用例草案发给 @你 确认后即可切到干活模式。',
-        },
+        ['你', '论道议题', '手机和电脑同时在线时，草稿该怎么保存？'],
+        ['Claude', '第 1 轮', '把草稿按设备保存，每台设备都可以继续上次的编辑。'],
+        ['Gemini', '第 2 轮', '同意。还要验证切回原设备时，能找回刚才粘贴的图片。'],
       ],
     },
     work: {
+      target: '文件护栏',
+      caption: '点名分工，文件护栏让两边各自推进。',
       active: ['codex', 'antigravity'],
-      prompt: '干活模式 · 文件护栏已锁定 auth_guard.py，空闲 Agent 可随时切模型',
+      prompt: '@Antigravity 核对安装页的链接。',
       messages: [
-        {
-          role: 'human',
-          name: '你 · 已切换干活模式',
-          text: '按讨论结论执行：@Codex 负责 `auth_guard.py` 与单元测试，@Antigravity 负责成员会话隔离检查。',
-        },
-        {
-          role: 'ai',
-          name: 'Codex',
-          initial: 'X',
-          color: '#10a37f',
-          meta: '干活中 · 已锁定 auth_guard.py',
-          text: '私有 Git 快照已拍取。已完成单飞锁重构并跑通 18 项校验，请 @OpenCode 复查终端边界。',
-        },
-        {
-          role: 'ai',
-          name: 'Antigravity',
-          initial: 'A',
-          color: '#6022e8',
-          meta: '空闲 · 模型可独立切换',
-          text: '成员会话隔离与设备指纹检查无回归，所有改动支持在右侧面板按步撤回。',
-        },
+        ['你', '切换干活模式', '@Codex 更新安装说明，@Antigravity 验证移动端布局。'],
+        ['Codex', '修改文档', '已占用安装文档。新增了 Windows 和 macOS 的启动步骤。'],
+        ['Antigravity', '检查布局', '窄屏下的安装命令现在可以横向滚动，导航也能完整显示。'],
       ],
     },
   };
 
-  const tabs = [...stage.querySelectorAll('[data-scenario]')];
+  const scenariosButtons = [...stage.querySelectorAll('[data-scenario]')];
+  const viewButtons = [...stage.querySelectorAll('[data-stage-view]')];
   const caps = [...stage.querySelectorAll('[data-agent-cap]')];
   const feed = stage.querySelector('[data-stage-feed]');
-  const promptEl = stage.querySelector('[data-stage-prompt]');
-  const keys = Object.keys(scenarios);
-  let current = 'discuss';
-  let timer = null;
-  let paused = false;
+  const prompt = stage.querySelector('[data-stage-prompt]');
+  const poster = stage.closest('[data-poster]');
+  const caption = stage.querySelector('[data-poster-caption]');
+  const targetNode = stage.querySelector('[data-signal-target]');
+  const signalLines = [...stage.querySelectorAll('[data-signal]')];
+  const signalBead = stage.querySelector('[data-signal-bead]');
+  const signalTravel = stage.querySelector('[data-signal-travel]');
+  const replay = stage.querySelector('[data-stage-replay]');
+  const light = stage.querySelector('.park-light');
+  let transitions = [];
+  const colors = new Map(caps.map((chip) => [
+    chip.textContent.trim(), chip.style.getPropertyValue('--dot'),
+  ]));
 
-  function buildMessageRow(item) {
+  function renderMessage([name, status, text]) {
     const row = document.createElement('div');
-    if (item.role === 'human') {
-      row.className = 'msg-row human';
-      const bubble = document.createElement('div');
-      bubble.className = 'msg-bubble';
-      const small = document.createElement('small');
-      small.textContent = item.name;
-      bubble.append(small, document.createTextNode(item.text));
-      row.appendChild(bubble);
-      return row;
-    }
-    row.className = 'msg-row ai';
-    const avatar = document.createElement('span');
-    avatar.className = 'msg-avatar';
-    avatar.style.setProperty('--c', item.color);
-    avatar.textContent = item.initial;
+    row.className = name === '你' ? 'msg-row human' : 'msg-row';
+    if (colors.has(name)) row.style.setProperty('--agent-color', colors.get(name));
 
-    const body = document.createElement('div');
-    body.className = 'msg-body';
     const header = document.createElement('header');
-    const b = document.createElement('b');
-    b.textContent = item.name;
-    const span = document.createElement('span');
-    span.textContent = item.meta;
-    header.append(b, span);
-
-    const p = document.createElement('p');
-    p.textContent = item.text;
-    body.append(header, p);
-    row.append(avatar, body);
+    const speaker = document.createElement('b');
+    const meta = document.createElement('span');
+    const message = document.createElement('p');
+    speaker.textContent = name;
+    meta.textContent = status;
+    message.textContent = text;
+    header.append(speaker, meta);
+    row.append(header, message);
     return row;
   }
 
   function renderScenario(key) {
-    const data = scenarios[key];
-    if (!data || !feed) return;
-    current = key;
-    for (const tab of tabs) {
-      tab.setAttribute('aria-selected', String(tab.dataset.scenario === key));
+    const { active, messages, prompt: nextPrompt, caption: nextCaption, target } = scenarios[key];
+    stage.dataset.scenarioMode = key;
+    poster.dataset.scene = key;
+    for (const button of scenariosButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.scenario === key));
     }
-    for (const cap of caps) {
-      cap.classList.toggle('is-active', data.active.includes(cap.dataset.agentCap));
+    for (const chip of caps) {
+      chip.classList.toggle('is-active', active.includes(chip.dataset.agentCap));
     }
-    feed.replaceChildren(...data.messages.map(buildMessageRow));
-    if (promptEl) promptEl.textContent = data.prompt;
+    feed.replaceChildren(...messages.map(renderMessage));
+    prompt.textContent = nextPrompt;
+    caption.textContent = nextCaption;
+    targetNode.textContent = target;
   }
 
-  for (const tab of tabs) {
-    tab.addEventListener('click', () => {
-      paused = true;
-      if (timer) clearInterval(timer);
-      renderScenario(tab.dataset.scenario);
+  function clearMotion() {
+    for (const animation of transitions) animation.cancel();
+    transitions = [];
+  }
+
+  function playCut() {
+    clearMotion();
+    if (motionPreference.matches || !feed.animate) return;
+    const route = signalLines.find((line) => line.dataset.signal === poster.dataset.scene);
+    const easing = 'cubic-bezier(.22,1,.36,1)';
+    if (signalTravel.beginElement) {
+      signalTravel.setAttribute('path', route.getAttribute('d').split('M', 2).join('M'));
+      signalTravel.beginElement();
+      transitions.push(signalBead.animate(
+        [{ opacity: 0 }, { opacity: 1, offset: .12 }, { opacity: 1, offset: .82 }, { opacity: 0 }],
+        { duration: 860 },
+      ));
+    }
+    transitions.push(
+      route.animate(
+        [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
+        { duration: 820, easing: 'ease-out' },
+      ),
+      light.animate(
+        [{ opacity: .12 }, { opacity: .84, offset: .5 }, { opacity: .48 }],
+        { duration: 900, easing },
+      ),
+      targetNode.animate(
+        [{ boxShadow: '0 0 0 0 currentColor' }, { boxShadow: '0 0 0 10px transparent' }],
+        { duration: 400, delay: 710, easing },
+      ),
+    );
+    for (const [index, row] of [...feed.children].entries()) {
+      transitions.push(row.animate(
+        [{ opacity: .18, transform: 'translateY(9px)' }, { opacity: 1, transform: 'translateY(0)' }],
+        { delay: 180 + index * 220, duration: 380, easing, fill: 'backwards' },
+      ));
+    }
+  }
+
+  const syncMotion = () => {
+    clearMotion();
+    replay.hidden = motionPreference.matches || !feed.animate;
+  };
+  motionPreference.addEventListener('change', syncMotion);
+  replay.addEventListener('click', playCut);
+  syncMotion();
+  for (const button of scenariosButtons) {
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-pressed') === 'true') return;
+      renderScenario(button.dataset.scenario);
+      playCut();
+    });
+  }
+  for (const button of viewButtons) {
+    button.addEventListener('click', () => {
+      if (button.getAttribute('aria-pressed') === 'true') return;
+      stage.dataset.view = button.dataset.stageView;
+      for (const view of viewButtons) {
+        view.setAttribute('aria-pressed', String(view === button));
+      }
+      playCut();
+      if (!motionPreference.matches && feed.animate) {
+        transitions.push(feed.animate(
+          [{ opacity: .4, transform: 'translateX(8px)' }, { opacity: 1, transform: 'translateX(0)' }],
+          { duration: 340, easing: 'cubic-bezier(.2,.75,.25,1)' },
+        ));
+      }
+    });
+  }
+  stage.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse' || motionPreference.matches) return;
+    const { x, y, width, height } = stage.getBoundingClientRect();
+    stage.style.setProperty('--park-x', `${8 * ((event.clientX - x) / width - .5)}px`);
+    stage.style.setProperty('--park-y', `${8 * ((event.clientY - y) / height - .5)}px`);
+  });
+  stage.addEventListener('pointerleave', () => {
+    stage.style.removeProperty('--park-x');
+    stage.style.removeProperty('--park-y');
+  });
+  renderScenario('discuss');
+  playCut();
+}
+
+const nestedGroups = [...document.querySelectorAll('[data-nested-group]')];
+function activateNestedTab(targetId, updateHash = false) {
+  for (const group of nestedGroups) {
+    const tabs = [...group.querySelectorAll('[data-nested-tab]')];
+    const panels = [...group.querySelectorAll('[data-nested-panel]')];
+    if (!tabs.some((t) => t.dataset.nestedTab === targetId)) continue;
+    for (const t of tabs) {
+      t.setAttribute('aria-selected', String(t.dataset.nestedTab === targetId));
+    }
+    for (const p of panels) {
+      p.hidden = p.dataset.nestedPanel !== targetId;
+    }
+    if (updateHash) {
+      history.replaceState(null, '', '#' + targetId);
+    }
+    return group;
+  }
+  return null;
+}
+
+if (nestedGroups.length) {
+  for (const group of nestedGroups) {
+    for (const tab of group.querySelectorAll('[data-nested-tab]')) {
+      tab.addEventListener('click', () => {
+        activateNestedTab(tab.dataset.nestedTab, true);
+      });
+    }
+  }
+
+  for (const jumper of document.querySelectorAll('[data-jump-tab]')) {
+    jumper.addEventListener('click', (e) => {
+      const targetId = jumper.dataset.jumpTab;
+      const group = activateNestedTab(targetId, true);
+      if (group) {
+        e.preventDefault();
+        group.scrollIntoView({ behavior: motionPreference.matches ? 'auto' : 'smooth', block: 'start' });
+      }
     });
   }
 
-  renderScenario(current);
-
-  if (!reducedMotion) {
-    stage.addEventListener('mouseenter', () => { paused = true; });
-    stage.addEventListener('mouseleave', () => { paused = false; });
-    stage.addEventListener('focusin', () => { paused = true; });
-    stage.addEventListener('focusout', () => { paused = false; });
-    timer = window.setInterval(() => {
-      if (paused) return;
-      const next = keys[(keys.indexOf(current) + 1) % keys.length];
-      renderScenario(next);
-    }, 7000);
+  function syncNestedFromHash() {
+    const hashId = window.location.hash.slice(1);
+    if (hashId) activateNestedTab(hashId, false);
   }
+  syncNestedFromHash();
+  window.addEventListener('hashchange', syncNestedFromHash);
 }
 
-async function copyElementText(targetEl, statusEl, okText, fallbackText) {
-  const text = targetEl.textContent;
+const dlSelector = document.querySelector('[data-download-selector]');
+if (dlSelector) {
+  const tiles = [...dlSelector.querySelectorAll('[data-platform-tile]')];
+  const panels = [...dlSelector.querySelectorAll('[data-platform-panel]')];
+
+  function selectDownloadPlatform(platform, updateHash = false) {
+    const target = ['windows', 'macos', 'cli'].includes(platform) ? platform : 'windows';
+    for (const tile of tiles) {
+      const current = tile.dataset.platformTile === target;
+      tile.setAttribute('aria-selected', String(current));
+      tile.tabIndex = current ? 0 : -1;
+    }
+    for (const panel of panels) {
+      panel.hidden = panel.dataset.platformPanel !== target;
+    }
+    if (updateHash) {
+      history.replaceState(null, '', '#' + target);
+    }
+  }
+
+  for (const [index, tile] of tiles.entries()) {
+    tile.addEventListener('click', () => {
+      selectDownloadPlatform(tile.dataset.platformTile, true);
+    });
+    tile.addEventListener('keydown', (event) => {
+      const destinations = {
+        ArrowUp: (index + tiles.length - 1) % tiles.length,
+        ArrowLeft: (index + tiles.length - 1) % tiles.length,
+        ArrowDown: (index + 1) % tiles.length,
+        ArrowRight: (index + 1) % tiles.length,
+        Home: 0,
+        End: tiles.length - 1,
+      };
+      const destination = tiles[destinations[event.key]];
+      if (!destination) return;
+      event.preventDefault();
+      selectDownloadPlatform(destination.dataset.platformTile, true);
+      destination.focus();
+    });
+  }
+
+  function syncDownloadFromEnv() {
+    const hash = window.location.hash.slice(1);
+    if (['windows', 'macos', 'cli'].includes(hash)) {
+      selectDownloadPlatform(hash, false);
+      return;
+    }
+    const ua = navigator.userAgentData?.platform || navigator.userAgent || '';
+    if (/Mac/i.test(ua)) selectDownloadPlatform('macos', false);
+    else if (/Linux/i.test(ua) && !/Android/i.test(ua)) selectDownloadPlatform('cli', false);
+    else selectDownloadPlatform('windows', false);
+  }
+  syncDownloadFromEnv();
+  window.addEventListener('hashchange', syncDownloadFromEnv);
+}
+
+async function copyTextWithFeedback(text, selectEl, statusEl, okText, fallbackText) {
   try {
     await navigator.clipboard.writeText(text);
     if (statusEl) statusEl.textContent = okText;
   } catch {
     const selection = window.getSelection();
     const range = document.createRange();
-    range.selectNodeContents(targetEl);
+    range.selectNodeContents(selectEl);
     selection?.removeAllRanges();
     selection?.addRange(range);
     if (statusEl) statusEl.textContent = fallbackText;
   }
-}
-
-const gitBtn = document.querySelector('[data-copy-git]');
-const gitCmd = document.querySelector('#git-command');
-const gitStatus = document.querySelector('[data-copy-git-status]');
-if (gitBtn && gitCmd) {
-  gitBtn.addEventListener('click', () => {
-    copyElementText(gitCmd, gitStatus, '已复制克隆与启动命令，粘贴到终端即可运行。', '命令已选中，可按 Ctrl+C 复制。');
-  });
-}
-
-const views = [...document.querySelectorAll('.download-view')];
-const navigation = [...document.querySelectorAll('[data-view]')];
-if (views.length) {
-  function showView() {
-    const requested = window.location.hash.slice(1);
-    const selected = requested === 'cli' ? 'cli' : 'desktop';
-    for (const view of views) view.hidden = view.id !== selected;
-    for (const link of navigation) {
-      if (link.dataset.view === selected) link.setAttribute('aria-current', 'true');
-      else link.removeAttribute('aria-current');
-    }
-  }
-  showView();
-  window.addEventListener('hashchange', showView);
 }
 
 const installer = document.querySelector('[data-installer]');
@@ -245,7 +299,7 @@ if (installer) {
   const platformButtons = [...installer.querySelectorAll('[data-platform]')];
   const posixCommand = command.textContent;
 
-  function selectPlatform(platform) {
+  function selectCliOs(platform) {
     command.textContent = platform === 'windows' ? posixCommand.replace(/^python3/, 'py -3') : posixCommand;
     for (const button of platformButtons) {
       button.setAttribute('aria-pressed', String(button.dataset.platform === platform));
@@ -253,12 +307,59 @@ if (installer) {
     if (status) status.textContent = '';
   }
 
-  const device = navigator.userAgentData?.platform || navigator.userAgent;
-  selectPlatform(/Windows/i.test(device) ? 'windows' : 'posix');
+  const device = navigator.userAgentData?.platform || navigator.userAgent || '';
+  selectCliOs(/Windows/i.test(device) ? 'windows' : 'posix');
   for (const button of platformButtons) {
-    button.addEventListener('click', () => selectPlatform(button.dataset.platform));
+    button.addEventListener('click', () => selectCliOs(button.dataset.platform));
   }
   installer.querySelector('[data-copy]').addEventListener('click', () => {
-    copyElementText(command, status, '已复制。粘贴到终端后按回车。', '命令已选中，可手动复制。');
+    copyTextWithFeedback(command.textContent, command, status, '已复制。粘贴到终端后按回车即可。', '命令已选中，可手动复制。');
   });
+}
+
+const docSearch = document.querySelector('[data-doc-search]');
+if (docSearch) {
+  const searchStatus = document.querySelector('[data-doc-search-status]');
+  const sections = [...document.querySelectorAll('.doc-section')];
+
+  docSearch.addEventListener('input', () => {
+    const q = docSearch.value.trim().toLowerCase();
+    if (!q) {
+      for (const sec of sections) sec.hidden = false;
+      for (const blk of document.querySelectorAll('[data-doc-block]')) blk.hidden = false;
+      if (searchStatus) searchStatus.textContent = '';
+      return;
+    }
+
+    let matchedCount = 0;
+    for (const sec of sections) {
+      const text = ((sec.textContent || '') + ' ' + (sec.dataset.keywords || '')).toLowerCase();
+      const matched = text.includes(q);
+      sec.hidden = !matched;
+      if (matched) matchedCount += 1;
+    }
+    if (searchStatus) {
+      searchStatus.textContent = matchedCount ? `找到 ${matchedCount} 个相关章节` : '没有匹配的章节，请换个关键词试试';
+    }
+  });
+}
+
+const docNavLinks = [...document.querySelectorAll('[data-doc-nav] > a')];
+if (docNavLinks.length && 'IntersectionObserver' in window) {
+  const secTargets = docNavLinks
+    .map((a) => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean);
+  const navObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const id = '#' + entry.target.id;
+        for (const link of docNavLinks) {
+          link.classList.toggle('is-active', link.getAttribute('href') === id);
+        }
+      }
+    },
+    { rootMargin: '-20% 0px -65% 0px' }
+  );
+  for (const sec of secTargets) navObserver.observe(sec);
 }

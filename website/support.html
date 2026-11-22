@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffdf2">
+  <meta name="description" content="AnY 站内支持文档：快速入门、Windows / macOS / CLI 安装指南、多 Agent 与伙伴连接教程及常见问题。">
+  <title>文档与支持 · AnY</title>
+  <link rel="icon" href="assets/logo.svg?v=garden-2">
+  <link rel="stylesheet" href="style.css?v=garden-2">
+  <script src="site.js?v=garden-2" defer></script>
+</head>
+<body class="page-support">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="AnY 首页">
+      <img class="brand-ink" src="assets/wordmark.svg" alt="" width="92" height="41">
+    </a>
+    <nav aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="capabilities.html">能力</a>
+      <a href="support.html" aria-current="page">支持</a>
+    </nav>
+    <a class="nav-cta" href="download.html"><span>下载</span><i aria-hidden="true">↗</i></a>
+  </header>
+
+  <main id="top">
+    <section class="sub-hero">
+        <div class="wrap sub-hero-inner">
+        <h1>安装和使用 AnY</h1>
+        <p class="lead">全部安装、接入、协作边界与排障指引都在这里直接查阅，随时按关键词定位。</p>
+      </div>
+    </section>
+
+    <section class="wrap docs-shell">
+      <aside class="docs-sidebar" aria-label="文档目录与搜索">
+        <div class="doc-search-box">
+          <label class="sr-only" for="docSearchInput">检索文档</label>
+          <input id="docSearchInput" type="search" placeholder="筛选主题，如：Mac、二维码、模型…" data-doc-search>
+          <small class="doc-search-count" data-doc-search-status></small>
+        </div>
+
+        <nav class="doc-nav" data-doc-nav>
+          <a href="#getting-started" class="is-active"><span>01</span> 快速入门</a>
+          <div class="doc-subnav">
+            <a href="#three-words">先认识三个词</a>
+            <a href="#first-meeting">创建项目和会话</a>
+          </div>
+
+          <a href="#install"><span>02</span> 安装指南</a>
+          <div class="doc-subnav">
+            <a href="#install-win" data-jump-tab="install-win">Windows 安装</a>
+            <a href="#install-mac" data-jump-tab="install-mac">macOS 图文教程</a>
+            <a href="#install-cli" data-jump-tab="install-cli">CLI 终端安装</a>
+          </div>
+
+          <a href="#connect"><span>03</span> 连接成员</a>
+          <div class="doc-subnav">
+            <a href="#connect-local" data-jump-tab="connect-local">本机 AI</a>
+            <a href="#connect-friend" data-jump-tab="connect-friend">邀请朋友</a>
+            <a href="#connect-device" data-jump-tab="connect-device">我的设备</a>
+            <a href="#connect-remote" data-jump-tab="connect-remote">跨设备 AI 成员</a>
+          </div>
+
+          <a href="#daily"><span>04</span> 日常与安全</a>
+          <a href="#faq"><span>05</span> 常见问题</a>
+        </nav>
+      </aside>
+
+      <div class="docs-content">
+        <section class="doc-section" id="getting-started" data-doc-block data-keywords="入门 联系人 项目 会话 快速开始">
+          <h2>快速入门：先建好你的第一场会话</h2>
+
+          <article class="doc-card" id="three-words" data-doc-block data-keywords="联系人 项目 会话 概念">
+            <h3>先认识三个词</h3>
+            <div class="term-grid">
+              <div><b>联系人</b><p>可以邀请进会话的 AI 工具或人类伙伴，入口在界面左上角。</p></div>
+              <div><b>项目</b><p>用来归类多场会话，并绑定一个本机实际存在的工作文件夹。</p></div>
+              <div><b>会话</b><p>大家一起讨论、@ 交接和推进任务的独立空间，一个项目下可有多场会话。</p></div>
+            </div>
+          </article>
+
+          <article class="doc-card" id="first-meeting" data-doc-block data-keywords="新建项目 工作文件夹 新建会话">
+            <h3>创建项目和会话</h3>
+            <ol class="doc-steps">
+              <li>在左侧「我的项目」旁点击 <b>＋</b>，或点击左下方「新建会话」并按提示建项目。</li>
+              <li>填写项目名称（例如「我的网站」），点击「选择文件夹」指向一个已存在的本地目录；也可以先新建一个空目录。</li>
+              <li>点击「创建项目」后，写好第一场会话标题（例如「梳理首页方案」）。</li>
+              <li>如果已经接入过联系人，勾选要邀入本场的成员（也可稍后再添），点击「创建会话」即可开始对话。</li>
+            </ol>
+            <p class="doc-note">手机或窄屏浏览器访问时，先点击左上角菜单按钮展开左侧栏。</p>
+          </article>
+        </section>
+
+        <section class="doc-section" id="install" data-doc-block data-keywords="安装 windows macos cli 便携版 解压 python">
+          <h2>安装指南：按平台选择步骤</h2>
+
+          <div class="nested-shell doc-nested" data-nested-group="install">
+            <div class="nested-tabs" role="tablist" aria-label="平台安装指南">
+              <button type="button" role="tab" aria-selected="true" data-nested-tab="install-win">Windows 桌面版 / 便携版</button>
+              <button type="button" role="tab" aria-selected="false" data-nested-tab="install-mac">macOS 图文教程</button>
+              <button type="button" role="tab" aria-selected="false" data-nested-tab="install-cli">CLI 终端安装</button>
+            </div>
+
+            <div class="nested-panels">
+              <article class="nested-panel" id="install-win" data-nested-panel="install-win">
+                <h3>Windows 安装与升级说明</h3>
+                <ol class="doc-steps">
+                  <li>前往 <a href="download.html#windows">下载中心</a> 获取 Windows 安装程序。安装版已内置运行环境，无需另装 Python。</li>
+                  <li>双击安装程序按提示完成安装，即可从桌面或开始菜单打开「AnY」。安装包目前未做商业签名，首次打开时系统或浏览器可能弹出常规安全确认。</li>
+                  <li>如果只想临时免安装运行，可在下载页点「便携版」直接打开浏览器界面。便携版的全部数据会存放在程序同目录的 <code>data</code> 文件夹内。</li>
+                </ol>
+                <div class="doc-callout">
+                  <b>升级会保留之前的对话吗？</b>
+                  <p>会完整保留。升级前请先完全退出正在运行的 AnY，然后将新安装包安装到原来的同一目录；若装进全新路径，旧目录中的历史数据不会自动迁移。</p>
+                </div>
+              </article>
+
+              <article class="nested-panel" id="install-mac" data-nested-panel="install-mac" hidden>
+                <h3>macOS 下载、解压与开启（Apple Silicon / Intel）</h3>
+                <div class="mac-doc-flow">
+                  <div class="mac-doc-step">
+                    <h4>第一步：检查 Python 版本</h4>
+                    <p>打开 Mac 的「终端」，输入 <code>python3 --version</code> 并回车。看到 Python 3.11 或更新版本即可继续；如果找不到命令或版本过低，请先从 <a href="https://www.python.org/downloads/macos/" target="_blank" rel="noopener noreferrer">Python 官网</a> 安装 macOS 软件包，装完后重新打开终端检查一次。</p>
+                  </div>
+
+                  <div class="mac-doc-step">
+                    <h4>第二步：下载并解压整个文件夹</h4>
+                    <p>在 <a href="download.html#macos">下载中心</a> 获取 macOS 压缩包，在访达「下载」里双击解压。打开解压得到的 <code>Cojam</code> 文件夹，保持两个启动脚本（<code>启动合拍.command</code> 与 <code>构建合拍桌面版.command</code>）和旁边的程序文件放在一起：</p>
+                    <pre class="doc-code">Cojam/
+  › 启动合拍.command
+  › 构建合拍桌面版.command</pre>
+                  </div>
+
+                  <div class="mac-doc-step">
+                    <h4>第三步：选择启动方式</h4>
+                    <div class="doc-two-cols">
+                      <div class="mini-box">
+                        <b>浏览器版（最快上手）</b>
+                        <p>直接双击 <code>启动合拍.command</code>，服务起好后会自动唤起浏览器。使用期间请保留弹出的终端窗口，结束后在应用左下角点击「退出」。</p>
+                      </div>
+                      <div class="mini-box">
+                        <b>本机桌面版（从应用程序打开）</b>
+                        <p>保持联网双击 <code>构建合拍桌面版.command</code>，脚本会自动补全依赖并在文件夹下的 <code>dist</code> 目录生成 <code>Cojam.app</code>，随后可拖入「应用程序」。</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mac-doc-step">
+                    <h4>第四步：建项目并请进 AI</h4>
+                    <p>首次打开后点击「新建项目」，填好名字并通过文件夹按钮选中你的工作目录。再打开联系人接入本机已登录的 Claude Code、Codex、Gemini CLI 或 Antigravity 即可。</p>
+                    <figure class="doc-figure">
+                      <img src="assets/macos-project-guide.webp" alt="AnY 新建项目界面示意，工作文件夹下方有选择文件夹按钮" loading="lazy">
+                      <figcaption>「新建项目」界面示意，点击「选择文件夹」即可绑定本地目录。</figcaption>
+                    </figure>
+                  </div>
+                </div>
+                <div class="doc-callout">
+                  <b>Mac 提示未公证无法直接打开？</b>
+                  <p>本机自行构建的应用未经过 Apple 公证流程，首次开启可能出现常规安全提醒，可按 <a href="https://support.apple.com/102445" target="_blank" rel="noopener noreferrer">Apple 官方安全打开指引</a> 处理；如遇损坏或恶意软件警告请停止打开。</p>
+                </div>
+              </article>
+
+              <article class="nested-panel" id="install-cli" data-nested-panel="install-cli" hidden>
+                <h3>CLI 终端客户端安装与常用指令</h3>
+                <ol class="doc-steps">
+                  <li>确认本机已安装 Python 3.11 或更新版本。</li>
+                  <li>前往 <a href="download.html#cli">下载中心 · CLI 终端</a>，按你的系统（macOS / Linux 或 Windows）复制一条命令粘贴到终端执行。</li>
+                  <li>首次执行会自动建立独立运行目录并安装所需组件，完成后立即进入 AnY 终端界面；后续重复执行该命令会直接复用已装版本并显示启动文件位置。</li>
+                </ol>
+                <div class="doc-callout">
+                  <b>CLI 里顺手的快捷键与指令</b>
+                  <p>终端内支持用 <code>@名称</code> 自动补全成员、按 <code>Ctrl+R</code> 检索历史会话、用 <code>/debate</code> 发起多轮论道（<code>/debate-finish</code> 随时总结收尾）、用 <code>/model</code> 调整成员模型，以及在支持原生交接的工具上使用 <code>/handoff</code> 与 <code>/return</code>。</p>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="connect" data-doc-block data-keywords="接入 ai 朋友 手机 二维码 设备 跨设备">
+          <h2>连接 AI、朋友与多台设备</h2>
+
+          <div class="nested-shell doc-nested" data-nested-group="connect-guide">
+            <div class="nested-tabs" role="tablist" aria-label="成员接入方式指南">
+              <button type="button" role="tab" aria-selected="true" data-nested-tab="connect-local">连接本机 AI</button>
+              <button type="button" role="tab" aria-selected="false" data-nested-tab="connect-friend">邀请朋友聊天</button>
+              <button type="button" role="tab" aria-selected="false" data-nested-tab="connect-device">我的手机 / 平板</button>
+              <button type="button" role="tab" aria-selected="false" data-nested-tab="connect-remote">另一台电脑的 AI</button>
+            </div>
+
+            <div class="nested-panels">
+              <article class="nested-panel" id="connect-local" data-nested-panel="connect-local">
+                <h3>连接本机已登录的 AI 工具</h3>
+                <p class="doc-note">AnY 不会代你注册账号或提供模型额度，请先在本机装好并登录对应工具。</p>
+                <ol class="doc-steps">
+                  <li>点击左侧联系人旁的 <b>＋ 接入</b>，选择「连接 AI → 本机 Agent」。</li>
+                  <li>在程序列表中选择标有「已检测到」的 Claude、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 等工具（如未列出，也可选「自定义 CLI 程序」填入路径）。</li>
+                  <li>点击「检测并验证程序」，确认能正常拉起；随后点「下一步：会话与权限」勾选目标会话与角色权限并保存。</li>
+                  <li>回到聊天框输入 <code>@名称</code> 发送问题即可；不写 <code>@</code> 时默认询问当前会话内的全部成员。</li>
+                </ol>
+              </article>
+
+              <article class="nested-panel" id="connect-friend" data-nested-panel="connect-friend" hidden>
+                <h3>邀请其他人加入单场会话</h3>
+                <ol class="doc-steps">
+                  <li>点击 <b>＋ 接入 → 邀请其他人</b>，选择要开放的那一场会话并核对读写与发言权限。</li>
+                  <li>确认「邀请地址」填写的是对方设备也能打开的网址：同在一个 Wi-Fi 时优先选用展示的局域网地址；<code>127.0.0.1</code> 仅限本机访问，别人手机打不开。</li>
+                  <li>点击「生成邀请」，将链接或二维码发给信任的伙伴，对方浏览器打开即可加入这场会话。</li>
+                </ol>
+              </article>
+
+              <article class="nested-panel" id="connect-device" data-nested-panel="connect-device" hidden>
+                <h3>在自己的手机或第二台电脑上操作</h3>
+                <ol class="doc-steps">
+                  <li>如果你希望用自己的另一台设备以主持人身份查看全部项目，请点 <b>＋ 接入 → 我的设备</b>。</li>
+                  <li>填写设备备注名与可达访问地址，点击「生成设备接入码」。接入码仅在 10 分钟内一次性有效，扫码后即可在设备上同步操作，也可随时在该列表撤销设备。</li>
+                  <li>注意不要把「我的设备」接入码转发给别人；邀请朋友请使用「邀请其他人」。</li>
+                </ol>
+              </article>
+
+              <article class="nested-panel" id="connect-remote" data-nested-panel="connect-remote" hidden>
+                <h3>让另一台电脑上的 AI Harness 参会</h3>
+                <ol class="doc-steps">
+                  <li>点击 <b>＋ 接入 → 连接 AI → 其他设备上的 Harness</b>，填写名称、开启自动接单回复并核对可达地址。</li>
+                  <li>生成连接配置与轻量「成员连接端」压缩包，通过可信渠道交给对方电脑（配置文件含鉴权密钥，切勿公开传阅）。</li>
+                  <li>对方解压后启动（Windows 运行 <code>start-member.bat</code>；Mac 需 Python 3.11 与 Tk 并运行 <code>start-member.command</code>），导入配置并选好那台电脑上的 AI 与目录即可进入自动响应状态。</li>
+                </ol>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="doc-section" id="daily" data-doc-block data-keywords="日常使用 讨论模式 干活模式 权限 删除 退出 更新 数据 目录">
+          <h2>日常协作与安全边界</h2>
+
+          <article class="doc-card">
+            <ul class="construct-list">
+              <li><b>讨论模式 vs 干活模式</b>：默认「讨论模式」让 AI 保持只读讨论；需要修改代码或跑命令时，再于顶部切换到「干活模式」，并为需要动手的成员开启「允许干活」权限。</li>
+              <li><b>文件护栏与成员权限</b>：每场会话顶部可单独增删成员并微调权限；多方修改代码时，文件护栏会避免两个 AI 同时写入同一个文件。</li>
+              <li><b>空闲与忙碌互不干扰</b>：当某个 AI 仍在长考回复时，你可以照常切换到其他空闲的 AI 调整模型、思考强度或参数，互不锁死。</li>
+              <li><b>应用内更新与本地数据</b>：软件内检测到新版时左下角会提示更新入口；全部会话日志、项目映射与附件都存在本机目录的 <code>data/</code> 文件夹内，安全退出前如有运行中任务请先等待结束。</li>
+            </ul>
+          </article>
+        </section>
+
+        <section class="doc-section" id="faq" data-doc-block data-keywords="常见问题 排障 不回复 打开失败 更新 卡住 日志">
+          <h2>常见问题与排查</h2>
+
+          <div class="faq-list docs-faq">
+            <details open data-doc-block data-keywords="只支持 claude codex">
+              <summary>AnY 是不是只能连 Claude 和 Codex？<span aria-hidden="true">＋</span></summary>
+              <p>不是。AnY 面向全生态多 Agent，内置发现并支持 Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode、Qwen、Aider、Crush、Qoder、桌面协作工具与自定义 HTTP 服务。</p>
+            </details>
+            <details data-doc-block data-keywords="ai 没有回复 不回复">
+              <summary>发送消息后某个 AI 没有回复怎么办？<span aria-hidden="true">＋</span></summary>
+              <p>先确认它已被勾选进当前会话的「成员与权限」，并且输入时用的 <code>@名称</code> 与联系人列表一致；再到它自己的原始终端或客户端确认账号登录态与可用额度正常。跨电脑接入的成员，请确认对方的连接端正显示已连接。</p>
+            </details>
+            <details data-doc-block data-keywords="朋友 打开失败 二维码 局域网">
+              <summary>朋友扫码或打开邀请链接失败怎么办？<span aria-hidden="true">＋</span></summary>
+              <p>请确认你的 AnY 窗口仍在运行、邀请未到期，且生成的地址不是 <code>127.0.0.1</code>。同一 Wi-Fi 下留意本机系统防火墙是否放行访问；若不在同一网络，需填写双方网络均可达的访问地址。</p>
+            </details>
+            <details data-doc-block data-keywords="卡住 日志 报错 cojam.log">
+              <summary>应用卡住或出现异常提示如何排查？<span aria-hidden="true">＋</span></summary>
+              <p>先完整退出 AnY 后重新启动；如果现象重复发生，可查看软件数据目录下 <code>data/cojam.log</code> 记录的上下文（对外分享日志前请注意先检查并脱敏私人目录与对话内容）。</p>
+            </details>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <p>Agents and You</p>
+  </footer>
+</body>
+</html>

@@ -1,18 +1,48 @@
-// 状态行：谁在想、想了多久，下面是它这一轮最近说的一句中途的话（不进会议记录，点一下展开）
+// Agent 进度放在消息流里，头像可展开公开的进度文本。
 let lastRun={running:[],queued:0};
-const stLive=document.getElementById('stLive');
-const openLive=new Set();
-stLive.onclick=e=>{const l=e.target.closest('.ln');if(!l)return;const a=l.dataset.ai;openLive.has(a)?openLive.delete(a):openLive.add(a);l.classList.toggle('open')};
+const liveCards=new Map();
+function newAgentProgress(id){
+  const node=document.createElement('details');node.className='agent-progress';node.style.setProperty('--c',agentColor(id));
+  node.innerHTML='<summary><span class="progress-face">'+esc(agentLetter(id))+'</span><span>'+esc((agentMeta(id)||{}).label||id)+'</span><span class="progress-label"></span></summary><div class="progress-text"></div>';
+  return {node,label:node.querySelector('.progress-label'),text:node.querySelector('.progress-text')};
+}
+function attachAgentProgress(message,element){
+  const active=liveCards.get(message.speaker);
+  if(!message.progress){settleAgentProgress(message.speaker);return}
+  const card=active||newAgentProgress(message.speaker);
+  liveCards.delete(message.speaker);
+  card.label.textContent='过程';card.text.textContent=message.progress;
+  element.appendChild(card.node);
+}
+function settleAgentProgress(ai){
+  const card=liveCards.get(ai);if(!card)return;
+  liveCards.delete(ai);
+  if(!card.text.textContent)card.node.remove();else card.label.textContent='过程';
+}
+function drawLiveCards(running,live){
+  for(const id of liveCards.keys())if(!running.includes(id))settleAgentProgress(id);
+  const atBottom=feed.scrollHeight-feed.scrollTop-feed.clientHeight<60;
+  for(const id of running){
+    let card=liveCards.get(id);
+    if(!card){
+      card=newAgentProgress(id);liveCards.set(id,card);feed.appendChild(card.node);
+    }
+    const entry=live[id]||{};
+    card.label.textContent=entry.secs>=60?'思考中 · '+fmtDur(entry.secs):'思考中';
+    const text=entry.details||entry.text;if(text&&card.text.textContent!==text)card.text.textContent=text;
+  }
+  if(atBottom&&running.length)feed.scrollTop=feed.scrollHeight;
+}
 function fmtDur(s){return s<60?s+' 秒':s<3600?Math.floor(s/60)+' 分钟':Math.floor(s/3600)+' 小时 '+Math.floor(s%3600/60)+' 分'}
 function drawStatus(){
   const lv=(S&&S.live)||{};
-  const rn=lastRun.running.map(x=>x.startsWith('compact:')?x.slice(8)+' 正在压缩':x==='compact'?'正在压缩':x+' 正在想'+(lv[x]&&lv[x].secs>=60?'（'+fmtDur(lv[x].secs)+'）':''));
+  const running=(S&&S.running)||lastRun.running;
+  const rn=running.map(x=>x.startsWith('compact:')?x.slice(8)+' 正在压缩':x==='compact'?'正在压缩':x+' 正在想'+(lv[x]&&lv[x].secs>=60?'（'+fmtDur(lv[x].secs)+'）':''));
   const stT=document.getElementById('stText');
   if(rn.length){st.classList.add('on');stT.textContent=rn.join('，')+'…'+(lastRun.queued?' · 排队 '+lastRun.queued+' 条':'')}
   else if(lastRun.queued){st.classList.add('on');stT.textContent='队列还有 '+lastRun.queued+' 条'}
   else st.classList.remove('on');
-  const h=Object.keys(lv).filter(a=>lv[a].text&&lastRun.running.includes(a)).map(a=>'<div class="ln '+esc(a)+(openLive.has(a)?' open':'')+'" data-ai="'+esc(a)+'" title="点一下展开 / 收起"><b>'+esc(a)+'</b><span class="t">'+esc(lv[a].time.slice(0,5))+'</span>'+esc(lv[a].text)+'</div>').join('');
-  if(stLive.innerHTML!==h)stLive.innerHTML=h;
+  drawLiveCards(running.filter(id=>!id.startsWith('compact')),lv);
 }
 // 公告
 const annEl=document.getElementById('ann'),annText=document.getElementById('annText'),annEdit=document.getElementById('annEdit'),annTa=document.getElementById('annTa'),annBtn=document.getElementById('annBtn');
@@ -39,12 +69,17 @@ function drawBoard(){
   const todo=items.filter(i=>i.kind==='todo'&&!i.done).length;
   boardBtn.textContent='看板'+(items.length?' '+(todo?todo+' 待办':items.length):'');
   const sig=JSON.stringify(items);if(sig===boardSig)return;boardSig=sig;
-  // 公告在前，未完成待办其次，已完成垫底
-  const rank=i=>i.kind==='note'?0:i.done?2:1;
-  const sorted=items.slice().sort((a,b)=>rank(a)-rank(b)||a.id-b.id);
-  boardList.innerHTML=sorted.length?sorted.map(i=>'<li class="'+(i.done?'done':'')+'" data-id="'+i.id+'">'+
-    (i.kind==='todo'?'<input type="checkbox"'+(i.done?' checked':'')+'>':'<span class="pin">&#128204;</span>')+
-    '<span class="bt">#'+i.id+' '+esc(i.text)+'<small>'+esc(i.by)+'</small></span><button type="button" class="bx" title="删掉">&times;</button></li>').join('')
+  const sections=[
+    ['todo','待办',items.filter(i=>i.kind==='todo'&&!i.done)],
+    ['note','公告',items.filter(i=>i.kind!=='todo')],
+    ['done','已完成',items.filter(i=>i.kind==='todo'&&i.done)],
+  ];
+  boardList.innerHTML=items.length?sections.filter(([, , rows])=>rows.length).map(([key,label,rows])=>
+    '<li class="board-section-heading" data-board-section="'+key+'"><strong>'+label+'</strong><span>'+rows.length+'</span></li>'+
+    rows.sort((a,b)=>a.id-b.id).map(i=>'<li class="'+(i.done?'done':'')+'" data-id="'+i.id+'">'+
+      (i.kind==='todo'?'<input type="checkbox" aria-label="标记待办 #'+i.id+'"'+(i.done?' checked':'')+'>':'<span class="pin" aria-hidden="true">›</span>')+
+      '<span class="bt">#'+i.id+' '+esc(i.text)+'<small>'+esc(i.by)+'</small></span><button type="button" class="bx" title="删掉">&times;</button></li>').join('')
+  ).join('')
     :'<li class="empty">（空的。你和会里的 AI 都能往这写公告、待办）</li>';
 }
 async function boardPost(o){const [ok,j]=await post(api('board'),o);if(!ok)alert(j.error||'失败');await loadState();poll()}
@@ -58,37 +93,18 @@ document.getElementById('bAdd').onclick=boardAdd;
 bText.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();boardAdd()}});
 
 // 会议状态 / 顶部按钮
-const bar=document.getElementById('bar'),titleEl=document.getElementById('title');
-const meetingToolsButton=document.getElementById('menu');
-function closeMeetingTools(restoreFocus=false){
-  bar.classList.remove('show');meetingToolsButton.setAttribute('aria-expanded','false');
-  if(restoreFocus)meetingToolsButton.focus();
-}
-function placeMeetingTools(){
-  const r=meetingToolsButton.getBoundingClientRect();
-  bar.style.top=Math.min(r.bottom+8,innerHeight-80)+'px';
-  bar.style.right=Math.max(12,innerWidth-r.right)+'px';
-  bar.style.maxHeight=Math.max(60,innerHeight-r.bottom-24)+'px';
-}
-meetingToolsButton.onclick=()=>{
-  if(bar.classList.contains('show'))return closeMeetingTools(true);
-  document.body.classList.remove('nav-open');bar.classList.add('show');
-  meetingToolsButton.setAttribute('aria-expanded','true');placeMeetingTools();
-  const first=bar.querySelector('button:not(:disabled)');if(first)first.focus();
-};
-bar.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('button').disabled)closeMeetingTools()});
-document.addEventListener('pointerdown',e=>{if(!bar.contains(e.target)&&!meetingToolsButton.contains(e.target))closeMeetingTools()});
-addEventListener('resize',()=>{if(bar.classList.contains('show'))placeMeetingTools()});
+const titleEl=document.getElementById('title');
+const meetingToolsButton=document.getElementById('sideToggleBtn');
 const meetingSide=document.getElementById('side'),meetingSideBg=document.getElementById('sideBg');
-let sideReturnFocus=null;
 function setMeetingSide(open){
-  if(open){sideReturnFocus=document.activeElement;closeMeetingTools();document.body.classList.remove('nav-open')}
+  const wasOpen=meetingSide.classList.contains('on');
+  if(open)document.body.classList.remove('nav-open');
   meetingSide.classList.toggle('on',open);meetingSideBg.classList.toggle('on',open);
-  meetingSide.inert=!open;document.getElementById('bSide').setAttribute('aria-expanded',String(open));
+  meetingSide.inert=!open;meetingToolsButton.setAttribute('aria-expanded',String(open));
   if(open){drawMeetingDetails();document.getElementById('sideX').focus();}
-  else if(sideReturnFocus){meetingToolsButton.focus();sideReturnFocus=null;}
+  else if(wasOpen)meetingToolsButton.focus();
 }
-document.getElementById('bSide').onclick=()=>setMeetingSide(true);
+meetingToolsButton.onclick=()=>setMeetingSide(!meetingSide.classList.contains('on'));
 document.getElementById('sideX').onclick=()=>setMeetingSide(false);
 meetingSideBg.onclick=()=>setMeetingSide(false);
 meetingSide.querySelectorAll('.card').forEach(card=>{
@@ -102,7 +118,6 @@ meetingSide.addEventListener('click',e=>{const button=e.target.closest('[data-de
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     if(meetingSide.classList.contains('on')){e.preventDefault();setMeetingSide(false)}
-    else if(bar.classList.contains('show')){e.preventDefault();closeMeetingTools(true)}
   }
   if(e.key==='Tab'&&meetingSide.classList.contains('on')&&!modal.classList.contains('show')){
     const buttons=[...meetingSide.querySelectorAll('button,input,textarea,select,a[href]')].filter(el=>!el.disabled&&el.getClientRects().length);
@@ -112,12 +127,6 @@ document.addEventListener('keydown',e=>{
   }
 });
 function fmtK(n){return n>=1e6?(n/1e6).toFixed(n%1e6?1:0)+'M':Math.round(n/1000)+'k'}
-function ctxHtml(x){
-  const c=x&&x.ctx;if(!c||!c.used)return '';
-  if(!c.window)return '<span class="cx">上下文 '+fmtK(c.used)+'</span>';
-  const p=Math.round(c.used*100/c.window);
-  return '<span class="cx'+(p>=80?' hi':'')+'">上下文 '+p+'%</span>';
-}
 function ctxTitle(x){
   const c=x&&x.ctx;if(!c||!c.used)return '上下文：还没数据（回过一轮话后显示）';
   return '上下文：'+fmtK(c.used)+(c.window?' / '+fmtK(c.window):'')+' tokens（'+c.time+' 那轮结束时）';
@@ -128,23 +137,6 @@ function isAgent(id){return !!(id&&id!=='你'&&id!=='系统')}
 function agentColor(id){const a=agentMeta(id);return (a&&a.color)||'#888'}
 function agentLetter(id){const a=agentMeta(id);return (a&&a.letter)||(id||'?').slice(0,1).toUpperCase()}
 
-const capsEl=document.getElementById('caps');
-function drawCaps(){
-  const ids=(S&&S.participants)||[];
-  const key=ids.map(id=>id+':'+((CONTACTS.find(a=>a.id===id)||{}).label||'')).join(',');
-  if(capsEl.dataset.k!==key){          // 参会的人变了才重建按钮，平时只改里面
-    capsEl.dataset.k=key;capsEl.innerHTML='';
-    ids.forEach(a=>{
-      const b=document.createElement('button');b.type='button';b.className='cap';b.dataset.ai=a;
-      b.style.setProperty('--c',agentColor(a));b.onclick=()=>((agentMeta(a)||{}).kind==='user'?openAgents():openAi(a));capsEl.appendChild(b);
-    });
-  }
-  ids.forEach(a=>{
-    const b=capsEl.querySelector('.cap[data-ai="'+a+'"]');if(!b)return;
-    const [t,c]=capText(a);if(b.innerHTML!==t)b.innerHTML=t;
-    b.className=c;b.title=(agentMeta(a)||{}).kind==='user'?'点击管理成员与权限':'点击设置模型、上下文与压缩。'+ctxTitle(S&&S.ais&&S.ais[a]);
-  });
-}
 const quickEl=document.getElementById('quick');
 function drawQuick(){          // 输入框上面那排 @：跟着这场会议的参会者走
   if(!quickEl)return;
@@ -155,25 +147,11 @@ function drawQuick(){          // 输入框上面那排 @：跟着这场会议�
   quickEl.innerHTML=ids.map(id=>{const contact=CONTACTS.find(a=>a.id===id),label=contact&&contact.label||id;return '<button type="button" data-ins="@'+esc(id)+' " title="@'+esc(id)+'">@'+esc(label)+'</button>'}).join('')
     +'<button type="button" data-ins="@用户 ">@用户</button>';
   quickEl.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    const t=document.getElementById('ta');if(!t)return;t.value+=b.dataset.ins;t.focus();
+    const t=document.getElementById('ta');if(!t)return;t.value+=b.dataset.ins;t.dispatchEvent(new Event('input',{bubbles:true}));t.focus();
   });
 }
 const AG_DRV={cli:'命令行程序',acp:'ACP 常驻协议',http:'网页服务',external:'在它自己的界面里',claude:'Claude Code 命令行',codex:'Codex 常驻服务'};
 let agCat=null;
-function capText(a){
-  // 三段：名字 / 模型（手机上隐藏）/ 状态；电脑边栏里模型和状态各占一行
-  const x=S&&S.ais&&S.ais[a];
-  const member=S&&S.members&&S.members[a],meta=agentMeta(a)||{};
-  let s,cls='cap';
-  if(x&&x.handed_off){s='在终端';cls+=' term'}
-  else if(S&&(S.running||[]).includes(a)){s='在想';cls+=' think'}
-  else if(S&&(S.running||[]).includes('compact:'+a)){s='压缩中';cls+=' think'}
-  else if(x&&x.compacting){s='等着压缩'}
-  else if(x&&x.busy){s='排队'}
-  else{s=meta.kind==='user'?'用户':member&&member.transport==='member'?(member.automatic?'自动响应就绪':'等待连接'):'空闲';cls+=' off'}
-  const h='<span class="cn">'+esc((agentMeta(a)||{}).label||a)+'</span><span class="cm">'+esc((x&&x.model&&x.model.label)||'默认 · 默认')+'</span><span class="cs">'+s+'</span>'+ctxHtml(x);
-  return [h,cls];
-}
 function drawState(){
   drawRoomIdentity();
   const has=S&&S.meeting;
@@ -184,13 +162,13 @@ function drawState(){
   titleEl.title=wd;
   document.getElementById('wd').textContent=has?'📁 '+wd:'';
   drawRooms();
-  drawCaps();
   drawQuick();
   const cx=S&&S.ais&&S.ais.claude;   // 落盘是 claude 的活：它不在会里就不能按
   document.getElementById('bWrap').disabled=!has||!cx||cx.handed_off||cx.busy;
   const work=!!(has&&S.mode==='work');
   document.body.classList.toggle('work',work);
-  const bm=document.getElementById('bMode');bm.disabled=!has;bm.textContent=work?'干活模式':'讨论模式';bm.classList.toggle('on',work);
+  document.getElementById('bRename').disabled=!has;
+  drawDebate();
   syncUndo();
   loadAnn();
   drawBoard();
@@ -214,6 +192,65 @@ function drawMeetingDetails(){
   document.getElementById('claimN').textContent=(state.claims||[]).length||'';
   if(typeof drawSideAgentsPane==='function')drawSideAgentsPane();
 }
+function openRename(rid,title,after=loadState){
+  setMeetingSide(false);
+  showModal('<h3>修改会话名称</h3><form id="renameForm"><label>会话名称<input id="renameTitle" maxlength="60" required></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="renameCancel">取消</button><button class="pri" type="submit">保存</button></div></form>');
+  const form=document.getElementById('renameForm'),input=document.getElementById('renameTitle'),submit=form.querySelector('[type=submit]');
+  input.value=title;input.focus();input.select();
+  document.getElementById('renameCancel').onclick=hideModal;
+  form.onsubmit=async e=>{
+    e.preventDefault();if(submit.disabled)return;submit.disabled=true;
+    const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/rename',{title:input.value});
+    submit.disabled=false;
+    if(!ok){form.querySelector('.form-error').textContent=j.error||'保存失败';return}
+    if(document.getElementById('renameForm')!==form)return pollRooms();
+    hideModal();if(rid===RID)await loadState();await pollRooms();if(after!==loadState)await after();
+  };
+}
+document.getElementById('bRename').onclick=()=>{if(S&&S.meeting===RID)openRename(RID,S.title)};
+
+const debateBtn=document.getElementById('debateBtn');
+function drawDebate(){
+  const d=S&&S.debate,active=d&&['running','summarizing'].includes(d.status);
+  debateBtn.disabled=!(S&&S.meeting)||!!(active&&(d.finish_requested||d.status==='summarizing'));
+  debateBtn.textContent=!active?'论道':d.status==='summarizing'?'正在总结':d.finish_requested?'等待总结':'结束并总结';
+  debateBtn.title=active?d.topic+' · 已完成 '+d.completed_rounds+' 轮':'设定议题，让 Agent 轮流发言并总结';
+  debateBtn.classList.toggle('is-debating',!!active);
+}
+debateBtn.onclick=async()=>{
+  const rid=RID;if(!S||S.meeting!==rid)return;
+  const d=S.debate;
+  if(d&&d.status==='running'){
+    debateBtn.disabled=true;
+    const [ok,j]=await post(api('debate/finish'),{});
+    if(rid!==RID)return;
+    if(!ok){alert(j.error||'操作失败');drawDebate();return}
+    S.debate=j.debate;drawDebate();poll();return;
+  }
+  const ids=(S.participants||[]).filter(id=>(agentMeta(id)||{}).kind!=='user'&&S.permissions?.[id]?.read&&S.permissions?.[id]?.post&&!S.ais?.[id]?.handed_off);
+  const label=id=>(agentMeta(id)||{}).label||id;
+  if(!ids.length)return alert('请先邀请能读消息和发言的 Agent。');
+  showModal('<h3>开始论道</h3><form id="debateForm"><label>议题<textarea name="topic" required placeholder="要讨论什么？"></textarea></label><div class="debate-rounds"><label>最少轮数<input name="minimum" type="number" min="0" step="1" value="0" required></label><label>最多轮数<input name="maximum" type="number" min="0" step="1" value="3" placeholder="留空不限"></label></div><p class="hint">每位参辩 Agent 发言一次算一轮。最多填 0 时直接总结，留空则不限轮数。</p><fieldset class="debate-agents"><legend>参辩成员</legend>'+ids.map(id=>'<label class="contact-pick"><input type="checkbox" name="participant" value="'+esc(id)+'" checked>'+esc(label(id))+'</label>').join('')+'</fieldset><label>总结由谁负责<select name="moderator" required></select></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="debateCancel">取消</button><button class="pri" type="submit">开始论道</button></div></form>');
+  const form=document.getElementById('debateForm'),moderator=form.elements.namedItem('moderator'),submit=form.querySelector('[type=submit]');
+  const selected=()=>[...form.querySelectorAll('input[name=participant]:checked')].map(i=>i.value);
+  const sync=()=>{
+    const prev=moderator.value,participants=selected();
+    moderator.innerHTML=participants.map(id=>'<option value="'+esc(id)+'">'+esc(label(id))+'</option>').join('');
+    if(participants.includes(prev))moderator.value=prev;
+  };
+  form.onchange=sync;sync();
+  document.getElementById('debateCancel').onclick=hideModal;
+  form.elements.namedItem('topic').focus();
+  form.onsubmit=async e=>{
+    e.preventDefault();if(rid!==RID||submit.disabled)return;
+    const f=new FormData(form),max=f.get('maximum');submit.disabled=true;
+    const [ok,j]=await post(api('debate/start'),{topic:f.get('topic'),participants:selected(),min_rounds:Number(f.get('minimum')),max_rounds:max===''?null:Number(max),moderator:moderator.value});
+    submit.disabled=false;
+    if(!ok){form.querySelector('.form-error').textContent=j.error||'启动失败';return}
+    if(document.getElementById('debateForm')===form)hideModal();
+    if(rid===RID){S.debate=j.debate;drawDebate();poll()}
+  };
+};
 function syncUndo(){
   const done=new Set((S&&S.steps_undone)||[]);
   document.querySelectorAll('.undo').forEach(b=>{const u=done.has(+b.dataset.step);b.disabled=u;b.textContent=u?'已撤回':'撤回这一步'});
@@ -233,7 +270,7 @@ async function toggleMode(){
   if(to==='work'&&!confirm('切到干活模式？\n\nclaude 和 codex 拿到完整权限，跟你平时在桌面版里用一样：改文件、跑命令、联网、用 git。只有 MCP 工具不加载（为了回得快）。\n它们用编辑工具改的文件每一步都记下来，可以一键撤回；用命令写的文件、删掉的文件、git 操作撤不回。'))return;
   const [ok,j]=await post(api('mode'),{mode:to});
   if(!ok)alert(j.error||'失败');
-  closeMeetingTools();await loadState();poll();
+  await loadState();poll();
 }
 function openMoveRoom(room,projects){
   const destinations=projects.filter(p=>p.id!==room.project);
@@ -260,8 +297,8 @@ async function openList(showTrash){
     return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+count+' 场会话'+(inTrash?' · 回收站 '+inTrash+' 场':'')+'</small></span><span class="acts"><button type="button" data-project-delete="'+esc(p.id)+'"'+(count||inTrash?' disabled':'')+'>删除项目</button></span></div>';
   }).join('');
   const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
-    '<button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
-  const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button></span></div>').join('');
+    '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
+  const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button><button type="button" class="pb">彻底删除</button></span></div>').join('');
   showModal('<h3>项目与会话管理</h3><h4>项目</h4>'+(projectRows||'<p class="hint">还没有项目</p>')+
     (projectRows?'<p class="hint">移走会话并处理回收站中的会话后，即可删除空项目。磁盘上的工作文件夹会保留。</p>':'')+
     '<h4>会话</h4>'+(rows||'<div class="hint">还没有会议</div>')+
@@ -282,14 +319,27 @@ async function openList(showTrash){
       else button.disabled=false;
     };
   });
+  async function purge(button,id,title){
+    if(!confirm(id?'彻底删除「'+title+'」及对应的 Agent 会话？':'彻底删除回收站里的所有会话及对应的 Agent 会话？'))return;
+    const owner=document.getElementById('trashBox');owner.querySelectorAll('button').forEach(b=>b.disabled=true);
+    button.textContent='正在清理…';
+    const [ok,result]=await post('/api/trash/purge',id?{id}:{});
+    pollRooms();
+    if(document.getElementById('trashBox')!==owner)return;
+    const rows=(result.cleanup||[]).map(x=>'<li><b>'+esc(x.room)+' · '+esc(x.ai)+'</b><p>'+esc(x.message)+'</p><code>'+esc(x.session)+'</code></li>').join('');
+    showModal('<h3>回收站清理结果</h3>'+(ok?'':'<p role="alert">'+esc(result.error||'清理失败')+'</p>')+(rows?'<ul class="cleanup-results">'+rows+'</ul>':'<p class="hint">没有需要报告的 Agent 会话。</p>')+'<div class="btns"><button class="pri" type="button" id="cleanupDone">返回回收站</button></div>');
+    document.getElementById('cleanupDone').onclick=()=>openList(true);
+  }
   mbox.querySelectorAll('#trashBox .item').forEach(el=>{
     el.querySelector('.rb').onclick=async e=>{e.stopPropagation();if(await act('/api/trash/restore',{id:el.dataset.id})){pollRooms();openList(true)}};
+    el.querySelector('.pb').onclick=e=>purge(e.currentTarget,el.dataset.id,el.dataset.title);
   });
   const pg=document.getElementById('lPurge');
-  if(pg)pg.onclick=async()=>{if(!confirm('清空回收站？清空后找不回来。\n\n这些会议里 claude、codex 各自的会话（~/.claude、~/.codex 下的记录）也一起删掉；别的会议还在用的不删。'))return;if(await act('/api/trash/purge',{}))openList(true)};
+  if(pg)pg.onclick=()=>purge(pg);
   mbox.querySelectorAll('.item[data-id]').forEach(el=>{
     if(el.closest('#trashBox'))return;
     const room=j.rooms.find(room=>room.id===el.dataset.id);
+    el.querySelector('.rn').onclick=e=>{e.stopPropagation();openRename(room.id,room.title,openList)};
     el.querySelector('.mv').onclick=e=>{e.stopPropagation();openMoveRoom(room,projects)};
     el.querySelector('.ab').onclick=async e=>{e.stopPropagation();if(await act('/api/rooms/archive',{id:el.dataset.id,on:el.querySelector('.ab').dataset.on==='1'})){await loadState();pollRooms();openList()}};
     el.querySelector('.db').onclick=async e=>{e.stopPropagation();
@@ -298,7 +348,7 @@ async function openList(showTrash){
         if(el.dataset.id===RID){hideModal();roomViewGeneration++;RID=null;resetRoomView();const params=new URLSearchParams(location.search);params.delete('r');history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():''));await pickRoom()}
         else {await pollRooms();openList(true)}
       }};
-    el.onclick=()=>{hideModal();closeMeetingTools();switchRoom(el.dataset.id)};
+    el.onclick=()=>{hideModal();setMeetingSide(false);switchRoom(el.dataset.id)};
   });
 }
 function openAi(a){
@@ -330,12 +380,21 @@ function openAi(a){
   h+='<h3 style="margin-top:14px">压缩上下文</h3><div class="hint">'+compactHint+'</div>'+
     '<div class="btns"><button type="button" id="aCompact"'+(canC?'':' disabled')+'>压缩 '+esc(a)+'</button></div>';
   if(hasTools)h+='<h3 style="margin-top:14px">工具（这场会议）</h3><div id="toolsBox"><div class="hint">读取中…</div></div>';
+  if(x.session)h+='<div class="btns"><button type="button" id="aReset"'+((aiBusy||x.handed_off)?' disabled':'')+'>重开 Agent 会话</button></div>';
   if(!hasTerminal)h+='<div class="btns" style="margin-top:14px"><button type="button" id="aClose">关闭</button></div>';
   showModal(h);
   if(hasTools)loadTools(a,x);
   bindModelSettings(a,mo,aiBusy);
   bindExecutionSettings(a,(S.execution||{})[a],aiBusy);
   document.getElementById('aClose').onclick=hideModal;
+  const reset=document.getElementById('aReset');if(reset)reset.onclick=async()=>{
+    if(!confirm('下次 @ '+a+' 时开启新会话？此会议的聊天记录仍会保留。'))return;
+    const rid=RID;reset.disabled=true;
+    const [ok,j]=await post(api('session/reset'),{ai:a});
+    if(rid!==RID)return;
+    if(!ok){alert(j.error||'重开失败');reset.disabled=false;return}
+    await loadState();poll();if(document.getElementById('aReset')===reset)openAi(a);
+  };
   document.getElementById('aCompact').onclick=async()=>{
     if(!confirm('压缩 '+a+' 的上下文？压完它只记要点。'+(x.busy?'\n\n它手上有活，会等这一轮说完再压。':'')))return;
     const [ok,j]=await post(api('compact'),{ai:a});if(!ok)alert(j.error||'失败');await loadState();poll();openAi(a);
@@ -348,7 +407,6 @@ function openAi(a){
   };
 }
 document.getElementById('bList').onclick=()=>{document.body.classList.remove('nav-open');openList()};
-document.getElementById('bMode').onclick=toggleMode;
 const stopsEl=document.getElementById('stops');
 function drawStops(){
   // 压缩停不了（也不该停），只在它真在回话或排着回话时出"停"
@@ -367,9 +425,9 @@ async function stopAi(a){
 }
 document.getElementById('bWrap').onclick=async()=>{
   if(!confirm('落盘？\n\nclaude 会把这场会议定下的结论写进工作文件夹里的文档（文件夹里有 wrapup 技能就照它做），然后 git 提交并推送。\n这一轮它有完整权限，不管现在是讨论还是干活模式。'))return;
-  const [ok,j]=await post(api('wrapup'));if(!ok)alert(j.error||'失败');closeMeetingTools();poll();
+  const [ok,j]=await post(api('wrapup'));if(!ok)alert(j.error||'失败');setMeetingSide(false);poll();
 };
-document.getElementById('bAgents').onclick=openAgents;
+document.getElementById('bAgents').onclick=()=>{setMeetingSide(false);openAgents()};
 // ===== 正在改的文件（文件护栏）=====
 const claimList=document.getElementById('claimList');
 let claimSig='';

@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="rt-token" content="__RT_TOKEN__">
-<meta name="theme-color" content="#6022e8">
-<link rel="icon" href="/static/icon-192.png?v=cojam-2814">
-<link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2814">
-<title>会议室</title>
+<meta name="theme-color" content="#fcfbf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101d21" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/logo.svg">
+<link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
+<title>AnY</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/workspace.css">
 <link rel="stylesheet" href="/static/studio.css">
@@ -16,20 +17,16 @@
 </head>
 <body>
 <div id="navShade"></div>
-<nav id="rooms" aria-label="联系人和项目"><div class="brand"><img src="/static/logo.svg" width="42" height="42" alt=""><span class="brand-word">cojam<small>合拍 · 让想法一起发生</small></span><button id="navClose" aria-label="收起侧栏" title="收起侧栏 (Ctrl+K)"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path d="m16 9-3 3 3 3"/></svg></button></div><label class="nav-search" for="navSearch"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="navSearch" type="search" placeholder="搜索项目或会话" autocomplete="off"><kbd aria-hidden="true">⌘ K</kbd></label>
+<nav id="rooms" aria-label="联系人和项目"><div class="brand"><span class="brand-word"><span class="studio-wordmark" role="img" aria-label="AnY"></span><small>Agents and You</small></span><button id="navClose" aria-label="收起侧栏" title="收起侧栏 (Ctrl+K)"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path d="m16 9-3 3 3 3"/></svg></button></div><label class="nav-search" for="navSearch"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="navSearch" type="search" placeholder="搜索项目或会话" autocomplete="off"><kbd aria-hidden="true">⌘ K</kbd></label>
 <button id="rNew" class="nav-new">＋ 新建会话<span aria-hidden="true">↗</span></button>
 <section class="projects-section"><div class="rh">项目与会话<span class="project-actions"><button type="button" id="bList" aria-label="会话管理、归档与回收站" title="会话管理、归档与回收站">管理</button><button id="projectAdd" aria-label="新建项目" title="新建项目">＋</button></span></div><ul class="rl" id="roomList"></ul></section>
 <details class="contacts-section" id="contactsSection"><summary>联系人 <span id="contactCount"></span><span class="contacts-chevron" aria-hidden="true">⌄</span></summary><div class="rh"><span class="rh-actions"><button id="agentSettingsBtn" title="修改 Agent 程序位置、模型与加入设置" aria-label="Agent 与连接管理">管理</button><button id="contactsAdd" aria-label="接入联系人">＋ 接入</button></span></div><ul id="contactList"></ul></details>
 <button type="button" id="openSettingsBtn" class="nav-settings-btn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span data-i18n="nav.settings">设置</span></button>
-<div class="nav-foot"><img src="/static/logo.svg" width="26" height="26" alt=""><span>本机会议室<small>由这台设备托管</small></span><button type="button" id="updateApp" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" title="停止本机合拍服务">退出</button></div></nav>
+<div class="nav-foot"><img src="/static/logo.svg" width="26" height="26" alt=""><span>本机会议室<small>由这台设备托管</small></span><button type="button" id="updateApp" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" title="停止本机 AnY 服务">退出</button></div></nav>
 <header>
   <button id="navToggle" aria-label="展开侧栏" title="展开侧栏 (Ctrl+K)"><svg class="ui-icon nav-toggle-icon-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><span class="nav-toggle-icon-mobile" aria-hidden="true">☰</span></button>
-  <div class="room-heading"><div class="room-overline"><div id="roomContext">会话空间</div><span class="room-type"><span aria-hidden="true">✳</span> 一起合拍</span></div><div id="title">会议室</div><div class="room-detail"><div id="roomMemberFaces" aria-hidden="true"></div><div id="roomSummary">人和 AI，在同一张桌上</div></div></div><div id="wd"></div><span id="modeTag">干活模式</span>
-  <div class="header-actions"><button type="button" id="sideToggleBtn" aria-label="会议详情与看板" title="会议详情与看板" aria-controls="side" aria-expanded="false"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg></button><button type="button" id="menu" aria-label="会话管理" aria-controls="bar" aria-expanded="false" aria-haspopup="dialog">⋯</button></div>
-  <div id="bar" role="dialog" aria-label="会话管理"><div class="meeting-tools-heading">会话管理</div>
-    <button type="button" id="bMode">讨论模式</button><button type="button" id="bAgents">成员与权限</button><button type="button" id="bWrap" title="整理会议记录并保存到项目">整理并落盘</button><button type="button" id="bSide" aria-controls="side" aria-expanded="false">会议详情与看板</button>
-  </div>
-  <div id="caps" class="member-strip" aria-label="参会成员状态"></div>
+  <div class="room-heading"><div class="room-overline"><div id="roomContext">会话空间</div></div><div id="title">会议室</div><div class="room-detail"><div id="roomMemberFaces" aria-hidden="true"></div><div id="roomSummary">人和 AI，在同一张桌上</div></div></div><div id="wd"></div><span id="modeTag">干活模式</span>
+  <div class="header-actions"><button type="button" id="sideToggleBtn" aria-label="会议详情与管理" title="会议详情与管理" aria-controls="side" aria-expanded="false"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/></svg></button></div>
   <div class="session-brief" id="sessionBrief" hidden><span class="brief-marker" aria-hidden="true">↗</span><div><span class="brief-label">这次的共同目标</span><p id="sessionBriefText"></p></div></div>
 </header>
 <div id="modal"><div id="mbox" role="dialog" aria-modal="true" aria-label="会话设置" tabindex="-1"></div></div>
@@ -37,6 +34,7 @@
 <div id="sideBg"></div>
 <aside id="side" role="dialog" aria-modal="true" aria-label="会议详情与看板" tabindex="-1" inert>
   <div class="sh"><span data-i18n="side.title">会议详情与看板</span><button type="button" id="sideX" aria-label="关闭会议详情">&times;</button></div>
+  <div class="side-actions" aria-label="会话管理"><button type="button" id="bRename">改名</button><button type="button" id="bAgents">成员与权限</button><button type="button" id="bWrap">整理并落盘</button></div>
   <div class="side-tabs" id="sideTabs" role="tablist" aria-label="右侧栏视图">
     <button type="button" role="tab" data-side-tab="agents" aria-selected="true" data-i18n="side.tabAgents">成员</button>
     <button type="button" role="tab" data-side-tab="board" aria-selected="false" data-i18n="side.tabBoard">看板</button>
@@ -74,7 +72,7 @@
   <div id="vHint"></div>
 </div>
 <div id="jump"><button type="button" id="jToc" title="我的发言目录" aria-label="我的发言目录"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg></button><button type="button" id="jUp" title="上一条我的发言（长按：到顶）" aria-label="上一条我的发言"><svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" id="jDn" title="下一条我的发言（长按：到底）" aria-label="下一条我的发言"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div>
-<div id="status"><div id="stMain"><span id="stText"></span><div id="stLive"></div></div><span id="stops"></span></div>
+<div id="status"><div id="stMain"><span id="stText"></span></div><span id="stops"></span></div>
 <footer>
   <div id="slashMenu" class="slash-menu" role="listbox" aria-label="可用技能" hidden></div>
   <div id="composerPopover" class="composer-popover" role="dialog" aria-label="模型设置" hidden></div>
@@ -87,6 +85,7 @@
       <button type="button" id="composerModeBtn" class="composer-chip mode-chip" title="切换讨论 / 干活模式">讨论模式</button>
       <button type="button" id="composerModelBtn" class="composer-chip model-chip" aria-haspopup="dialog" aria-expanded="false" title="查看或切换当前会话模型">模型</button>
       <button type="button" id="composerExtBtn" class="composer-chip ext-chip" title="查看与配置本会话扩展与工具">扩展</button>
+      <button type="button" id="debateBtn" class="composer-chip">论道</button>
     </div>
     <div class="composer-meta"><span id="composerTargetHint" class="composer-target-hint"></span><span class="composer-shortcuts" data-i18n="composer.hint">@ 指定成员 · / 技能</span></div>
   </div>

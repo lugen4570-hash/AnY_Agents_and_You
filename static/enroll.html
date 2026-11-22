@@ -1,16 +1,20 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>接入我的设备 · 合拍 Cojam</title>
-<link rel="icon" href="/static/icon-192.png?v=cojam-2813"><link rel="apple-touch-icon" href="/static/icon-192.png?v=cojam-2813">
-<meta name="theme-color" content="#6022e8">
+<title>接入我的设备 · AnY</title>
+<link rel="icon" href="/static/icon-192.png?v=any-1"><link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
+<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
 <style>
-:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:light dark;background:#151517;color:#ececf1}
-*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px}
-main{width:min(440px,100%);background:#1b1b1e;border:1px solid #333;border-radius:16px;padding:24px}
-h1{font-size:22px;margin:0 0 8px}p{color:#aaa;line-height:1.6}label{display:block;margin:18px 0 6px;font-size:14px}
-input{width:100%;font:inherit;padding:12px;border:1px solid #444;border-radius:8px;background:#232328;color:inherit}
-button{width:100%;margin-top:16px;font:inherit;padding:12px;border:0;border-radius:8px;background:#6022e8;color:#fff;cursor:pointer}
-button:disabled{opacity:.5;cursor:not-allowed}#error{color:#fca5a5;min-height:1.5em}#address{font-size:13px}
+:root{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color-scheme:light dark;--bg:#FAF9F5;--panel:#FFFFFF;--fg:#141413;--mut:#5E5B55;--line:#DFDAD0;--input:#FFFFFF;--btn:#141413;--btn-fg:#FAF9F5;--accent:#D94E28;--err:#B83227;background:var(--bg);color:var(--fg)}
+@media(prefers-color-scheme:dark){:root{--bg:#111214;--panel:#17181B;--fg:#EFECE6;--mut:#A3A09A;--line:#2B2D33;--input:#202226;--btn:#EFECE6;--btn-fg:#141413;--accent:#F17B59;--err:#F87171}}
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--fg)}
+main{width:min(440px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px}
+h1{font-size:22px;margin:0 0 8px}p{color:var(--mut);line-height:1.6}label{display:block;margin:18px 0 6px;font-size:14px}
+input{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:inherit}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{width:100%;margin-top:16px;font:inherit;font-weight:600;padding:12px;border:0;border-radius:8px;background:var(--btn);color:var(--btn-fg);cursor:pointer}
+button:hover:not(:disabled){opacity:.9}
+button:disabled{opacity:.5;cursor:not-allowed}#error{color:var(--err);min-height:1.5em}#address{font-size:13px}
 </style>
 <main>
   <h1>接入我的设备</h1>

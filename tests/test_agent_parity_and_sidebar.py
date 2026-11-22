@@ -581,16 +581,16 @@ assert.match(modalHtml, /id="aClose"/);
 
 
 class MemberPermissionsAndStatusSeparationTests(unittest.TestCase):
-    def test_caps_member_status_separated_from_bar_menu_in_html_and_css(self):
+    def test_single_meeting_entry_and_composer_model_controls(self):
         root = Path(__file__).resolve().parents[1]
         html = (root / 'index.html').read_text(encoding='utf-8')
-        studio = (root / 'static' / 'studio.css').read_text(encoding='utf-8')
-        bar_start = html.index('<div id="bar"')
-        caps_idx = html.index('<div id="caps"')
-        bar_close = html.index('</div>', html.index('id="bSide"'))
-        self.assertGreater(caps_idx, bar_close, '#caps must live outside #bar menu')
-        self.assertLess(bar_start, caps_idx)
-        self.assertNotIn('#bar #caps', studio)
+        self.assertEqual(html.count('id="sideToggleBtn"'), 1)
+        self.assertNotIn('id="caps"', html)
+        self.assertNotIn('id="menu"', html)
+        side = html[html.index('<aside id="side"'):html.index('</aside>')]
+        for action in ('bRename', 'bAgents', 'bWrap'):
+            self.assertIn(f'id="{action}"', side)
+        self.assertGreater(html.index('id="composerModelBtn"'), html.index('<footer>'))
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test openAgents bulk permissions')
     def test_consolidated_permissions_and_one_click_bulk_toggle(self):

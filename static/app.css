@@ -1,23 +1,23 @@
 /* ===== 颜色 / 字体：浅色默认，深色跟系统 ===== */
 :root{
-  --bg:#ffffff;--side:#f7f7f8;--bar:#ffffff;--fg:#18181b;--mut:#71717a;--faint:#a1a1aa;--line:#e7e7ea;--soft:#f3f3f5;--hover:rgba(24,24,27,.05);
-  --btn:#2563eb;--btn-fg:#fff;--me:#eef3ff;--me-line:#dbe5ff;--code:#f6f6f8;
-  --claude:#d97757;--codex:#10a37f;--work:#d97706;--danger:#dc2626;
-  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.06);--shadow-lg:0 12px 40px rgba(0,0,0,.18);
+  --bg:#FAF9F5;--side:#EFECE6;--bar:#FFFFFF;--fg:#141413;--mut:#5E5B55;--faint:#78746C;--line:#DFDAD0;--soft:#F3F0E9;--hover:#E7E2D8;
+  --btn:#141413;--btn-fg:#FAF9F5;--me:#141413;--me-line:#141413;--me-fg:#FAF9F5;--me-mut:#CFCAC0;--accent:#D94E28;--code:#F0EDE6;
+  --claude:#d97757;--codex:#10a37f;--work:#D94E28;--danger:#B83227;
+  --shadow:0 1px 2px rgba(20,20,19,.04),0 4px 16px rgba(20,20,19,.06);--shadow-lg:0 12px 40px rgba(20,20,19,.18);
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;--mono:ui-monospace,"Cascadia Code",Consolas,monospace;
 }
 @media(prefers-color-scheme:dark){:root{
-  --bg:#151517;--side:#1b1b1e;--bar:#1b1b1e;--fg:#ececf1;--mut:#a1a1aa;--faint:#6b6b74;--line:#2c2c31;--soft:#232328;--hover:rgba(255,255,255,.05);
-  --btn:#3b82f6;--me:#1e2a44;--me-line:#2a3a5c;--code:#0f0f11;
-  --claude:#e5896a;--codex:#2fbf94;--work:#f59e0b;--danger:#f87171;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.3);--shadow-lg:0 12px 40px rgba(0,0,0,.5);
+  --bg:#111214;--side:#17181B;--bar:#202226;--fg:#EFECE6;--mut:#A3A09A;--faint:#7D7A74;--line:#2B2D33;--soft:#1B1D21;--hover:#26292F;
+  --btn:#EFECE6;--btn-fg:#141413;--me:#26282E;--me-line:#383B43;--me-fg:#EFECE6;--me-mut:#A3A09A;--accent:#F17B59;--code:#16181C;
+  --claude:#e5896a;--codex:#2fbf94;--work:#F17B59;--danger:#F87171;
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 4px 16px rgba(0,0,0,.35);--shadow-lg:0 12px 40px rgba(0,0,0,.55);
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{height:100dvh;background:var(--bg);color:var(--fg);font:15px/1.6 var(--font);display:flex;flex-direction:column;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 button{font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s,color .15s,opacity .15s}
 button:disabled{cursor:default}
-:focus-visible{outline:2px solid var(--btn);outline-offset:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* ===== 顶栏 ===== */
 header{padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:color-mix(in srgb,var(--bar) 85%,transparent);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative;z-index:10}
@@ -46,7 +46,7 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 .cap .cx.hi{color:var(--danger);font-weight:600}
 .cap.off .cs{color:var(--faint)}
 .cap.term{border-color:color-mix(in srgb,var(--work) 50%,transparent)}.cap.term .cs{color:var(--work);font-weight:600}
-.cap.think .cs{color:var(--btn);font-weight:600}
+.cap.think .cs{color:var(--accent);font-weight:600}
 .cap.think .cn::before{animation:pulse 1.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
 
@@ -57,13 +57,13 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 .rl li a:hover{background:var(--hover)}
 .rl li.cur a{background:var(--soft);font-weight:600}
 .rl .dot{flex:none;width:8px;height:8px;border-radius:50%;background:transparent;border:1.5px solid var(--faint)}
-.rl .dot.run{background:var(--btn);border-color:var(--btn);animation:pulse 1.2s ease-in-out infinite}
+.rl .dot.run{background:var(--accent);border-color:var(--accent);animation:pulse 1.2s ease-in-out infinite}
 .rl .dot.you{background:var(--work);border-color:var(--work)}
 .rl .dot.new{background:var(--faint);border-color:var(--faint)}
 .rl .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rl .b{flex:none;font-size:11px;font-weight:600;padding:0 6px;border-radius:999px;line-height:1.6;background:var(--soft);color:var(--mut)}
 .rl .b.you{background:color-mix(in srgb,var(--work) 16%,transparent);color:var(--work)}
-.rl .b.run{background:color-mix(in srgb,var(--btn) 14%,transparent);color:var(--btn)}
+.rl .b.run{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)}
 .rl li.arch a{opacity:.55}
 #navToggle.attn{position:relative}
 #navToggle.attn::after{content:"";position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--work)}
@@ -111,13 +111,13 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 @keyframes pop{from{transform:translateY(6px) scale(.98);opacity:0}to{transform:none;opacity:1}}
 #mbox h3{margin:0 0 10px;font-size:16px;font-weight:650;letter-spacing:-.01em}
 #mbox input,#mbox textarea,#mbox select,#mbox .mi{width:100%;font-size:15px;font-family:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);margin-bottom:10px;transition:border-color .15s,box-shadow .15s}
-#mbox input:focus,#mbox textarea:focus,#mbox select:focus{outline:0;border-color:var(--btn);box-shadow:0 0 0 3px color-mix(in srgb,var(--btn) 18%,transparent)}
+#mbox input:focus,#mbox textarea:focus,#mbox select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
 #mbox textarea{min-height:90px;max-height:40vh}
 #mbox .btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 #mbox button{font-size:14px;padding:7px 16px;border:1px solid var(--line);background:var(--bar);color:var(--fg);border-radius:9px}
 #mbox button:hover:not(:disabled){background:var(--soft)}
 #mbox button.pri{background:var(--btn);color:var(--btn-fg);border-color:var(--btn);font-weight:600}
-#mbox button.pri:hover:not(:disabled){background:color-mix(in srgb,var(--btn) 88%,#000)}
+#mbox button.pri:hover:not(:disabled){background:color-mix(in srgb,var(--btn) 84%,var(--bg))}
 #mbox button:disabled{opacity:.4}
 #mbox .item{padding:10px 8px;margin:0 -8px;border-radius:10px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
 #mbox .item:hover{background:var(--soft)}
@@ -220,7 +220,7 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 .msg.ai{padding:2px 0 2px 40px}
 .msg.ai::before{position:absolute;left:0;top:2px;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--font);color:#fff;content:attr(data-l);background:var(--c)}
 .msg.ai .nm{color:var(--c)}
-.msg.me{margin-left:auto;max-width:80%;width:fit-content;background:var(--me);border:1px solid var(--me-line);padding:8px 14px 10px;border-radius:18px 18px 6px 18px}
+.msg.me{margin-left:auto;max-width:80%;width:fit-content;background:var(--me);border:1px solid var(--me-line);color:var(--me-fg);padding:8px 14px 10px;border-radius:18px 18px 6px 18px}
 .msg.me .who{justify-content:flex-end}
 .msg.me .who .nm{display:none}
 .msg.sys{margin:4px auto 18px;width:fit-content;max-width:90%;font-size:12.5px;color:var(--mut);text-align:center;background:var(--soft);padding:3px 12px;border-radius:999px;line-height:1.5}
@@ -232,8 +232,8 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 .undo:hover:not(:disabled){background:color-mix(in srgb,var(--work) 10%,transparent)}
 .undo:disabled{opacity:.5;border-color:var(--line);color:var(--mut);font-weight:400}
 .msg.flash{animation:flash 1.2s ease-out}
-@keyframes flash{0%,40%{background-color:color-mix(in srgb,var(--btn) 16%,transparent)}100%{background-color:transparent}}
-.msg.me.flash{animation:none;outline:2px solid var(--btn);outline-offset:2px}
+@keyframes flash{0%,40%{background-color:color-mix(in srgb,var(--accent) 14%,transparent)}100%{background-color:transparent}}
+.msg.me.flash{animation:none;outline:2px solid var(--accent);outline-offset:2px}
 
 /* markdown */
 .md p{margin:0 0 10px}
@@ -246,8 +246,8 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 .md blockquote{margin:0 0 10px;padding:2px 12px;border-left:3px solid var(--line);color:var(--mut)}
 .md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
 .md code{padding:1px 6px;background:var(--soft);border:1px solid var(--line);border-radius:5px;font:.88em var(--mono)}
-.md a{color:var(--btn);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--btn) 35%,transparent)}
-.md a:hover{border-bottom-color:var(--btn)}
+.md a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+.md a:hover{border-bottom-color:var(--accent)}
 .md strong{font-weight:650}
 .md .tbl{overflow-x:auto;margin:0 0 10px;border:1px solid var(--line);border-radius:10px}
 .md table{border-collapse:collapse;font-size:.93em;width:100%}
@@ -276,10 +276,10 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 
 /* 引用 */
 .who .rp{border:0;background:transparent;color:var(--faint);font-size:12px;padding:0 4px;margin-left:auto;cursor:pointer}
-.who .rp:hover{color:var(--btn)}
+.who .rp:hover{color:var(--accent)}
 .qt{border-left:2px solid var(--faint);padding:0 10px;margin:4px 0 6px;font-size:12.5px;color:var(--mut);cursor:pointer;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
 .qt:hover{color:var(--fg)}
-#quote{display:none;align-items:flex-start;gap:6px;border-left:2px solid var(--btn);background:var(--soft);border-radius:8px;padding:6px 6px 6px 10px;margin-bottom:8px;font-size:13px;color:var(--mut)}
+#quote{display:none;align-items:flex-start;gap:6px;border-left:2px solid var(--accent);background:var(--soft);border-radius:8px;padding:6px 6px 6px 10px;margin-bottom:8px;font-size:13px;color:var(--mut)}
 #quote.on{display:flex}
 #quote .qtx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #quote button{border:0;background:transparent;color:var(--mut);font-size:18px;line-height:1;padding:0 4px}
@@ -293,7 +293,7 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 #jump{position:fixed;z-index:15;display:none;flex-direction:column;gap:6px}
 #jump.on{display:flex}
 #jump button{width:36px;height:36px;padding:0;border-radius:50%;border:1px solid var(--line);background:color-mix(in srgb,var(--bar) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--mut);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-#jump button:hover{color:var(--fg);border-color:color-mix(in srgb,var(--btn) 40%,var(--line))}
+#jump button:hover{color:var(--fg);border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
 #jump button:active{transform:scale(.92)}
 #jump button.dim{opacity:.45}
 #jump svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -307,14 +307,14 @@ body.work header{box-shadow:inset 0 -2px 0 var(--work)}
 #stLive .ln.open{-webkit-line-clamp:unset;max-height:30vh;overflow-y:auto}
 #stLive .ln b{font-weight:600;margin-right:6px}#stLive .ln .t{color:var(--faint);margin-right:6px}
 #stLive .ln.claude b{color:var(--claude)}#stLive .ln.codex b{color:var(--codex)}
-#stText::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--btn);animation:pulse 1.2s ease-in-out infinite}
+#stText::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
 #stops{display:flex;gap:6px;flex:none}
 #stops button{font-size:12.5px;font-weight:600;padding:3px 12px;border:1px solid color-mix(in srgb,var(--danger) 45%,transparent);background:transparent;color:var(--danger);border-radius:7px;white-space:nowrap}
 #stops button:hover,#stops button:active{background:var(--danger);color:#fff;border-color:var(--danger)}
 
 /* ===== 输入区：一张圆角卡片 ===== */
 footer{background:var(--bg);padding:6px 12px calc(12px + env(safe-area-inset-bottom))}
-body.drag footer .row{outline:2px dashed var(--btn);outline-offset:3px}
+body.drag footer .row{outline:2px dashed var(--accent);outline-offset:3px}
 .quick{display:flex;gap:6px;margin-bottom:8px}
 .quick button{font-size:12.5px;padding:3px 10px;border:1px solid var(--line);background:transparent;color:var(--mut);border-radius:999px}
 .quick button:hover{color:var(--fg);background:var(--soft)}
@@ -325,13 +325,13 @@ body.drag footer .row{outline:2px dashed var(--btn);outline-offset:3px}
 .chip-open:hover{text-decoration:underline}
 .chip .x{position:absolute;top:1px;right:2px;border:0;background:transparent;color:var(--mut);font-size:18px;line-height:1;padding:2px 4px}
 .row{display:flex;gap:6px;align-items:flex-end;background:var(--bar);border:1px solid var(--line);border-radius:16px;padding:6px;box-shadow:var(--shadow);transition:border-color .15s,box-shadow .15s}
-.row:focus-within{border-color:color-mix(in srgb,var(--btn) 55%,var(--line));box-shadow:var(--shadow),0 0 0 3px color-mix(in srgb,var(--btn) 12%,transparent)}
+.row:focus-within{border-color:var(--accent);box-shadow:var(--shadow),0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
 textarea{flex:1;min-width:0;font-size:15px;font-family:inherit;line-height:1.5;padding:7px 6px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);resize:none;max-height:160px}
 .row textarea{border:0;background:transparent;outline:0}
 #clip{font-size:18px;width:38px;height:38px;padding:0;border:0;background:transparent;color:var(--mut);border-radius:10px;flex:none}
 #clip:hover{background:var(--soft);color:var(--fg)}
 #send{font-size:14px;font-weight:600;height:38px;padding:0 18px;border:0;border-radius:11px;background:var(--btn);color:var(--btn-fg);flex:none}
-#send:hover{background:color-mix(in srgb,var(--btn) 88%,#000)}
+#send:hover{background:color-mix(in srgb,var(--btn) 84%,var(--bg))}
 
 /* ===== 平板 / 窄电脑窗口：内容居中，行不拉太长 ===== */
 @media(min-width:601px){
@@ -413,8 +413,8 @@ textarea{flex:1;min-width:0;font-size:15px;font-family:inherit;line-height:1.5;p
 #viewer .vbar .grow{flex:1;min-width:0;font-size:13px;color:#a1a1aa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #viewer button,#viewer a.vb{background:rgba(255,255,255,.08);color:#ececf1;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:6px 11px;font-size:13px;cursor:pointer;text-decoration:none;line-height:1.3}
 #viewer button:hover,#viewer a.vb:hover{background:rgba(255,255,255,.16)}
-#viewer button.on{background:#3b82f6;border-color:#3b82f6}
-#viewer button.pri{background:#2563eb;border-color:#2563eb}
+#viewer button.on{background:#D94E28;border-color:#D94E28;color:#fff}
+#viewer button.pri{background:#D94E28;border-color:#D94E28;color:#fff}
 #viewer button:disabled{opacity:.35;cursor:default}
 #vStage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-y pinch-zoom}
 #vStage.zoom{overflow:auto;display:block;touch-action:auto}
@@ -432,7 +432,7 @@ textarea{flex:1;min-width:0;font-size:15px;font-family:inherit;line-height:1.5;p
 #viewer.edit .vview{display:none}
 #vTools{gap:6px;align-items:center;flex-wrap:wrap}
 #vTools .sw{width:24px;height:24px;padding:0;border-radius:50%;border:2px solid rgba(255,255,255,.25)}
-#vTools .sw.on{border-color:#fff;box-shadow:0 0 0 2px #3b82f6}
+#vTools .sw.on{border-color:#fff;box-shadow:0 0 0 2px #D94E28}
 #vTools .sep{width:1px;height:22px;background:rgba(255,255,255,.15);margin:0 2px}
 #vHint{font-size:12px;color:#a1a1aa;padding:0 12px 8px;text-align:center;flex:none}
 @media (max-width:700px){
@@ -452,7 +452,8 @@ textarea{flex:1;min-width:0;font-size:15px;font-family:inherit;line-height:1.5;p
 #tocList{list-style:none;margin:0;padding:4px;overflow-y:auto}
 #tocList li{display:flex;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13px;line-height:1.45}
 #tocList li:hover{background:var(--hover)}
-#tocList li.cur{background:var(--me);box-shadow:inset 3px 0 0 var(--btn)}
+#tocList li.cur{background:var(--me);color:var(--me-fg);box-shadow:inset 3px 0 0 var(--accent)}
+#tocList li.cur .t{color:var(--me-mut)}
 #tocList .t{color:var(--faint);font-variant-numeric:tabular-nums;flex:none}
 #tocList .x{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
 #tocList .empty{color:var(--mut);cursor:default;justify-content:center}

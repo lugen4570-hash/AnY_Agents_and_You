@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fffdf2">
+  <meta name="description" content="AnY 能力全景：多 Agent 协同、四种接入方式、工作台界面与文件安全护栏。">
+  <title>能力全景 · AnY</title>
+  <link rel="icon" href="assets/logo.svg?v=garden-2">
+  <link rel="stylesheet" href="style.css?v=garden-2">
+  <script src="site.js?v=garden-2" defer></script>
+</head>
+<body class="page-capabilities">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="AnY 首页">
+      <img class="brand-ink" src="assets/wordmark.svg" alt="" width="92" height="41">
+    </a>
+    <nav aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="capabilities.html" aria-current="page">能力</a>
+      <a href="support.html">支持</a>
+    </nav>
+    <a class="nav-cta" href="download.html"><span>下载</span><i aria-hidden="true">↗</i></a>
+  </header>
+
+  <main id="top">
+    <section class="sub-hero">
+        <div class="wrap sub-hero-inner">
+        <h1>多 Agent 协作，<br>从同席讨论到动手。</h1>
+        <p class="lead">将同席讨论、全渠道成员连接与工作台安全边界收拢在三大主题内，点选标签即可切换具体能力细节。</p>
+      </div>
+    </section>
+
+    <section class="wrap nested-section" id="collab" data-nested-group="collab">
+      <div class="topic-header">
+        <div>
+          <h2>多 Agent 协同</h2>
+          <p class="topic-desc">同一场会话可以请进多个擅长的 AI 与伙伴，每个主题下的协作方式可自由切换。</p>
+        </div>
+      </div>
+
+      <div class="nested-shell">
+        <div class="nested-tabs" role="tablist" aria-label="多 Agent 协同子项">
+          <button type="button" role="tab" aria-selected="true" data-nested-tab="collab-discuss">同席讨论</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="collab-debate">轮流论道</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="collab-models">独立模型与节奏</button>
+        </div>
+
+        <div class="nested-panels">
+          <article class="nested-panel" id="collab-discuss" data-nested-panel="collab-discuss">
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>互相 <code>@</code> 分工，观点当场交汇</h3>
+                <p>在同一个输入框里同时 <code>@Claude</code>、<code>@Codex</code>、<code>@Gemini</code> 或 <code>@Antigravity</code>。各成员既看到彼此发言与附件，也能独立保持自己原本的连续记忆，不必在多个窗口之间反复复制粘贴上下文。</p>
+                <ul class="construct-list">
+                  <li>不写 <code>@</code> 时可唤醒会话内的全员参与，写明 <code>@名称</code> 则精准点名交接。</li>
+                  <li>支持整条消息或精确片段引用回复，并可在长对话中独立压缩单个 AI 的记忆长度。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">同席结构示意</div>
+                <div class="diagram-stack">
+                  <div class="diag-node node-human"><span>你</span><b>提出问题并点名分工</b></div>
+                  <div class="diag-arrow">↘ 同时广播至同席上下文 ↙</div>
+                  <div class="diag-row">
+                    <div class="diag-chip"><strong>Claude</strong><small>架构拆解</small></div>
+                    <div class="diag-chip"><strong>Codex</strong><small>代码方案</small></div>
+                    <div class="diag-chip"><strong>Gemini</strong><small>边界检验</small></div>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="collab-debate" data-nested-panel="collab-debate" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>设好议题与轮数，让 AI 彼此评议收尾</h3>
+                <p>遇到关键架构抉择或复杂排障时，可由你指定议题、参与成员、发言轮数与最后收尾的总结人。各方按顺序回应并检视前一位成员的盲区，最终收敛成一份清晰的行动看板。</p>
+                <ul class="construct-list">
+                  <li>在客户端或终端均可一键发起论道，随时查看当前轮次进度。</li>
+                  <li>支持中途随时请求提前收尾总结，不浪费额外轮次。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">论道流转节奏</div>
+                <div class="diagram-steps">
+                  <div><b>R1</b><span>各成员独立陈词，亮明假设</span></div>
+                  <div><b>R2</b><span>针对前序观点补充反驳与证据</span></div>
+                  <div><b>总结</b><span>指定收尾人梳理共识与待办</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="collab-models" data-nested-panel="collab-models" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>空闲与忙碌互不牵制，模型清晰可读</h3>
+                <p>正在深入推演的 AI 不会阻断会话里的其他伙伴。你可以随时为空闲中的某个 Agent 切换模型与思考深度、刷新可用列表或调整启动参数，完全不打扰另一个仍在思考或回复的成员。</p>
+                <ul class="construct-list">
+                  <li>直接呈现清晰可读的模型名称，免去繁琐的内部标识记忆。</li>
+                  <li>支持一键交由各工具自己的终端继续处理，完成后再收回至当前会话。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">独立运行状态</div>
+                <div class="status-demo">
+                  <div class="st-row is-busy"><i></i><b>Antigravity</b><span>在想中 · 保留原有上下文</span></div>
+                  <div class="st-row is-free"><i></i><b>Codex</b><span>空闲 · 可立即切换模型与思考深度</span></div>
+                  <div class="st-row is-free"><i></i><b>OpenCode</b><span>空闲 · 参数可单独调整</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap nested-section" id="connect" data-nested-group="connect">
+      <div class="topic-header">
+        <div>
+          <h2>全渠道接入</h2>
+          <p class="topic-desc">无论是本机命令行工具、桌面端伴侣、朋友的手机，还是远在另一台电脑上的 AI，都能统一汇入同一场对话。</p>
+        </div>
+      </div>
+
+      <div class="nested-shell">
+        <div class="nested-tabs" role="tablist" aria-label="全渠道接入子项">
+          <button type="button" role="tab" aria-selected="true" data-nested-tab="cap-local">本机 AI</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="cap-member">跨设备成员</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="cap-invite">邀请伙伴与我的设备</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="cap-http">自定义接口</button>
+        </div>
+
+        <div class="nested-panels">
+          <article class="nested-panel" id="cap-local" data-nested-panel="cap-local">
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>自动发现本机已安装的 AI 工具</h3>
+                <p>打开「接入」界面即可扫描本机常见的命令行与协作工具，包括 <code>claude</code>、<code>codex</code>、<code>gemini</code>、<code>antigravity</code>、<code>cursor</code>、<code>opencode</code>、<code>qwen</code>、<code>aider</code>、<code>crush</code>、<code>qoder</code> 等，也支持一键向桌面编程工具写入协作入口。</p>
+                <ul class="construct-list">
+                  <li>内置验证测试功能，添加前即可确认工具可启动并查看响应。</li>
+                  <li>复用你本机原本的账号登录与额度，不经第三方中转。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">内置发现列表</div>
+                <div class="agent-matrix">
+                  <span>Claude Code</span><span>Codex</span><span>Gemini CLI</span>
+                  <span>Antigravity</span><span>Cursor</span><span>OpenCode</span>
+                  <span>Qwen</span><span>Aider</span><span>Crush</span>
+                  <span>Qoder</span><span>桌面端接单</span><span>自定义程序</span>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="cap-member" data-nested-panel="cap-member" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>把另一台 Windows 或 Mac 上的 AI 请进桌</h3>
+                <p>团队另一位同学的电脑上跑着好用的本地模型或专属工具？只要在 AnY 内生成一份连接配置并发给对方，对方运行轻量「成员连接端」即可进入待命接单状态，在你 <code>@</code> 到他时自动回应。</p>
+                <ul class="construct-list">
+                  <li>每台设备各自独立使用本机工作目录，本地文件不会擅自被远端读取。</li>
+                  <li>连接状态与心跳实时可见，随时按会话调配加入或移除。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">跨设备接力</div>
+                <div class="diagram-steps">
+                  <div><b>01</b><span>主持人生成成员连接配置</span></div>
+                  <div><b>02</b><span>伙伴电脑启动轻量连接端并导入</span></div>
+                  <div><b>03</b><span>会话中直接 <code>@伙伴名</code> 自动接单</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="cap-invite" data-nested-panel="cap-invite" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>同一局域网扫码即入，手机也能随时接管</h3>
+                <p>AnY 支持两类人类接入方式：「邀请其他人」让你在特定会话里邀请同事或朋友以个人身份旁听与发言；「我的设备」则允许你用手机或平板扫码，以主人身份继续跟进进度。</p>
+                <ul class="construct-list">
+                  <li>「邀请其他人」与「我的设备」严格隔离权限，访客只能看到被授权的那一场会话。</li>
+                  <li>跨网场景下只要填入可访问的会议室地址，同样能一键连线。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">权限边界对比</div>
+                <div class="status-demo">
+                  <div class="st-row is-free"><i></i><b>邀请其他人</b><span>按会话独立授权 · 仅见单场内容</span></div>
+                  <div class="st-row is-busy"><i></i><b>我的设备</b><span>一次性配对码 · 手机同步跟进全貌</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="cap-http" data-nested-panel="cap-http" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>把自研 Agent 与 HTTP 工作流拉进会话</h3>
+                <p>如果你自己在内部搭了 Agent 服务、脚本助手或自动化管线，只需填入接口地址与密钥，即可作为一个正规联系人坐在 AnY 的会议桌旁，接收任务并回传图文附件。</p>
+                <ul class="construct-list">
+                  <li>支持自定义默认模型名、并发超时与会话级细粒度权限开关。</li>
+                  <li>外部发言同样记入统一的会议记录与项目审计流中。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">开放接口契约</div>
+                <div class="diagram-steps">
+                  <div><b>接入</b><span>配置服务地址与鉴权密钥</span></div>
+                  <div><b>唤醒</b><span>会话中被 <code>@</code> 后接收上下文</span></div>
+                  <div><b>回传</b><span>返回正文建议与文件附件</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap nested-section" id="workspace" data-nested-group="workspace">
+      <div class="topic-header">
+        <div>
+          <h2>工作台与安全</h2>
+          <p class="topic-desc">看得清全局状态，也守得住每一行本地代码的安全边界。</p>
+        </div>
+      </div>
+
+      <div class="nested-shell">
+        <div class="nested-tabs" role="tablist" aria-label="工作台与安全子项">
+          <button type="button" role="tab" aria-selected="true" data-nested-tab="cap-ui">工作台实景</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="cap-modes">讨论与干活模式</button>
+          <button type="button" role="tab" aria-selected="false" data-nested-tab="cap-guard">文件保护与按步撤回</button>
+        </div>
+
+        <div class="nested-panels">
+          <article class="nested-panel" id="cap-ui" data-nested-panel="cap-ui">
+            <div class="panel-gallery">
+              <div class="gallery-copy">
+                <h3>左边项目与联系人，右边专注当下的协作与产物</h3>
+                <p>每场会话都带有独立的公告与待办看板、顶部成员在线胶囊、图片标注画板、剪贴板快捷上传以及结构化会话整理落盘，所有对话与产物默认只存在你电脑本地。</p>
+              </div>
+              <figure class="product-frame">
+                <div class="frame-bar">
+                  <span><i></i><i></i><i></i></span>
+                  <span>AnY · 多 Agent 协作工作台</span>
+                  <span>实景界面</span>
+                </div>
+                <img src="assets/workspace.png?v=garden-2" width="1440" height="940" alt="AnY 桌面界面：左侧按项目整理会话与联系人，右侧展示共同目标、对话与输入栏" loading="lazy">
+              </figure>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="cap-modes" data-nested-panel="cap-modes" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>讨论模式与干活模式清晰切换</h3>
+                <p>新会话默认开启「讨论模式」，所有 AI 仅阅读与分析，不改动你的磁盘文件；当你与伙伴拍板方案后，再一键切到「干活模式」，并为需要的成员放开写入与命令执行权限。</p>
+                <ul class="construct-list">
+                  <li>每场会话可精细勾选「读消息 / 发言 / 唤起他人 / 改看板 / 发文件 / 允许干活」权限。</li>
+                  <li>支持一键切换只读评审，安心防止误改。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">双模式护航</div>
+                <div class="diagram-steps">
+                  <div><b>讨论</b><span>默认只读约束 · 放心碰撞观点与方案</span></div>
+                  <div><b>干活</b><span>放开指定成员权限 · 协同落盘并验证</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+
+          <article class="nested-panel" id="cap-guard" data-nested-panel="cap-guard" hidden>
+            <div class="panel-grid">
+              <div class="panel-copy">
+                <h3>跨会话文件锁定，每一步改动皆可回看撤回</h3>
+                <p>当多场会话或多个 AI 同时在同一个代码仓库里干活时，文件护栏会实时拦截冲突写入——同一文件同一时间只允许一位成员修改；你还能在右侧面板逐一预览某步修改详情，不满意随时按步撤回。</p>
+                <ul class="construct-list">
+                  <li>与你自己的日常版本提交记录互不干扰，悄然记录每步快照。</li>
+                  <li>支持手动对特定敏感文件加锁，防止任何成员触碰。</li>
+                </ul>
+              </div>
+              <aside class="panel-visual">
+                <div class="visual-caption">并发安全检查</div>
+                <div class="status-demo">
+                  <div class="st-row is-busy"><i></i><b>auth.py</b><span>正由 @Codex 独占修改 · 其他请求已拦截</span></div>
+                  <div class="st-row is-free"><i></i><b>第 4 步快照</b><span>支持查看改动差异并按步撤回</span></div>
+                </div>
+              </aside>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer wrap">
+    <p>Agents and You</p>
+  </footer>
+</body>
+</html>

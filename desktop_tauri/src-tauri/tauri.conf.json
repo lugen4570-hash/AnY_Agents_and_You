@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cojam",
+  "productName": "AnY",
   "mainBinaryName": "Cojam",
-  "version": "2.8.14",
+  "version": "2.8.15",
   "identifier": "com.cojam.desktop",
   "build": {
     "frontendDist": "../placeholder"
@@ -17,7 +17,8 @@
   "bundle": {
     "active": false,
     "icon": [
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ]
   }
 }

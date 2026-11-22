@@ -104,7 +104,7 @@ function drawRooms(){
   manage.title='会话管理、归档与回收站'+(wait?' · '+wait+' 个其他会话等你回复':'');
   const nav=document.getElementById('navToggle');nav.classList.toggle('attn',wait>0);
   nav.setAttribute('aria-label','打开联系人和项目'+(wait?'，'+wait+' 个其他会话等你回复':''));
-  document.title=(wait?'('+wait+') ':'')+(S&&S.title?S.title+' · 合拍 Cojam':'合拍 Cojam');
+  document.title=(wait?'('+wait+') ':'')+(S&&S.title?S.title+' · AnY':'AnY');
 }
 // The server supplies resolved project IDs, including migrated folder groups.
 function legacyProject(wd){return (PROJECTS.find(p=>p.workdir===wd)||{}).id||''}

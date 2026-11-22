@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>AnY</title>
+  <style>
+    @media (prefers-reduced-motion: no-preference) {
+      path { animation: reveal .52s cubic-bezier(.21,.73,.23,1) both; }
+      @keyframes reveal {
+        from { clip-path: inset(100% 0 0); opacity: .4; }
+        to { clip-path: inset(0); opacity: 1; }
+      }
+    }
+  </style>
+  <path fill="#141413" fill-rule="evenodd" d="M8 11H15L24 29H40L49 11H56L35 55H29Z M27 35H37L32 46Z"/>
+</svg>

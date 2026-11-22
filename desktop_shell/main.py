@@ -8,7 +8,7 @@ import webbrowser
 
 from . import backend
 
-TITLE = "合拍 Cojam"
+TITLE = "AnY"
 BUSY_TEXT = "还有任务正在运行或排队。现在关闭窗口，如果这是最后一个合拍页面，任务会中断。确定关闭吗？"
 BUSY_UNKNOWN_TEXT = "无法确认后台是否仍有任务正在运行或排队。现在关闭窗口可能导致进行中的任务中断。确定关闭吗？"
 
@@ -19,7 +19,7 @@ def base_url():
 
 def _message_box(text, flags):
     if sys.platform == "darwin":
-        script = 'on run argv\n display dialog (item 1 of argv) with title "合拍 Cojam" buttons {"取消", "确定"} default button "确定"\nend run' if flags & 0x04 else 'on run argv\n display alert "合拍 Cojam" message (item 1 of argv)\nend run'
+        script = 'on run argv\n display dialog (item 1 of argv) with title "AnY" buttons {"取消", "确定"} default button "确定"\nend run' if flags & 0x04 else 'on run argv\n display alert "AnY" message (item 1 of argv)\nend run'
         result = subprocess.run(["/usr/bin/osascript", "-e", script, text], capture_output=True)
         return 6 if result.returncode == 0 else 2
     return ctypes.windll.user32.MessageBoxW(None, text, TITLE, flags)
@@ -109,9 +109,10 @@ def tint_title_bar(_window=None):
             dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value), 4)
 
         paint(20, ctypes.c_uint(1 if dark else 0))             # 深色标题按钮
-        paint(35, _colorref("#1b1b1e" if dark else "#ffffff"))  # 标题栏 = --bar
-        paint(36, _colorref("#ececf1" if dark else "#18181b"))  # 标题文字 = --fg
-        paint(34, _colorref("#2c2c31" if dark else "#e7e7ea"))  # 窗口边框 = --line
+        chrome = _colorref("#0a1417" if dark else "#e6f0ec")
+        paint(35, chrome)                                      # 标题栏 = --chrome
+        paint(36, _colorref("#f3f2e7" if dark else "#18302b")) # 标题文字 = --fg
+        paint(34, chrome)                                      # 窗口边框 = --chrome
     except Exception:
         pass
 

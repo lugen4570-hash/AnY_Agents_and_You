@@ -1,53 +1,89 @@
-"""Export the selected Cojam ∀ / ∫ identity to SVG, ICO and web icon sizes.
+"""Export the AnY ∀ identity to SVG, ICO, and web/app icon sizes.
 
-Vector geometry is shared with Pillow exports; no fonts or network required.
+Vector geometry matches website/assets/logo.svg; no fonts or network required.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw
-ROOT=Path(__file__).resolve().parent
-STATIC=ROOT/'static'
-PURPLE,LIME,CREAM='#6022E8','#D5FF3F','#FFFCF5'
-S=1024
-LEFT=[('M',18,17),('C',13,12,21,9,29,9),('C',35,9,37,12,39,18),('L',53,56),('L',64,22),('L',74,27),('L',55,76),('C',51,84,45,84,40,76),('L',18,31),('C',12,27,12,21,18,17),('Z',)]
-INTEGRAL=[('M',79,8),('C',91,5,99,13,97,22),('C',95,30,85,31,80,25),('C',77,23,78,19,81,17),('C',71,19,69,29,67,43),('L',63,65),('C',60,84,45,96,30,91),('C',17,87,20,76,29,76),('C',36,76,39,83,34,87),('C',47,85,51,72,54,57),('L',60,27),('C',63,15,70,9,79,8),('Z',)]
-BAR=[('M',17,39),('L',57,31),('C',65,29,68,39,60,42),('L',21,51),('C',11,54,8,42,17,39),('Z',)]
 
-def path_text(commands):
-    return ' '.join(c[0]+' '.join(str(v) for v in c[1:]) for c in commands)
+ROOT = Path(__file__).resolve().parent
+STATIC = ROOT / "static"
+WEBSITE_ASSETS = ROOT / "website" / "assets"
+TAURI_ICON = ROOT / "desktop_tauri" / "src-tauri" / "icons" / "icon.ico"
+TAURI_ICNS = ROOT / "desktop_tauri" / "src-tauri" / "icons" / "icon.icns"
 
-def svg(icon=False,mono=False,dark=False):
-    bg='<rect width="100" height="100" rx="25" fill="'+PURPLE+'"/>' if icon else ''
-    transform='translate(8 8) scale(.84)' if icon else ''
-    colors=[CREAM if icon or dark else PURPLE,LIME,LIME] if not mono else ['currentColor']*3
-    paths=''.join('<path d="'+path_text(p)+'" fill="'+color+'"/>' for p,color in zip([LEFT,INTEGRAL,BAR],colors))
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>合拍 Cojam · ∀ + ∫</title>'+bg+'<g transform="'+transform+'">'+paths+'</g></svg>'
+INK = "#141413"
+PAPER = "#FAF9F5"
+DARK_PAPER = "#EFECE6"
+SIZE = 1024
 
-def points(commands):
-    out=[];current=(0,0)
-    for c in commands:
-        if c[0] in ('M','L'): current=(c[1],c[2]);out.append(current)
-        elif c[0]=='C':
-            a=current;b=c[1:3];d=c[3:5];e=c[5:7]
-            for i in range(1,81):
-                t=i/80;out.append(tuple((1-t)**3*a[k]+3*(1-t)**2*t*b[k]+3*(1-t)*t*t*d[k]+t**3*e[k] for k in (0,1)))
-            current=e
-    return out
+MARK_PATH = "M8 11H15L24 29H40L49 11H56L35 55H29Z M27 35H37L32 46Z"
+OUTER_POLY = [(8, 11), (15, 11), (24, 29), (40, 29), (49, 11), (56, 11), (35, 55), (29, 55)]
+INNER_POLY = [(27, 35), (37, 35), (32, 46)]
 
-def render(maskable=False,plain=False):
-    im=Image.new('RGBA',(S,S),PURPLE if maskable else (0,0,0,0));draw=ImageDraw.Draw(im)
-    if not plain:draw.rounded_rectangle((0,0,S-1,S-1),S*.25,fill=PURPLE)
-    scale=.74 if maskable else (.84 if not plain else .96)
-    offset=(1-scale)*S/2
-    for commands,color in zip([LEFT,INTEGRAL,BAR],[PURPLE if plain else CREAM,LIME,LIME]):
-        draw.polygon([(offset+x*S/100*scale,offset+y*S/100*scale) for x,y in points(commands)],fill=color)
+
+def svg(app_icon: bool = False, mono: bool = False, dark: bool = False) -> str:
+    """Build an SVG string for the sharp ∀ mark."""
+    if app_icon:
+        bg = f'<rect width="64" height="64" rx="14" fill="{INK}"/>'
+        body = f'<g transform="translate(8 8) scale(.75)"><path fill-rule="evenodd" d="{MARK_PATH}" fill="{PAPER}"/></g>'
+        return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>AnY</title>{bg}{body}</svg>\n'
+    fill = "currentColor" if mono else (DARK_PAPER if dark else INK)
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+        f'<title>AnY</title><path fill-rule="evenodd" d="{MARK_PATH}" fill="{fill}"/>'
+        "</svg>\n"
+    )
+
+
+def render_app_icon() -> Image.Image:
+    """Render the supersampled 1024x1024 rounded app icon matching logo-app.svg."""
+    im = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(im)
+    radius = SIZE * (14 / 64)
+    draw.rounded_rectangle((0, 0, SIZE - 1, SIZE - 1), radius, fill=INK)
+
+    mask = Image.new("L", (SIZE, SIZE), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    scale = 0.75 * (SIZE / 64)
+    offset = 8 * (SIZE / 64)
+    outer_pts = [(offset + x * scale, offset + y * scale) for x, y in OUTER_POLY]
+    inner_pts = [(offset + x * scale, offset + y * scale) for x, y in INNER_POLY]
+    mask_draw.polygon(outer_pts, fill=255)
+    mask_draw.polygon(inner_pts, fill=0)
+
+    fg = Image.new("RGBA", (SIZE, SIZE), PAPER)
+    im.paste(fg, (0, 0), mask)
     return im
 
-def main():
+
+def main() -> None:
     STATIC.mkdir(exist_ok=True)
-    for name,body in [('logo.svg',svg()),('logo-app.svg',svg(icon=True)),('logo-dark.svg',svg(dark=True)),('logo-mono.svg',svg(mono=True))]:(STATIC/name).write_text(body,encoding='utf-8')
-    im=render()
-    im.resize((256,256),Image.Resampling.LANCZOS).save(ROOT/'roundtable.ico',sizes=[(n,n) for n in (16,24,32,48,64,128,256)])
-    im.resize((512,512),Image.Resampling.LANCZOS).save(ROOT/'roundtable_preview.png')
-    im.resize((192,192),Image.Resampling.LANCZOS).save(STATIC/'icon-192.png')
-    print('Generated Cojam vector mark, Windows ICO and web icon')
-if __name__=='__main__':main()
+    WEBSITE_ASSETS.mkdir(parents=True, exist_ok=True)
+    TAURI_ICON.parent.mkdir(parents=True, exist_ok=True)
+
+    for name, content in (
+        ("logo.svg", svg()),
+        ("logo-app.svg", svg(app_icon=True)),
+        ("logo-dark.svg", svg(dark=True)),
+        ("logo-mono.svg", svg(mono=True)),
+    ):
+        (STATIC / name).write_text(content, encoding="utf-8")
+
+    im = render_app_icon()
+    ico_sizes = [(n, n) for n in (16, 24, 32, 48, 64, 128, 256)]
+    ico_source = im.resize((256, 256), Image.Resampling.LANCZOS)
+    ico_source.save(ROOT / "roundtable.ico", sizes=ico_sizes)
+    TAURI_ICON.write_bytes((ROOT / "roundtable.ico").read_bytes())
+
+    im.save(ROOT / "roundtable.icns", format="ICNS")
+    TAURI_ICNS.write_bytes((ROOT / "roundtable.icns").read_bytes())
+
+    im.resize((512, 512), Image.Resampling.LANCZOS).save(ROOT / "roundtable_preview.png")
+    icon_192 = im.resize((192, 192), Image.Resampling.LANCZOS)
+    icon_192.save(STATIC / "icon-192.png")
+    (WEBSITE_ASSETS / "icon-192.png").write_bytes((STATIC / "icon-192.png").read_bytes())
+    print("Generated AnY ∀ SVG, Windows ICO, macOS ICNS, and web icon assets.")
+
+
+if __name__ == "__main__":
+    main()

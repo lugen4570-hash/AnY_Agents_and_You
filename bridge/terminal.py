@@ -1,17 +1,25 @@
 """Interactive terminal interface for the shared Cojam backend."""
 import asyncio
 import os
+import re
 import secrets
 from contextlib import suppress
 from typing import Any
 
+from rich import box
+from rich.cells import cell_len, get_character_cell_size
+from rich.console import Group
 from rich.markdown import Markdown
+from rich.padding import Padding
+from rich.panel import Panel
+from rich.rule import Rule
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import Button, Input, Label, OptionList, RichLog, Select, SelectionList, Static
 from textual.widgets.option_list import Option
 
@@ -20,42 +28,218 @@ from .terminal_input import COMMANDS, Completion, Composer, plain
 
 
 CLI_VIAS = ("cli", "codex", "claude")
+PAPER = "#f4f2e6"
+LEAF = "#b4e197"
+WATER = "#7fd4e6"
+SUN = "#f4d98c"
+SIGNAL = "#f49e8a"
+MINT = "#88e5c3"
+MUTED_TEXT = "#8ea9a6"
+HOCKNEY_FALLBACKS = (WATER, SIGNAL, LEAF, SUN, MINT, "#c8b6ff")
+TERMINAL_THEME = Theme(
+    name="any", primary=WATER, accent=LEAF, success=LEAF,
+    warning=SUN, error="#ff9ca3", foreground=PAPER,
+    background="#101c20", surface="#17272c", panel="#2e4a52",
+)
 
 
 class WelcomeMark(Static):
-    TRACK = (
-        "·                         ", " ·◆·                      ", "    ·◆·                   ",
-        "       ·◆·                ", "          ·◆·             ", "             ·◆·          ",
-        "                ·◆·       ", "                   ·◆·    ", "                      ·◆· ",
-        "·  ·  ·  ·  ·  ·  ·  ·  ·",
+    FRAMES = (
+        "╲\n ╲\n  ╲",
+        "╲   ╱\n ╲ ╱\n  ╵",
+        "╲   ╱\n ╲─╱\n  ╵",
+        "∀ AnY",
     )
 
     def on_mount(self):
-        self.frame = 0
-        self.draw_mark(self.TRACK[self.frame])
-        self.set_interval(0.09, self.advance, repeat=len(self.TRACK) - 1)
+        animate = motion_enabled(self.app) and self.app.room is None
+        self.frame = 0 if animate else len(self.FRAMES) - 1
+        self.draw_mark()
+        if animate:
+            self.set_interval(0.15, self.advance, repeat=len(self.FRAMES) - 1)
 
     def advance(self):
-        self.frame = min(self.frame + 1, len(self.TRACK) - 1)
-        self.draw_mark(self.TRACK[self.frame])
+        self.frame = min(self.frame + 1, len(self.FRAMES) - 1)
+        self.draw_mark()
 
-    def draw_mark(self, track):
-        banner = Text.assemble(("◇◆◇", "bold #56dfd5"), ("  Cojam", "bold"), ("   " + track, "#4e718c"),
-                               no_wrap=True, overflow="crop")
-        for index, char in enumerate(banner.plain):
-            if char == "◆" and index > 2:
-                banner.stylize("bold #a2f5e7", index, index + 1)
-        self.update(banner)
+    def draw_mark(self):
+        settled = self.frame == len(self.FRAMES) - 1
+        self.set_class(settled, "settled")
+        mark = Text(no_wrap=True, overflow="crop")
+        for glyph in self.FRAMES[self.frame]:
+            color = {"╲": LEAF, "╱": WATER, "─": SIGNAL, "∀": SIGNAL}.get(glyph, PAPER)
+            mark.append(glyph, style="bold" if self.app.no_color else f"bold {color}")
+        self.update(mark)
+
+
+def motion_enabled(app):
+    return not app.no_color and app.animation_level != "none"
+
+
+def readable_agent_color(raw_color, index=0):
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", raw_color or ""):
+        r, g, b = int(raw_color[1:3], 16), int(raw_color[3:5], 16), int(raw_color[5:7], 16)
+        # Keep colors with sufficient contrast on #101c20; brighten overly dark presets (e.g. #111827).
+        if (0.299 * r + 0.587 * g + 0.114 * b) >= 85:
+            return raw_color
+    return HOCKNEY_FALLBACKS[index % len(HOCKNEY_FALLBACKS)]
+
+
+def agent_colors(state):
+    return {
+        agent["id"]: readable_agent_color(agent.get("color"), idx)
+        for idx, agent in enumerate(state.get("agents", []))
+    }
+
+
+def _message_body_items(message, *, markdown=False):
+    items = []
+    if reply := message.get("reply_to"):
+        items.append(Text(f"↳ {plain(reply.get('speaker', ''))}：{plain(reply.get('text', ''))}", style=f"dim {MUTED_TEXT}"))
+    if message.get("recalled"):
+        items.append(Text("消息已撤回", style=f"dim {MUTED_TEXT}"))
+    elif text := message.get("text"):
+        items.append(Markdown(plain(text), hyperlinks=False) if markdown else Text(plain(text), style=PAPER))
+    for attachment in message.get("attachments", []):
+        items.append(Text("📎 " + plain(attachment.get("name", "文件")), style=f"bold {WATER}"))
+    return items
+
+
+def transcript_entry(message, agents, colors, members):
+    speaker = message["speaker"]
+    agent = agents.get(speaker, {})
+    name = plain(agent.get("label") or speaker)
+    time_str = plain(message.get("time") or "")
+    if speaker == "系统":
+        text = plain(message.get("text") or "系统通知")
+        if "\n" not in text and len(text) <= 44 and not message.get("attachments") and not message.get("reply_to"):
+            return Padding(Rule(f" ─ 系统 · {text} ", style=f"dim {MUTED_TEXT}", characters="─"), (0, 2, 1, 2))
+        body_items = _message_body_items(message, markdown=False)
+        header = Text.assemble((" ─ 系统 ", f"bold #101c20 on {MUTED_TEXT}"), (f"  {time_str}" if time_str else "", f"dim {MUTED_TEXT}"))
+        return Padding(Group(header, *(Padding(item, (0, 0, 0, 2)) for item in body_items)), (0, 2, 1, 2))
+
+    is_human = agent.get("kind") == "user" or members.get(speaker, {}).get("transport") == "human"
+    body_items = _message_body_items(message, markdown=(speaker != "你" and not is_human))
+    content = Group(*body_items) if body_items else Text("")
+
+    if speaker == "你":
+        title = Text.assemble((" ◆ 你 ", f"bold #101c20 on {LEAF}"))
+        if time_str:
+            title.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
+        panel = Panel(content, title=title, title_align="left", box=box.ROUNDED,
+                      border_style=LEAF, style=f"{PAPER} on #182d2a", padding=(0, 1))
+        return Padding(panel, (0, 0, 1, 4))
+
+    if is_human:
+        accent = WATER
+        badge = f" ○ {name}  成员 "
+        card_bg = "#152830"
+    else:
+        accent = colors.get(speaker) or HOCKNEY_FALLBACKS[sum(ord(ch) for ch in speaker) % len(HOCKNEY_FALLBACKS)]
+        badge = f" ● {name}  Agent "
+        card_bg = "#152429"
+
+    title = Text.assemble((badge, f"bold #101c20 on {accent}"))
+    if name.casefold() != speaker.casefold():
+        title.append(f"  @{plain(speaker)}", style=f"dim {MUTED_TEXT}")
+    if message.get("origin") == "debate-summary":
+        title.append("  论道总结", style=f"bold {SIGNAL}")
+    elif message.get("to_user"):
+        title.append("  → 用户", style=f"bold {SUN}")
+    if time_str:
+        title.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
+    panel = Panel(content, title=title, title_align="left", box=box.ROUNDED,
+                  border_style=accent, style=f"{PAPER} on {card_bg}", padding=(0, 1))
+    return Padding(panel, (0, 2, 1, 0))
+
+
+def append_details_header(details, title, bg_color, count=None, right_note="", *, first=False):
+    if not first:
+        details.append("\n\n" + "─" * 28 + "\n", style="dim #3a5962")
+    details.append(f"▌ {title} ", style=f"bold #101c20 on {bg_color}")
+    if count is not None:
+        details.append(f" {count}", style=f"bold {bg_color}")
+    elif right_note:
+        details.append(f" {right_note}", style=f"bold {bg_color}")
+    details.append("\n")
+
+
+def _wrap_cells(text, first_width, rest_width):
+    lines = []
+    for raw_line in plain(text).splitlines() or [""]:
+        limit = max(8, first_width)
+        buf = []
+        width = 0
+        for ch in raw_line:
+            cw = max(0, get_character_cell_size(ch))
+            if buf and width + cw > limit:
+                lines.append("".join(buf).rstrip())
+                buf = [] if ch == " " else [ch]
+                width = 0 if ch == " " else cw
+                limit = max(8, rest_width)
+            else:
+                buf.append(ch)
+                width += cw
+        lines.append("".join(buf).rstrip())
+    return lines
+
+
+def _append_wrapped_row(details, prefix, prefix_style, body, body_style, *,
+                        id_prefix="", id_style="", cont_indent="  ", total_width=35):
+    first_w = total_width - cell_len(prefix) - cell_len(id_prefix)
+    rest_w = total_width - cell_len(cont_indent)
+    wrapped = _wrap_cells(body, first_w, rest_w)
+    details.append(prefix, style=prefix_style)
+    if id_prefix:
+        details.append(id_prefix, style=id_style)
+    details.append(wrapped[0], style=body_style)
+    for cont in wrapped[1:]:
+        details.append("\n" + cont_indent, style=prefix_style)
+        details.append(cont, style=body_style)
+
+
+class ReplyActivity(Static):
+    BEATS = ("·", "✦", "●", "✦")
+
+    def on_mount(self):
+        self.lines = []
+        self.color = None
+        self.leading = False
+        self.beat = 0
+        self.timer = self.set_interval(0.35, self.advance, pause=True)
+
+    def show(self, lines, *, color=None, leading=False):
+        self.lines = lines
+        self.color = color
+        self.leading = leading
+        if color and motion_enabled(self.app):
+            self.timer.resume()
+        else:
+            self.timer.pause()
+            self.beat = 0
+        self.draw_activity()
+
+    def advance(self):
+        self.beat = (self.beat + 1) % len(self.BEATS)
+        self.draw_activity()
+
+    def draw_activity(self):
+        status = Text()
+        if self.lines and self.leading:
+            beat = self.BEATS[self.beat] if self.color and motion_enabled(self.app) else "●"
+            status.append(beat + " ", style=self.color or SIGNAL)
+        status.append(plain("\n".join(self.lines)))
+        self.update(status)
 
 
 def room_status(room):
     if room.get("archived"):
         return "已归档", "dim"
     if room.get("running"):
-        return "回复中", "bold cyan"
+        return "回复中", f"bold {SIGNAL}"
     if room.get("queued"):
-        return "排队中", "yellow"
-    return "空闲", "dim"
+        return "排队中", f"bold {SUN}"
+    return "空闲", MUTED_TEXT
 
 
 class SessionSearch(Input):
@@ -245,7 +429,7 @@ class DebateForm(ModalScreen):
 
 
 class CojamTerminal(App):
-    TITLE = "Cojam"
+    TITLE = "AnY"
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
         ("f2", "show_projects", "项目与会话"), ("f3", "toggle_details", "会话详情"),
@@ -259,27 +443,34 @@ class CojamTerminal(App):
     #layout.home { align-horizontal: center; }
     #layout.home #navigation { display: block; }
     #layout.home #chat, #layout.home #details-pane { display: none; }
-    #welcome { height: 3; padding: 1; }
+    #masthead { height: auto; margin-bottom: 1; }
+    #welcome { width: 1fr; height: 3; padding: 0 1; }
+    #welcome.settled { height: 1; }
+    #brand-name { width: auto; height: 1; padding: 0 1; color: $text-muted; }
     #projects-heading { height: 1; width: 1fr; }
     #project-actions { height: 1; margin: 0 0 1 1; }
     #rooms { height: 1fr; border: round $panel; padding: 0 1; background: $surface; }
+    #rooms > .option-list--option-highlighted { background: $primary 28%; color: $text; text-style: bold; }
+    #rooms:focus { border: round $primary; }
+    #home-help { height: 1; padding: 0 1; color: $text-muted; text-overflow: ellipsis; }
     #chat { width: 1fr; min-width: 10; }
-    #transcript { height: 1fr; min-height: 2; padding: 1 2 0 2; overflow-x: hidden; scrollbar-size-vertical: 1; }
-    #details-pane { display: none; width: 35; max-width: 42%; background: $surface; border-left: solid $panel; }
+    #transcript { height: 1fr; min-height: 2; padding: 1 1 0 1; background: $background; overflow-x: hidden; scrollbar-size-vertical: 1; }
+    #details-pane { display: none; width: 42; max-width: 44%; background: $surface; border-left: solid $panel; }
     #layout.expanded #details-pane { display: block; }
     #layout.expanded.narrow #chat { display: none; }
     #layout.expanded.narrow #details-pane { width: 1fr; max-width: 100%; border: none; }
-    #details { padding: 0 1; }
+    #details { padding: 1 1 1 2; }
     .heading { color: $text; padding: 0 1; height: 1; text-style: bold; }
     #chat-heading, #details-heading, #roster-bar { height: 1; }
-    #chat-heading, #details-heading { margin: 1 0 0 0; }
+    #chat-heading, #details-heading { margin: 0; padding: 0 1; background: $surface; }
     #title, #details-label { width: 1fr; height: 1; text-overflow: ellipsis; }
-    #roster-bar { height: 2; border-bottom: solid $panel; padding: 0 1; }
+    #meeting-mode { width: auto; height: 1; padding: 0; background: $surface; }
+    #roster-bar { height: 2; border-bottom: solid $panel; padding: 0 1; background: $surface; }
     #roster-scroll { width: 1fr; height: 1; overflow-x: auto; scrollbar-size-horizontal: 0; }
     #roster { width: auto; height: 1; }
     .link-button { width: auto; min-width: 0; height: 1; padding: 0 1; }
     #status, #activity { padding: 0 2; height: auto; color: $text-muted; }
-    #status { max-height: 1; text-overflow: ellipsis; }
+    #status { max-height: 1; text-overflow: ellipsis; background: $surface; }
     #activity { max-height: 4; }
     #composer { height: auto; padding: 0 1; }
     #message { height: 3; border: round $panel; background: $surface; }
@@ -288,7 +479,7 @@ class CojamTerminal(App):
     #completion > .option-list--option-highlighted { background: $primary 30%; color: $text; }
     #prompt-hint { padding: 0 1; height: 1; color: $text-muted; text-overflow: ellipsis; }
     CreateForm, SessionPicker, DebateForm { align: center middle; }
-    #session-picker { width: 72; max-width: 95%; height: 18; max-height: 90%; border: round $accent; background: $surface; }
+    #session-picker { width: 72; max-width: 95%; height: 18; max-height: 90%; border: round $primary; background: $surface; }
     #session-results { height: 1fr; border: none; }
     #new-form { width: 62; max-width: 95%; height: auto; border: round $primary; background: $surface; padding: 1 2; }
     #new-actions { height: auto; }
@@ -300,6 +491,8 @@ class CojamTerminal(App):
 
     def __init__(self, client, room=None):
         super().__init__()
+        self.register_theme(TERMINAL_THEME)
+        self.theme = TERMINAL_THEME.name
         self.client = client
         self.room = room
         self.cursor = 0
@@ -315,6 +508,8 @@ class CojamTerminal(App):
         self.pending_open = None
         self.drafts: dict[str | None, str] = {}
         self.discovered: dict[str, str] = {}
+        self._transcript_items: list[Any] = []
+        self._transcript_width: int | None = None
 
     @property
     def composer(self):
@@ -323,26 +518,30 @@ class CojamTerminal(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="layout", classes="home" if self.room is None else ""):
             with Vertical(id="navigation"):
-                yield WelcomeMark(id="welcome")
+                with Horizontal(id="masthead"):
+                    yield WelcomeMark(id="welcome")
+                    yield Static("Agents and You", id="brand-name")
                 with Horizontal(id="project-actions"):
                     yield Label("项目与会话", id="projects-heading", classes="heading")
                     yield Button("新建会话", id="home-new", compact=True, classes="link-button")
                     yield Button("新建项目", id="home-project", compact=True, classes="link-button")
                 yield OptionList(id="rooms", compact=True)
+                yield Static("↑↓ 选择  ·  Enter 打开  ·  Ctrl+R 搜索", id="home-help")
             with Vertical(id="chat"):
                 with Horizontal(id="chat-heading"):
                     yield Button("‹ 项目", id="back-projects", compact=True, classes="link-button")
-                    yield Static("合拍 Cojam", id="title", classes="heading", markup=False)
+                    yield Static("AnY", id="title", classes="heading", markup=False)
+                    yield Static(id="meeting-mode", markup=False)
                 with Horizontal(id="roster-bar"):
                     with HorizontalScroll(id="roster-scroll"):
                         yield Static("你", id="roster", markup=False)
-                    yield Button("成员 F3", id="show-members", compact=True, classes="link-button")
-                yield RichLog(id="transcript", wrap=True, auto_scroll=False, max_lines=4000)
-                yield Static(id="activity", markup=False)
+                    yield Button("看板 F3", id="show-members", compact=True, classes="link-button")
+                yield RichLog(id="transcript", wrap=True, auto_scroll=False, max_lines=4000, min_width=10)
+                yield ReplyActivity(id="activity", markup=False)
                 yield Composer(self.complete_argument)
             with Vertical(id="details-pane"):
                 with Horizontal(id="details-heading"):
-                    yield Label("成员与看板", id="details-label", classes="heading")
+                    yield Label("看板与成员", id="details-label", classes="heading")
                     yield Button("‹ 聊天", id="hide-members", compact=True, classes="link-button")
                 with VerticalScroll():
                     yield Static(id="details", markup=False)
@@ -365,6 +564,7 @@ class CojamTerminal(App):
     def on_resize(self, event):
         self.query_one("#layout").set_class(event.size.width < 100, "narrow")
         self.composer.size_completion_menu()
+        self.call_after_refresh(self._sync_transcript_width)
 
     @on(Button.Pressed, "#back-projects")
     def action_show_projects(self):
@@ -384,6 +584,7 @@ class CojamTerminal(App):
         self.show_details = visible
         self.query_one("#layout").set_class(visible, "expanded")
         self.focus_main()
+        self.call_after_refresh(self._sync_transcript_width)
 
     def focus_main(self):
         if self.room is None:
@@ -464,9 +665,34 @@ class CojamTerminal(App):
             raise CliError("未找到对应的本机程序或接入方式，请用 /scan 查看可用接入。")
         return await self.request("/api/discovery/connect", {"id": pid, "via": via})
 
+    def _append_transcript(self, item, *, scroll_end=None):
+        self._transcript_items.append(item)
+        if len(self._transcript_items) > 1000:
+            del self._transcript_items[:-1000]
+        log = self.query_one("#transcript", RichLog)
+        width = log.scrollable_content_region.width
+        if width > 0:
+            self._transcript_width = width
+        log.write(item, expand=True, scroll_end=scroll_end)
+
+    def _sync_transcript_width(self):
+        if self.room is None or (self.show_details and self.size.width < 100) or not self._transcript_items:
+            return
+        log = self.query_one("#transcript", RichLog)
+        width = log.scrollable_content_region.width
+        if width <= 0 or width == self._transcript_width:
+            return
+        follow = log.is_vertical_scroll_end
+        self._transcript_width = width
+        log.clear()
+        for item in self._transcript_items:
+            log.write(item, expand=True, scroll_end=False)
+        if follow:
+            log.scroll_end(animate=False)
+
     def write(self, value, style=None):
         log = self.query_one("#transcript", RichLog)
-        log.write(Text(plain(value), style=style), scroll_end=log.is_vertical_scroll_end)
+        self._append_transcript(Text(plain(value), style=style), scroll_end=log.is_vertical_scroll_end)
 
     def status(self, message):
         widget = self.query_one("#status", Static)
@@ -482,10 +708,12 @@ class CojamTerminal(App):
         self.set_details(False)
         self.cursor = 0
         self.state = {}
+        self._transcript_items.clear()
+        self._transcript_width = None
         self.query_one("#transcript", RichLog).clear()
         title = next((item["title"] for item in self.rooms if item["id"] == room), room)
-        self.query_one("#title", Static).update(plain(title or "合拍 Cojam"))
-        self.query_one("#activity", Static).update("")
+        self.query_one("#title", Static).update(plain(title or "AnY"))
+        self.query_one(ReplyActivity).show([])
         self.query_one("#details", Static).update("")
         self.query_one("#roster", Static).update("你")
         self.composer.set_history([])
@@ -524,11 +752,11 @@ class CojamTerminal(App):
                 continue
             name = groups.get(project, "独立会话")
             heading = name if rows else f"{name} · 暂无会话"
-            options.append(Option(Text(plain(heading), style="bold"), disabled=True))
+            options.append(Option(Text(plain(heading), style=f"bold {WATER}"), disabled=True))
             for row in rows:
                 state, color = room_status(row)
                 options.append(Option(Text.assemble(("  ● " if row.get("running") else "  ○ ", color),
-                                                    plain(row["title"]), ("  ·  " + state, color)), id=row["id"]))
+                                                    (plain(row["title"]), PAPER), ("  ·  " + state, color)), id=row["id"]))
         widget = self.query_one("#rooms", OptionList)
         previous = widget.highlighted_option
         selected = previous.id if not force and previous and previous.id else self.room or self.last_room
@@ -539,56 +767,145 @@ class CojamTerminal(App):
     def render_state(self, state):
         self.state = state
         title = plain(state["title"])
-        mode = "干活" if state.get("mode") == "work" else "讨论"
+        mode = " 干活 " if state.get("mode") == "work" else " 讨论 "
+        mode_bg = SIGNAL if state.get("mode") == "work" else WATER
         project_id = state.get("project") or next((r["project"] for r in self.rooms if r["id"] == self.room), "")
         project = next((p["name"] for p in self.projects if p["id"] == project_id), "")
-        heading = Text.assemble((plain(project) + " / " if project else "", "dim"), (title, "bold"),
-                                (f"  ·  {mode}", "bold yellow" if state.get("mode") == "work" else "dim"))
+        heading = Text.assemble((plain(project) + " / " if project else "", f"dim {MUTED_TEXT}"), (title, f"bold {PAPER}"))
         self.query_one("#title", Static).update(heading)
+        self.query_one("#meeting-mode", Static).update(Text(mode, style=f"bold #101c20 on {mode_bg}"))
         names = {a["id"]: a["label"] for a in state.get("agents", [])}
-        lines = ["成员", "• 你　主持人"]
-        roster = Text("○ 你", style="#9bb6ce", no_wrap=True, overflow="ignore")
+        colors = agent_colors(state)
+        roster = Text("◆ 你", style=f"bold {LEAF}", no_wrap=True, overflow="ignore")
         running = state.get("running", [])
+        member_rows = []
         for member in state.get("participants", []):
             info = state.get("ais", {}).get(member, {})
             connection = state.get("members", {}).get(member, {})
             transport = connection.get("transport")
             tag = {"local": "本机", "desktop": "桌面", "member": "远端", "human": "人类", "http": "HTTP"}.get(transport, "")
+            member_color = WATER if transport == "human" else colors.get(member, MINT)
             if info.get("handed_off"):
-                status, color = "已交接", "magenta"
+                status, status_color = "已交接", SIGNAL
             elif member in running:
-                status, color = "回复中", "bold cyan"
+                status, status_color = "回复中", f"bold {SIGNAL}"
             elif info.get("busy"):
-                status, color = "排队", "yellow"
+                status, status_color = "排队", SUN
             elif transport in ("desktop", "member") and not connection.get("automatic"):
-                status, color = "未连接", "dim"
+                status, status_color = "未连接", "dim"
             elif transport == "human":
-                status, color = "用户", "#9bb6ce"
+                status, status_color = "在线", WATER
             else:
-                status, color = "空闲", "#79cbb7"
+                status, status_color = "空闲", member_color
             name = names.get(member, member)
             roster.append("  ·  ", style="dim")
-            roster.append(f"{'○' if transport == 'human' else '●'} {plain(name)}", style=color)
-            if status not in ("空闲", "用户"):
-                roster.append(" " + status, style=color)
-            lines.append(f"• {name}　@{member}  {' · '.join(filter(None, (tag, status)))}")
-            model = info.get("model", {}).get("label")
-            if model and transport != "human":
-                lines.append(f"  {model}")
-        if not state.get("participants"):
-            lines.append("用 /agents 查看联系人")
+            roster.append(f"{'○' if transport == 'human' else '●'} {plain(name)}", style=member_color)
+            if status not in ("空闲", "在线"):
+                roster.append(" " + status, style=status_color)
+            model = info.get("model", {}).get("label") if transport != "human" else ""
+            member_rows.append((transport == "human", member, name, member_color, tag, status, status_color, model))
         self.query_one("#roster", Static).update(roster)
+
+        board = state.get("board") or []
+        notes = [i for i in board if i.get("kind") == "note"]
+        todos = [i for i in board if i.get("kind") != "note"]
+        pending_todos = [i for i in todos if not i.get("done")]
+        done_todos = [i for i in todos if i.get("done")]
+        self.query_one("#details-label", Label).update(
+            f"看板({len(pending_todos)} 待办) · 成员" if pending_todos else "看板与成员"
+        )
+
+        details = Text()
+        # 1. 会议目标
+        append_details_header(details, "会议目标", SUN, first=True)
+        announcement = (state.get("announcement") or "").strip()
+        if announcement:
+            _append_wrapped_row(details, "  ▌ ", f"bold {SUN}", announcement, f"bold {PAPER}", cont_indent="  ▌ ")
+        else:
+            details.append("  ▌ ", style=f"dim {SUN}")
+            details.append("用 /announce 设置会议目标", style=f"dim {MUTED_TEXT}")
+
+        # 2. 待办
+        append_details_header(details, "待办", LEAF, count=len(pending_todos))
+        if pending_todos:
+            for idx, item in enumerate(pending_todos):
+                if idx:
+                    details.append("\n")
+                _append_wrapped_row(
+                    details, "  [ ] ", f"bold {LEAF}", item["text"], PAPER,
+                    id_prefix=f"#{item['id']} ", id_style=f"bold {WATER}", cont_indent="      ",
+                )
+        else:
+            details.append("  暂无", style=f"dim {MUTED_TEXT}")
+
+        # 3. 公告
+        append_details_header(details, "公告", WATER, count=len(notes))
+        if notes:
+            for idx, item in enumerate(notes):
+                if idx:
+                    details.append("\n")
+                _append_wrapped_row(
+                    details, "  › ", f"bold {WATER}", item["text"], PAPER,
+                    id_prefix=f"#{item['id']} ", id_style=f"bold {WATER}", cont_indent="    ",
+                )
+        else:
+            details.append("  暂无", style=f"dim {MUTED_TEXT}")
+
+        # 4. 已完成
+        append_details_header(details, "已完成", MUTED_TEXT, count=len(done_todos))
+        if done_todos:
+            for idx, item in enumerate(done_todos):
+                if idx:
+                    details.append("\n")
+                _append_wrapped_row(
+                    details, "  [x] ", f"dim {LEAF}", f"#{item['id']} {item['text']}", f"dim strike {MUTED_TEXT}",
+                    cont_indent="      ",
+                )
+        else:
+            details.append("  暂无", style=f"dim {MUTED_TEXT}")
+
+        # 5. 正在改的文件（仅在存在占锁时展示）
+        claims = state.get("claims") or []
+        if claims:
+            append_details_header(details, "正在改的文件", SIGNAL, count=len(claims))
+            for idx, claim in enumerate(claims):
+                if idx:
+                    details.append("\n")
+                _append_wrapped_row(
+                    details, "  ▸ ", f"bold {SIGNAL}", f"{claim['shown']} · {claim['who']}", PAPER,
+                    cont_indent="    ",
+                )
+
+        # 6. 论道
         debate = state.get("debate") or {}
         debate_state = debate.get("status") or ""
         if debate.get("topic"):
             phase = {"running": "进行中", "summarizing": "总结中", "completed": "已完成", "interrupted": "已中断",
                      "cancelled": "已取消", "failed": "未完成"}.get(debate_state, "")
-            lines.extend(["", "论道", debate["topic"], f"{phase} · 已完成 {debate.get('completed_rounds', 0)} 轮"])
-        lines.extend(["", "会议目标", state.get("announcement") or "用 /announce 设置", "", "看板"])
-        for item in state.get("board", []):
-            marker = "✓" if item.get("done") else "·"
-            lines.append(f"{marker} #{item['id']} {item['text']}")
-        self.query_one("#details", Static).update(plain("\n".join(lines)))
+            append_details_header(details, "论道", SIGNAL, right_note=phase)
+            _append_wrapped_row(details, "  ▌ ", f"bold {SIGNAL}", debate["topic"], f"bold {PAPER}", cont_indent="  ▌ ")
+            details.append(f"\n  已完成 {debate.get('completed_rounds', 0)} 轮", style=SIGNAL)
+
+        # 7. 成员
+        append_details_header(details, "成员", MINT, count=1 + len(member_rows))
+        details.append("  ◆ ", style=f"bold {LEAF}")
+        details.append("你", style=f"bold {PAPER}")
+        details.append(" · 主持人", style=f"dim {MUTED_TEXT}")
+        if member_rows:
+            for is_human, member, name, member_color, tag, status, status_color, model in member_rows:
+                details.append("\n")
+                details.append("  ○ " if is_human else "  ● ", style=f"bold {member_color}")
+                details.append(plain(name), style=f"bold {PAPER}")
+                details.append(f" @{plain(member)}", style=f"dim {MUTED_TEXT}")
+                meta = " · ".join(filter(None, (tag, status)))
+                if meta:
+                    details.append(f"  {meta}", style=status_color)
+                if model:
+                    details.append(f"\n  {plain(model)}", style=f"dim {MUTED_TEXT}")
+        else:
+            details.append("\n  用 /agents 查看并邀请联系人", style=f"dim {MUTED_TEXT}")
+
+        self.query_one("#details", Static).update(details)
         live = [f"{name} · {entry['text']}" for name, entry in state.get("live", {}).items() if entry.get("text")]
         if debate_state in ("running", "summarizing"):
             stage = "总结中" if debate_state == "summarizing" else f"第 {debate.get('completed_rounds', 0) + 1} 轮"
@@ -599,19 +916,27 @@ class CojamTerminal(App):
             live.append("回复中 · " + "、".join(state["running"]))
         if state.get("queued"):
             live.append(f"排队 {state['queued']}")
-        if live and (state.get("running") or state.get("queued")):
-            live[0] = "● " + live[0]
-        self.query_one("#activity", Static).update(plain("\n".join(live)))
+        active = next((member for member in state.get("live", {})
+                       if member in running and state["live"][member].get("text")),
+                      running[0] if running else None)
+        self.query_one(ReplyActivity).show(
+            live, color=colors.get(active, SIGNAL) if active else None,
+            leading=bool(running or state.get("queued")),
+        )
         self.composer.refresh_completion()
 
     def render_messages(self, batch):
         log = self.query_one("#transcript", RichLog)
         if batch["next"] < self.cursor:
             self.cursor = 0
+            self._transcript_items.clear()
             log.clear()
             self.composer.history.clear()
             return
         follow = log.is_vertical_scroll_end
+        colors = agent_colors(self.state)
+        agents = {agent["id"]: agent for agent in self.state.get("agents", [])}
+        members = self.state.get("members") or {}
         for message in batch["messages"]:
             if message.get("quiet"):
                 continue
@@ -621,15 +946,7 @@ class CojamTerminal(App):
                 self.composer.history.append(text)
                 if len(self.composer.history) > 50:
                     del self.composer.history[0]
-            header = Text.assemble((f"{'› ' if speaker == '你' else '• '}{plain(speaker)}", "bold cyan"),
-                                   (f"  {plain(message.get('time', ''))}", "dim"))
-            log.write(header, scroll_end=False)
-            if text:
-                body = Text(plain(text)) if speaker in ("你", "系统") else Markdown(plain(text), hyperlinks=False)
-                log.write(body, scroll_end=False)
-            for attachment in message.get("attachments", []):
-                log.write(Text("附件 · " + plain(attachment.get("name", "文件")), style="dim"), scroll_end=False)
-            log.write(Text(""), scroll_end=False)
+            self._append_transcript(transcript_entry(message, agents, colors, members), scroll_end=False)
         if follow and batch["messages"]:
             log.scroll_end(animate=False)
         self.cursor = batch["next"]

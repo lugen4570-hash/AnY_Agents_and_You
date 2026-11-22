@@ -3,115 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f9f8fd">
-  <meta name="description" content="在 Mac 上下载和解压合拍，准备 Python，启动浏览器版或构建 Cojam.app。">
-  <title>Mac 安装教程 · 合拍 Cojam</title>
-  <link rel="icon" href="assets/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=20261121-cojam">
-  <link rel="stylesheet" href="macos.css?v=20261121-cojam">
-  <script src="site.js?v=20261121-cojam" defer></script>
+  <meta name="theme-color" content="#fffdf2">
+  <meta http-equiv="refresh" content="0; url=support.html#install-mac">
+  <title>正在前往 Mac 安装教程 · AnY</title>
+  <link rel="icon" href="assets/logo.svg?v=garden-2">
+  <link rel="stylesheet" href="style.css?v=garden-2">
+  <script>window.location.replace("support.html#install-mac");</script>
 </head>
-<body>
-  <header class="topbar" data-topbar>
-    <a class="brand" href="index.html" aria-label="合拍首页"><img src="assets/logo.svg" alt="" width="40" height="40"><span>cojam<span class="brand-cn">合拍</span></span></a>
-    <nav aria-label="主导航">
-      <a href="index.html#how">工作方式</a>
-      <a href="index.html#agents">多 Agent</a>
-      <a href="download.html">下载与安装</a>
-      <a href="macos.html" aria-current="page">Mac 教程</a>
-    </nav>
-    <a class="nav-cta" href="download.html#desktop">返回下载区<span aria-hidden="true"> ↗</span></a>
-  </header>
-  <main class="mac-guide wrap">
-    <header class="mac-hero">
-      <div>
-        <p class="mac-platform">Apple Silicon 和 Intel Mac</p>
-        <h1>Mac 安装教程</h1>
-        <p>先装好 Python，再下载并解压合拍。想尽快开始就用浏览器版，想从「应用程序」打开就构建桌面版。</p>
-        <a class="button primary" href="downloads/Cojam-macOS-Python.zip" download>下载 macOS ZIP <span aria-hidden="true">↓</span></a>
-      </div>
-      <nav class="mac-toc" aria-label="安装步骤">
-        <ol>
-          <li><a href="#python">检查 Python</a></li>
-          <li><a href="#unzip">下载并解压</a></li>
-          <li><a href="#launch">启动合拍</a></li>
-          <li><a href="#first-project">创建第一个项目</a></li>
-        </ol>
-      </nav>
-    </header>
-
-    <ol class="mac-steps">
-      <li id="python">
-        <div class="mac-step-copy">
-          <h2>检查 Python</h2>
-          <p>打开 Mac 的「终端」，输入 <code>python3 --version</code> 后按回车。看到 Python 3.11 或更新版本，就可以继续。</p>
-          <p>如果命令找不到，或版本低于 3.11，请到 Python 官网下载 macOS 安装程序。打开下载的 <code>.pkg</code>，按提示安装，然后重新打开终端检查一次。</p>
-          <a class="download-secondary" href="https://www.python.org/downloads/macos/">前往 Python 官网</a>
-        </div>
-        <figure class="mac-example">
-          <div class="mac-example-heading">终端</div>
-          <pre><code><span aria-hidden="true">% </span>python3 --version
-Python 3.12.10</code></pre>
-          <figcaption>示例输出。你的版本号可以不同。</figcaption>
-        </figure>
-      </li>
-      <li id="unzip">
-        <div class="mac-step-copy">
-          <h2>下载并解压</h2>
-          <p>下载页面上方的 macOS ZIP，在 Finder 的「下载」里双击它。解压后打开整个 <code>Cojam</code> 文件夹，两个启动文件都在里面。</p>
-          <p>把启动文件和旁边的程序文件放在一起，脚本才能找到它需要的内容。</p>
-        </div>
-        <figure class="mac-example">
-          <div class="mac-example-heading">Finder 文件夹示意</div>
-          <ul class="mac-file-list">
-            <li><strong>Cojam</strong></li>
-            <li><span aria-hidden="true">›</span> 启动合拍.command</li>
-            <li><span aria-hidden="true">›</span> 构建合拍桌面版.command</li>
-          </ul>
-          <figcaption>只列出这一步要找的文件。</figcaption>
-        </figure>
-      </li>
-      <li id="launch">
-        <div class="mac-step-copy">
-          <h2>选择一种启动方式</h2>
-          <div class="mac-launch-options">
-            <section>
-              <h3>浏览器版</h3>
-              <p>双击 <strong>启动合拍.command</strong>。终端启动服务后会自动打开浏览器。使用期间保留这个终端窗口，结束后在合拍里点「退出」。</p>
-            </section>
-            <section>
-              <h3>桌面版</h3>
-              <p>联网后双击 <strong>构建合拍桌面版.command</strong>。脚本会自动安装构建依赖。完成后，打开这个文件夹里的 <code>dist/Cojam.app</code>。也可以把应用拖进「应用程序」。</p>
-            </section>
-          </div>
-        </div>
-      </li>
-      <li id="first-project">
-        <div class="mac-step-copy">
-          <h2>创建第一个项目</h2>
-          <p>在合拍里点「新建项目」，输入项目名称，再点「选择文件夹」。选择这次会话要用的工作目录，确认后创建项目。</p>
-          <p>想让 Claude Code、Codex、Gemini、Antigravity 等本机 AI 参与，再安装并登录对应工具，然后回合拍添加联系人。</p>
-        </div>
-        <figure class="mac-capture">
-          <a href="assets/macos-project-guide.webp"><img src="assets/macos-project-guide.webp" alt="合拍的新建项目窗口，工作文件夹下方有选择文件夹按钮" loading="lazy"></a>
-          <figcaption>合拍「新建项目」界面截图，项目名和路径为示例。点图可放大。</figcaption>
-        </figure>
-      </li>
-    </ol>
-
-    <section class="mac-help" aria-labelledby="mac-help-title">
-      <h2 id="mac-help-title">遇到问题</h2>
-      <details>
-        <summary>Mac 提示无法打开文件 <span aria-hidden="true">＋</span></summary>
-        <p>本机生成的桌面版未经 Apple 公证，系统可能显示安全提醒。确认文件来自合拍官网后，按提示类型查看 Apple 的说明。遇到恶意软件或文件损坏提示时，停止打开。</p>
-        <p><a class="download-secondary" href="https://support.apple.com/102445">查看 Apple 的安全打开说明</a></p>
-      </details>
-      <details>
-        <summary>构建完成后，在哪里找应用？ <span aria-hidden="true">＋</span></summary>
-        <p>回到解压后的 <code>Cojam</code> 文件夹，打开 <code>dist</code>，再打开里面的 <code>Cojam.app</code>。如果终端还在安装依赖，等它显示构建完成。</p>
-      </details>
-    </section>
+<body class="page-redirect">
+  <main class="wrap redirect-box">
+    <img src="assets/logo.svg?v=garden-2" alt="AnY" width="48" height="48">
+    <h1>Mac 安装指南已并入支持中心</h1>
+    <p>正在自动跳转至对应章节……如果浏览器未响应，请直接点击下方按钮。</p>
+    <a class="button primary" href="support.html#install-mac">前往 Mac 安装指南 <span aria-hidden="true">↗</span></a>
   </main>
-  <footer class="footer wrap"><a class="brand footer-brand" href="index.html"><img src="assets/logo.svg" alt="" width="28" height="28"><span>cojam<span class="brand-cn">合拍</span></span></a><div><a href="download.html#desktop">返回下载区</a></div></footer>
 </body>
 </html>

@@ -83,6 +83,27 @@ class CojamCliTest(unittest.TestCase):
                         LocalClient(port).call("/api/server/exit", {})
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_terminal_brand_motion_respects_settings(self):
+        from bridge.terminal import CojamTerminal, ReplyActivity, WelcomeMark
+
+        async def run(*, no_color, animation_level):
+            app = CojamTerminal(LocalClient(self.port))
+            app.no_color = no_color
+            app.animation_level = animation_level
+            async with app.run_test(size=(70, 20)) as pilot:
+                mark = app.query_one(WelcomeMark)
+                activity = app.query_one(ReplyActivity)
+                activity.show(["Codex 正在回复"], color="#10a37f", leading=True)
+                self.assertEqual(str(mark.render()), "∀ AnY")
+                self.assertEqual(mark.size.height, 1)
+                self.assertEqual(str(activity.render()), "● Codex 正在回复")
+                await pilot.pause(.4)
+                self.assertEqual(activity.beat, 0)
+
+        asyncio.run(run(no_color=True, animation_level="full"))
+        asyncio.run(run(no_color=False, animation_level="none"))
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_home_hides_archived_rooms_and_archived_only_projects(self):
         from textual.widgets import OptionList
         from bridge.terminal import CojamTerminal, SessionPicker
@@ -106,9 +127,27 @@ class CojamCliTest(unittest.TestCase):
         asyncio.run(run())
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_transcript_distinguishes_speakers_without_color(self):
+        from io import StringIO
+        from rich.console import Console
+        from bridge.terminal import transcript_entry
+
+        output = StringIO()
+        console = Console(file=output, color_system=None, width=46)
+        agents = {"claude": {"label": "Claude"}, "codex": {"label": "Codex"},
+                  "lee": {"label": "Lee", "kind": "user"}}
+        for speaker in ("你", "claude", "codex", "lee", "系统"):
+            console.print(transcript_entry({"speaker": speaker, "text": "**原文**", "time": "12:00"},
+                                           agents, {}, {}))
+        result = output.getvalue()
+        for marker in ("◆ 你", "● Claude  Agent", "● Codex  Agent", "○ Lee  成员", "─ 系统"):
+            self.assertIn(marker, result)
+        self.assertEqual(result.count("**原文**"), 3)
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_create_send_and_receive(self):
         from textual.widgets import Footer, Input, OptionList, RichLog, Static
-        from bridge.terminal import CojamTerminal
+        from bridge.terminal import CojamTerminal, WelcomeMark
 
         async def wait_for(pilot, check):
             for _ in range(40):
@@ -122,8 +161,15 @@ class CojamCliTest(unittest.TestCase):
             existing = room.rooms.create("启动页会话", wd=DATA.name, participants=[])
             room.set_last(existing.id)
             app = CojamTerminal(client)
+            app.no_color = False
+            app.animation_level = "full"
             async with app.run_test(size=(120, 36)) as pilot:
                 await wait_for(pilot, lambda: app.connected and app.rooms)
+                mark = app.query_one(WelcomeMark)
+                await wait_for(pilot, lambda: mark.frame == len(mark.FRAMES) - 1)
+                self.assertEqual(mark.frame, len(mark.FRAMES) - 1)
+                self.assertEqual(str(mark.render()), "∀ AnY")
+                self.assertEqual(mark.size.height, 1)
                 self.assertIsNone(app.room)
                 self.assertFalse(app.query_one("#chat").display)
                 self.assertFalse(app.query(Footer))
@@ -176,6 +222,15 @@ class CojamCliTest(unittest.TestCase):
                 app.composer.set_text("/todo 核对结果")
                 await pilot.press("enter")
                 await wait_for(pilot, lambda: "核对结果" in str(app.query_one("#details", Static).content))
+                meeting = room.rooms.get(app.room)
+                meeting.board_op("你", "add", "note", "今晚确认")
+                meeting.board_op("你", "add", "todo", "先前任务")
+                meeting.board_op("你", "done", "", "", [3])
+                await wait_for(pilot, lambda: "[x] #3 先前任务" in str(app.query_one("#details", Static).content))
+                details = str(app.query_one("#details", Static).content)
+                self.assertIn("▌ 待办  1\n  [ ] #1 核对结果", details)
+                self.assertIn("▌ 公告  1\n  › #2 今晚确认", details)
+                self.assertIn("▌ 已完成  1\n  [x] #3 先前任务", details)
                 room.rooms.get(app.room).set_participants([])
                 app.composer.set_text("从终端发言")
                 await pilot.press("shift+enter")
@@ -210,7 +265,7 @@ class CojamCliTest(unittest.TestCase):
                 app.composer.set_text("/model codex cojam-test-model")
                 await pilot.press("enter")
                 await wait_for(pilot, lambda: meeting.own_models("codex")[0] == "cojam-test-model")
-                with patch.object(app, "submit") as submit:
+                with patch.object(app, "submit") as submit, patch.object(app, "render_state"):
                     app.state["running"] = ["codex"]
                     app.composer.set_text("/")
                     await pilot.press("escape")

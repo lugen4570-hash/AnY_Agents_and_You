@@ -2,7 +2,7 @@
 
 use url::Url;
 
-pub const TITLE: &str = "合拍 Cojam";
+pub const TITLE: &str = "AnY";
 
 /// Display an error dialog using native platform chrome, falling back to stderr.
 pub fn show_error(text: &str) {
@@ -14,7 +14,7 @@ pub fn show_error(text: &str) {
     }
     #[cfg(target_os = "macos")]
     {
-        let script = "on run argv\n display alert \"合拍 Cojam\" message (item 1 of argv)\nend run";
+        let script = "on run argv\n display alert \"AnY\" message (item 1 of argv)\nend run";
         if std::process::Command::new("/usr/bin/osascript")
             .args(["-e", script, text])
             .status()
@@ -35,7 +35,7 @@ pub fn show_confirm(text: &str) -> bool {
     }
     #[cfg(target_os = "macos")]
     {
-        let script = "on run argv\n display dialog (item 1 of argv) with title \"合拍 Cojam\" buttons {\"取消\", \"确定\"} default button \"确定\"\nend run";
+        let script = "on run argv\n display dialog (item 1 of argv) with title \"AnY\" buttons {\"取消\", \"确定\"} default button \"确定\"\nend run";
         return std::process::Command::new("/usr/bin/osascript")
             .args(["-e", script, text])
             .status()
@@ -93,9 +93,9 @@ pub fn tint_title_bar_hwnd(hwnd_val: isize) {
     }
     let dark = system_dark_theme();
     let use_dark: u32 = if dark { 1 } else { 0 };
-    let caption = colorref(if dark { "#1b1b1e" } else { "#ffffff" });
-    let text = colorref(if dark { "#ececf1" } else { "#18181b" });
-    let border = colorref(if dark { "#2c2c31" } else { "#e7e7ea" });
+    let caption = colorref(if dark { "#0a1417" } else { "#e6f0ec" });
+    let text = colorref(if dark { "#f3f2e7" } else { "#18302b" });
+    let border = caption;
     let hwnd = hwnd_val as HWND;
 
     unsafe {

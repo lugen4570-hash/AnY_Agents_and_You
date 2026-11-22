@@ -272,7 +272,7 @@ class WindowAndFlow(unittest.TestCase):
         fake = FakeWebview()
         handler = Mock()
         shell_main.open_window("http://127.0.0.1:8765/?owner_tab=" + "a" * 32, handler, module=fake)
-        self.assertEqual(fake.created["title"], "合拍 Cojam")
+        self.assertEqual(fake.created["title"], "AnY")
         self.assertEqual(fake.created["url"], "http://127.0.0.1:8765/?owner_tab=" + "a" * 32)
         self.assertEqual((fake.created["width"], fake.created["height"]), (1280, 860))
         self.assertEqual(fake.created["min_size"], (960, 640))
@@ -464,8 +464,8 @@ class TitleBarTint(unittest.TestCase):
                 return 0
 
         fake = types.SimpleNamespace(dwmapi=FakeDwm())
-        for dark, expect in ((True, {20: 1, 35: 0x001E1B1B, 36: 0x00F1ECEC, 34: 0x00312C2C}),
-                             (False, {20: 0, 35: 0x00FFFFFF, 36: 0x001B1818, 34: 0x00EAE7E7})):
+        for dark, expect in ((True, {20: 1, 35: 0x0017140A, 36: 0x00E7F2F3, 34: 0x0017140A}),
+                             (False, {20: 0, 35: 0x00ECF0E6, 36: 0x002B3018, 34: 0x00ECF0E6})):
             seen[:] = []
             with patch.object(shell_main, "_window_hwnd", return_value=1234), \
                     patch.object(shell_main, "_system_dark", return_value=dark), \
