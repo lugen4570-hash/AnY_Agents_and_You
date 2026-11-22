@@ -123,6 +123,51 @@ with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as wd:
     r.close()
 ''')
 
+    def test_detached_job_handles_hex_model_revision(self):
+        self._run_isolated(r'''
+import sys, tempfile, time
+from pathlib import Path
+from bridge import detached_jobs, model_catalog, registry, room as R
+from bridge.common import read_json
+
+with tempfile.TemporaryDirectory() as wd:
+    worker_py = Path(wd) / 'hex_rev_cli.py'
+    worker_py.write_text('print("HEX_REVISION_REPLY_OK")\n', encoding='utf-8')
+    registry.save_agent({
+        'id': 'detached-cli',
+        'label': 'Detached CLI',
+        'driver': 'cli',
+        'bin': [sys.executable],
+        'args': {'base': [str(worker_py)], 'new': [], 'resume': [], 'read': [], 'work': []},
+        'prompt': 'stdin',
+    })
+
+    r = R.rooms.create('hex revision room', '', wd, participants=['detached-cli'])
+    r.add_message('你', '@detached-cli test hex revision')
+    prompt, upto, ver, imgs = r.build_prompt('detached-cli', 'discuss')
+    rev = model_catalog.request_id(r, 'detached-cli')
+    assert isinstance(rev, str) and len(rev) == 24
+    int(rev, 16)
+    job_path = detached_jobs.spawn_job(
+        r, 'detached-cli', prompt, None, imgs, 'discuss',
+        upto=upto, ver=ver, pre_tree=None, t0=time.time(), model_revision=rev,
+    )
+
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        d = read_json(job_path) or {}
+        if d.get('status') == 'done':
+            break
+        time.sleep(0.1)
+    d = read_json(job_path) or {}
+    assert d.get('status') == 'done', d
+    assert d.get('model_revision') == rev, d
+    detached_jobs.apply_job_result(r, job_path, d)
+    assert any(m['speaker'] == 'detached-cli' and 'HEX_REVISION_REPLY_OK' in m['text'] for m in r.messages), r.messages
+    assert not any(m['speaker'] == '系统' and '内部错误' in m.get('text', '') for m in r.messages), r.messages
+    r.close()
+''')
+
 
 if __name__ == '__main__':
     unittest.main()

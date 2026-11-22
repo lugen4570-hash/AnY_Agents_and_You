@@ -149,7 +149,7 @@ def spawn_job(
     ver: int,
     pre_tree: str | None,
     t0: float,
-    model_revision: int = 0,
+    model_revision: str = "",
 ) -> str:
     """Persist job spec to disk and launch a detached worker process. Returns job_path."""
     jdir = jobs_dir(room.dir)
@@ -305,7 +305,7 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
     t1 = float(data.get("finished_at") or time.time())
 
     from . import model_catalog
-    model_catalog.result(room, ai, int(data.get("model_revision") or 0), ok, out, new_sid)
+    model_catalog.result(room, ai, str(data.get("model_revision") or ""), ok, out, new_sid)
 
     if ok:
         with room.lock:

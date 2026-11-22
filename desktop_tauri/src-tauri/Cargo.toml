@@ -1,6 +1,6 @@
 [package]
 name = "cojam-desktop"
-version = "2.8.10"
+version = "2.8.11"
 description = "Cojam Tauri 2 Desktop Shell"
 edition = "2021"
 
