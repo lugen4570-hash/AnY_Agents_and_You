@@ -171,7 +171,7 @@ const ctx=vm.createContext({
   renderQuote(){},resizeComposer(){},drawPend(){},hideMenu(){},poll(){polled++;},
   syncComposerBar(){synced++;},confirm:()=>true,alert:m=>{throw Error(m)},api:a=>'/api/r/'+ctx.RID+'/'+a,
   feed:{querySelector:sel=>{const m=sel.match(/data-id="(\d+)"/);return m?feedMap.get(+m[1])||null:null}},
-  msgById:{2:{id:2,speaker:'claude',text:'上文'},5:origMsg},
+  msgById:{2:{id:2,speaker:'claude',text:'上文'},5:origMsg,7:{id:7,speaker:'codex',text:'已发的回复'}},
   add(m,el){ctx.msgById[m.id]=m;if(el)el.recalled=m},
   post:()=>new Promise(r=>{pendingResolve=r}),
 });
@@ -179,8 +179,9 @@ vm.runInContext(draft+'\nlet quote=null;\n'+recallPart,ctx);
 (async()=>{
   // 1. Same-room recall restores text, image, quote into composer and localStorage
   const p1=ctx.recallMessage(5);
-  pendingResolve([true,{ok:true,draft:{text:'撤回这句话',attachments:[img],reply_to:{id:2,speaker:'claude',text:'上文'}}}]);
+  pendingResolve([true,{ok:true,recalled:[5,7],draft:{text:'撤回这句话',attachments:[img],reply_to:{id:2,speaker:'claude',text:'上文'}}}]);
   await p1;
+  assert.equal(ctx.msgById[7].recalled,true);
   assert.equal(ctx.ta.value,'撤回这句话');
   assert.equal(vm.runInContext('pend',ctx).length,1);
   assert.equal(vm.runInContext('pend[0].path',ctx),img.path);

@@ -146,14 +146,14 @@ async function recallMessage(id){
   if(!rid)return;
   const key=rid+':'+id;
   const cached=msgById[id];
-  if(cached?.recalled||recallingMessages.has(key)||!confirm('撤回这条消息并放回输入框？合拍也会取消这条消息触发的任务。'))return;
+  if(cached?.recalled||recallingMessages.has(key)||!confirm('撤回这条消息并放回输入框？合拍会取消它触发的任务，并撤回能关联到它的 Agent 回复。读过撤回内容的本机 Agent 会在下次运行时重建会话。'))return;
   const orig=cached?{text:cached.text||'',attachments:Array.isArray(cached.attachments)?cached.attachments:[],reply_to:cached.reply_to||null}:null;
   recallingMessages.add(key);
   try{
     const [ok,j]=await post(api('recall'),{id});
     if(ok)restoreRecalledDraft(rid,j.draft||orig);
     if(rid!==RID)return;
-    if(ok){applyMessageRecalls([id]);if(j.stop_error)alert(j.stop_error);poll()}else alert(j.error||'撤回失败');
+    if(ok){applyMessageRecalls(j.recalled||[id]);if(j.stop_error)alert(j.stop_error);poll()}else alert(j.error||'撤回失败');
   }finally{recallingMessages.delete(key)}
 }
 let attachmentPreviewController=null;

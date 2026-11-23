@@ -215,7 +215,8 @@ class Room:
     def __init__(self, rid, d, meta, messages):
         self.id, self.dir, self.meta, self.messages = rid, d, meta, messages
         self.lock = threading.RLock()
-        self.recalled = set(read_json(os.path.join(d, "recalled.json")) or [])
+        self.recall_order = list(dict.fromkeys(read_json(os.path.join(d, "recalled.json")) or []))
+        self.recalled = set(self.recall_order)
         if self.recalled:
             self._apply_recalls()
         self.pending: list[tuple[str, str, int | None]] = []  # Agent、队列代数、触发消息
@@ -336,10 +337,12 @@ class Room:
         if release_guard:
             guard.release_room(self.id)
 
-    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None):
+    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None, source=None):
         now = datetime.now()
         with self.lock:
             m = {"id": len(self.messages), "speaker": speaker, "text": text, "time": now.strftime("%H:%M:%S")}
+            if source is not None:
+                m["source_message"] = source
             if origin:
                 m["origin"] = origin   # 不显示；external = 会议室外的同名 AI 经 /api/post 发的
             if progress:
@@ -391,16 +394,19 @@ class Room:
                 return 200, {"ok": True}
             message = self.messages[mid]
             draft = {key: message[key] for key in ("text", "attachments", "reply_to") if key in message}
-            recalled = self.recalled | {mid}
-            write_json(os.path.join(self.dir, "recalled.json"), sorted(recalled))
-            self.recalled = recalled
+            newly_recalled = [mid] + [m["id"] for m in self.messages if m.get("source_message") == mid]
+            order = self.recall_order + [i for i in newly_recalled if i not in self.recalled]
+            write_json(os.path.join(self.dir, "recalled.json"), order)
+            self.recall_order = order
+            self.recalled.update(newly_recalled)
             self._apply_recalls()
             queued = {job[0] for job in self.pending if job[2] == mid}
             self.pending[:] = [job for job in self.pending if job[2] != mid]
             self._retain_queued_replies(lambda job: job[2] != mid)
             running = [ai for ai, source in self.turn_sources.items() if source == mid]
             self.interrupting.update(running)
-        result = {"ok": True, "draft": draft, "stopped": sorted(queued.union(running))}
+        result = {"ok": True, "draft": draft, "recalled": newly_recalled,
+                  "stopped": sorted(queued.union(running))}
         try:
             self._interrupt_turns(running, running)
             detached_jobs.cancel_jobs(self, source=mid)
@@ -666,7 +672,7 @@ class Room:
             ls = self.meta["last_seen"][ai]
             upto = len(self.messages) - 1
             d = [m for m in self.messages[ls + 1:]
-                 if (m["speaker"] != ai or m.get("origin") == "external") and not m.get("quiet") and not _hidden_from(m, ai)]
+                 if not m.get("recalled") and (m["speaker"] != ai or m.get("origin") == "external") and not m.get("quiet") and not _hidden_from(m, ai)]
         return d, upto
 
     def build_prompt(self, ai, mode=None, fresh=False):
@@ -680,15 +686,17 @@ class Room:
             cp = cp if isinstance(cp, dict) and cp.get("summary") else None
             cp_upto = int(cp.get("upto", -1)) if cp is not None else -1
             first = fresh or not self.meta.get(ai + "_session")
+            rebuilding = first and self.meta.get("recall_context", {}).get(ai, {}).get("rebuild")
             d, upto = self.delta_for(ai)
             if full:                      # 没会话的：给整份记录（或压缩检查点之后的记录），太长的截掉前面
                 tail = self.messages[cp_upto + 1:] if cp is not None else self.messages
-                d = [m for m in tail if not m.get("quiet") and not _hidden_from(m, ai)][-MAX_CONTEXT:]
+                d = [m for m in tail if not m.get("recalled") and not m.get("quiet") and not _hidden_from(m, ai)][-MAX_CONTEXT:]
                 first = True
-            elif fresh or (first and cp is not None):
+            elif fresh or rebuilding or (first and cp is not None):
                 tail = self.messages[cp_upto + 1:] if cp is not None else self.messages
                 d = [m for m in tail
-                     if (m["speaker"] != ai or m.get("origin") == "external") and not m.get("quiet") and not _hidden_from(m, ai)]
+                     if not m.get("recalled") and (rebuilding or m["speaker"] != ai or m.get("origin") == "external")
+                     and not m.get("quiet") and not _hidden_from(m, ai)]
             ver = self.meta["ann_ver"]
             parts = []
             mode = mode or self.mode()
@@ -922,6 +930,33 @@ class Room:
                 raise
             self.system_note("已重置 %s 的会话接续，下次 @ 它时会新开会话" % ai)
         return True, ""
+
+    def _recall_requires_rebuild(self, ai):
+        previous = self.meta.get("recall_context", {}).get(ai, {})
+        frontier = max(previous.get("upto", -1), self.meta["last_seen"][ai])
+        return any(mid <= frontier for mid in self.recall_order[previous.get("count", 0):])
+
+    def _prepare_recall_context(self, ai):
+        """Rotate a local session if its previously supplied context includes a new recall.
+
+        Called under the room lock immediately before taking the next prompt snapshot.
+        """
+        if not execution.local(self, ai):
+            return
+        state = self.meta.setdefault("recall_context", {})
+        previous = state.get(ai, {})
+        rebuild = previous.get("rebuild", False) and not self.meta.get(ai + "_session")
+        if self._recall_requires_rebuild(ai):
+            rebuild = True
+            sid = self.meta.pop(ai + "_session", None)
+            if sid and sid not in self.meta["old_sessions"][ai]:
+                self.meta["old_sessions"][ai].append(sid)
+            self.meta["last_seen"][ai] = -1
+            self.meta["ctx"][ai] = None
+            self.meta.get("instruction_seen", {}).pop(ai, None)
+            self.meta.get("compact_checkpoints", {}).pop(ai, None)
+        state[ai] = {"count": len(self.recall_order), "upto": len(self.messages) - 1, "rebuild": rebuild}
+        self.save_meta()
 
     def member_mode(self, ai, requested=None):
         allowed = access.permissions(self, ai)["work"]
@@ -1233,7 +1268,7 @@ class Room:
                     targets = []
             if text or attachments or not (changes or send_errs):
                 progress = self.live.get(speaker, {}).get("details") if not external else None
-                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to, progress=progress)
+                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to, progress=progress, source=source)
                 if human:
                     source = message["id"]
             self.board_note(speaker, changes, not_for=None if external else speaker)
@@ -1261,7 +1296,8 @@ class Room:
         with self.lock:
             if self.turn_recalled(ai) or (not text and not atts):
                 return None
-            return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai))
+            return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai),
+                                    source=self.turn_sources.get(ai))
 
     def push_live(self, ai, res):
         """Keep user-visible commentary for the current turn and its final reply."""
@@ -1335,10 +1371,14 @@ class Room:
                     except Exception as e:
                         self.add_message("系统", "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai))
                         return
-                prompt, upto, ver, imgs = self.build_prompt(ai, mode)
+                with self.lock:
+                    if self.turn_recalled(ai):
+                        return
+                    self._prepare_recall_context(ai)
+                    prompt, upto, ver, imgs = self.build_prompt(ai, mode)
+                    sid = self.meta.get(ai + "_session")
                 if debate_prompt:
                     prompt += "\n\n" + debate_prompt
-                sid = self.meta.get(ai + "_session")
                 model_revision = model_catalog.request_id(self, ai)
                 if not debate_prompt and detached_jobs.should_detach(self, ai, ai_caller):
                     with self.lock:
@@ -1413,12 +1453,12 @@ class Room:
                                          progress=self.live.get(ai, {}).get("details"))
                         return out
                     elif was_stopped and remote:
-                        self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai))
+                        self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai), source=source)
                     elif was_stopped:   # 刚好在"停"的时候说完：话照登，但里面的 @ 不再叫人
                         rest, ch = self.apply_board_cmds(ai, out)
                         rest, sent, errs = self.apply_send_cmds(rest)
                         if rest or sent or not (ch or errs):
-                            self.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai))
+                            self.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai), source=source)
                         self.board_note(ai, ch, not_for=ai)
                         self.send_note(ai, errs)
                     else:
@@ -1494,6 +1534,7 @@ class Room:
             ok_can, reason = self._can_compact_locked(ai)
             if not ok_can:
                 return reason
+            self._prepare_recall_context(ai)
             spec = registry.get(ai) or {}
             full = spec.get("context") == "full"
             sid = self.meta.get(ai + "_session")
@@ -1727,6 +1768,8 @@ class Room:
                     return False, "还没叫过它，先在会议里 @ 它一次"
                 if self.busy_for(ai):
                     return False, "它正在跑或排着队，等它说完再交"
+                if self._recall_requires_rebuild(ai):
+                    return False, "请先在会议里 @ 此 Agent，用撤回后的会议记录新建会话"
                 self.meta["handed_off"][ai] = True
                 self.save_meta()
                 self.system_note("%s 去终端了" % ai)
@@ -1740,13 +1783,14 @@ class Room:
     def can_handoff(self, ai):
         """这个 AI 能不能"交给终端"：得有会话，而且驱动支持（配置里给了 handoff 命令模板）。"""
         spec = registry.get(ai) or {}
-        return execution.local(self, ai) and bool(self.meta.get(ai + "_session")) and bool((spec.get("caps") or {}).get("handoff"))
+        return (execution.local(self, ai) and bool(self.meta.get(ai + "_session"))
+                and bool((spec.get("caps") or {}).get("handoff")) and not self._recall_requires_rebuild(ai))
 
     def handoff_cmd(self, ai):
         """在终端里接着聊这个会话的命令；不支持返回 None。"""
         sid = self.meta.get(ai + "_session")
         spec = registry.get(ai) or {}
-        if not sid or not (spec.get("caps") or {}).get("handoff"):
+        if not sid or not (spec.get("caps") or {}).get("handoff") or self._recall_requires_rebuild(ai):
             return None
         if ai == "claude":
             line = "claude --resume " + sid

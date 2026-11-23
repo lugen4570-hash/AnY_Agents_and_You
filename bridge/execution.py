@@ -123,6 +123,8 @@ def prepare(room: Any, pid: str, endpoint: str, expected: int) -> dict[str, Any]
         if endpoint == "cli" and not agents.agent_executable(pid):
             raise ValueError("找不到配置的 CLI，请先修正程序位置")
         if endpoint == "desktop":
+            if room._recall_requires_rebuild(pid):
+                raise ValueError("请先在会议里 @ 此 Agent，用撤回后的会议记录新建会话")
             from . import connections
             if not connections.status(pid).get("has_key"):
                 raise ValueError("请先在 Agent 设置中应用桌面 MCP 配置，再接管会话")
@@ -191,6 +193,8 @@ def claim(room: Any, pid: str, worker: str, sid: str, challenge: str = "", token
             raise ValueError("请先在会议室选择桌面接管，此端不能自行抢占会话")
         if not secrets.compare_digest(row.get("challenge_digest", "!"), hashlib.sha256(challenge.encode()).hexdigest()):
             raise ValueError("接管凭证不正确或已失效")
+        if room._recall_requires_rebuild(pid):
+            raise ValueError("会话内容已撤回，请取消接管并在会议里 @ 此 Agent 新建会话")
         original = room.meta.get(pid + "_session")
         if original and original != sid:
             raise ValueError("必须续接同一原生会话，不能新开或替换")
@@ -221,6 +225,8 @@ def activate(room: Any, pid: str, worker: str, token: str) -> int:
         if not authorize(room, pid, worker, token, lifecycle=True):
             raise ValueError("执行端凭证已失效")
         if row["phase"] == "registering":
+            if room._recall_requires_rebuild(pid):
+                raise ValueError("会话内容已撤回，请取消接管并在会议里 @ 此 Agent 新建会话")
             updated: dict[str, Any] = {key: row[key] for key in ("endpoint", "worker", "token_digest")}
             updated.update(phase="ready", version=row["version"] + 1)
             room.meta["execution"][pid] = updated

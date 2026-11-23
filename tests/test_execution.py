@@ -62,6 +62,17 @@ class Execution(unittest.TestCase):
         reply = members.handle('claude',self.key,'standby',dict(args,timeout=0))
         return dict(room=room.id,native_session=sid,worker=reply['worker'],binding_token=reply['binding_token'],timeout=0)
 
+    def test_recalled_context_blocks_pending_and_new_desktop_handoffs(self):
+        args = self.prepare()
+        message = self.r.add_message("你", "请撤回")
+        self.r.meta["last_seen"]["claude"] = message["id"]
+        self.assertEqual(self.r.recall_message(message["id"], "你")[0], 200)
+        with self.assertRaisesRegex(ValueError, "会话内容已撤回"):
+            execution.claim(self.r, "claude", "worker", self.sid, challenge=args["binding_challenge"])
+        execution.cancel(self.r, "claude", execution.version(self.r, "claude"))
+        with self.assertRaisesRegex(ValueError, "撤回后的会议记录"):
+            self.prepare()
+
     def test_online_standby_does_not_implicitly_take_over_cli(self):
         members.broker.register('claude',self.key,{'worker':'legacy','transport':'standby'})
         with patch.object(drivers.agents,'call_ai',return_value=(True,'CLI',self.sid,[])) as cli:

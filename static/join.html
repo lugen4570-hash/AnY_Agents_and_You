@@ -38,12 +38,12 @@ function showRecalls(ids){
 }
 async function recall(id){
   const room=rid,gen=generation;
-  if(!confirm('撤回这条消息？原内容会放回输入框，正在进行的 AI 回复会立即停止。'))return;
+  if(!confirm('撤回这条消息并放回输入框？合拍会取消它触发的任务，并撤回能关联到它的 Agent 回复。'))return;
   const fallback=el('feed').querySelector('.msg[data-id="'+id+'"] .message-text')?.textContent||'';
   try{
     const res=await request('/api/external/recall',{room,id});
     if(gen!==generation)return;
-    showRecalls([id]);
+    showRecalls(res?.recalled||[id]);
     const restoredText=typeof res?.restored?.text==='string'?res.restored.text:(typeof res?.draft?.text==='string'?res.draft.text:fallback);
     if(restoredText){
       const input=el('text');

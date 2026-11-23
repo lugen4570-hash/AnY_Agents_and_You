@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """几场会议同时跑：各跑各的、互不挡；会议列表的状态；外部发言按会议号；HTTP 接口带会议号。"""
 import json, os, sys, tempfile, threading, time, unittest, urllib.error, urllib.request
+from unittest.mock import patch
 from urllib.parse import quote
 
 os.environ["ROUNDTABLE_LOG_DIR"] = tempfile.mkdtemp(prefix="rt_multi_")
@@ -237,6 +238,44 @@ class MultiRoom(unittest.TestCase):
             self.assertEqual(meeting.queued_count(), 1)
         self.assertTrue(idle(meeting))
         self.assertEqual([m["speaker"] for m in meeting.messages].count("claude"), 1)
+
+    def test_recall_cascades_through_agent_replies_and_rebuilds_native_context(self):
+        meeting = R.rooms.create("回退 AI 会话", "", WD, participants=["claude", "codex"])
+        calls = []
+
+        def reply(ai, prompt, sid, images, mode, room):
+            calls.append((ai, prompt, sid))
+            if "START_CASCADE" in prompt and ai == "claude":
+                text = "@codex CASCADE_FIRST"
+            elif "CASCADE_FIRST" in prompt and ai == "codex":
+                text = "CASCADE_SECOND"
+            else:
+                text = "KEEP_REPLY"
+            return True, text, sid or f"session-{len(calls)}", []
+
+        with patch.object(R, "ai_caller", reply):
+            meeting.handle_message("你", "@claude KEEP_REQUEST")
+            self.assertTrue(idle(meeting))
+            old_sid = meeting.meta["claude_session"]
+            meeting.handle_message("你", "@claude START_CASCADE")
+            self.assertTrue(idle(meeting))
+            self.assertEqual([m["text"] for m in meeting.messages[-2:]], ["@codex CASCADE_FIRST", "CASCADE_SECOND"])
+            status, result = call("POST", rp(meeting, "recall"), {"id": 2})
+            self.assertEqual((status, result["recalled"]), (200, [2, 3, 4]))
+            R.rooms.unload(meeting.id)
+            meeting = R.rooms.get(meeting.id)
+            self.assertEqual([m["text"] for m in meeting.messages[:2]], ["@claude KEEP_REQUEST", "KEEP_REPLY"])
+            self.assertTrue(all(m["recalled"] for m in meeting.messages[2:5]))
+            self.assertIsNone(meeting.handoff_cmd("claude"))
+            meeting.handle_message("你", "@claude NEXT_REQUEST")
+            self.assertTrue(idle(meeting))
+            _, prompt, sid = calls[-1]
+            self.assertIsNone(sid)
+            self.assertIn("KEEP_REQUEST", prompt)
+            self.assertIn("KEEP_REPLY", prompt)
+            self.assertIn("NEXT_REQUEST", prompt)
+            self.assertNotIn("CASCADE", prompt)
+            self.assertIn(old_sid, meeting.meta["old_sessions"]["claude"])
 
     def test_goal_in_prompt(self):
         a = R.rooms.create("目标", "把第三章写完", WD)

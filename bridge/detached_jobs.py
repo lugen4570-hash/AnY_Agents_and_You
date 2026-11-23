@@ -333,7 +333,7 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
             rest, sent, errs = room.apply_send_cmds(rest)
             if rest or sent or not (ch or errs):
                 from .common import mentions
-                room.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai))
+                room.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai), source=source)
             room.board_note(ai, ch, not_for=ai)
             room.send_note(ai, errs)
         else:
