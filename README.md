@@ -25,7 +25,7 @@
 
 ## 快速开始
 
-新账号仓库的安装包尚未发布，请先查看 [Releases](https://github.com/lugen4570-hash/Cojam/releases)；发布前可从源码运行。官网为 https://lugen4570-hash.github.io/Cojam/。
+新账号仓库的安装包尚未发布，请先查看 [Releases](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases)；发布前可从源码运行。官网为 https://lugen4570-hash.github.io/AnY_Agents_and_You/。
 
 ### 环境要求
 

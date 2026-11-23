@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath
 
-BASE = "https://lugen4570-hash.github.io/Cojam/"
+BASE = "https://lugen4570-hash.github.io/AnY_Agents_and_You/"
 
 
 def install_root():

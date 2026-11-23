@@ -56,7 +56,7 @@ jobs:
           @{
             app = 'Cojam'
             version = $Matches.version
-            url = "https://lugen4570-hash.github.io/Cojam/downloads/$($macArchive.Name)"
+            url = "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/$($macArchive.Name)"
             sha256 = (Get-FileHash -LiteralPath $macBundle -Algorithm SHA256).Hash.ToLowerInvariant()
             size = $macArchive.Length
           } | ConvertTo-Json | Set-Content _site/macos-update.json -Encoding utf8NoBOM

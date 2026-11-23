@@ -10,7 +10,7 @@
 
 ## 第一步：下载安装
 
-1. 打开[合拍官网](https://lugen4570-hash.github.io/Cojam/)或 [GitHub 发布页面](https://github.com/lugen4570-hash/Cojam/releases)，查看当前是否有可用的 Windows 安装包。安装包尚未发布时，可按仓库说明从源码运行。
+1. 打开[合拍官网](https://lugen4570-hash.github.io/AnY_Agents_and_You/)或 [GitHub 发布页面](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases)，查看当前是否有可用的 Windows 安装包。安装包尚未发布时，可按仓库说明从源码运行。
 2. 打开下载的安装程序，按照提示完成安装，然后打开「合拍 Cojam」。
 3. 安装版不需要另外安装 Python。安装包目前未签名，Windows 或浏览器可能显示安全提示。
 

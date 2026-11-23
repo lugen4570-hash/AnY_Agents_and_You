@@ -19,8 +19,8 @@ from .version import VERSION
 
 logger = get_logger(__name__)
 
-MANIFEST = 'https://lugen4570-hash.github.io/Cojam/update.json'
-DOWNLOAD_ROOT = 'https://lugen4570-hash.github.io/Cojam/downloads/'
+MANIFEST = 'https://lugen4570-hash.github.io/AnY_Agents_and_You/update.json'
+DOWNLOAD_ROOT = 'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/'
 MACOS_MANIFEST = MANIFEST.replace('/update.json', '/macos-update.json')
 MAX_INSTALLER = 100 * 1024 * 1024
 CHUNK_SIZE = 128 * 1024

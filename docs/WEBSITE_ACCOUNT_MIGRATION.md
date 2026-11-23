@@ -1,6 +1,6 @@
 # 新账号官网迁移记录
 
-2026-11：官网源码与使用说明链接指向 `lugen4570-hash/Cojam`。目标站点为 `https://lugen4570-hash.github.io/Cojam/`。
+2026-11：官网源码与使用说明链接指向 `lugen4570-hash/AnY_Agents_and_You`。目标站点为 `https://lugen4570-hash.github.io/AnY_Agents_and_You/`。
 
 - GitHub Pages 工作流在缺少对应 Release 时可构建网页，但不发布不可用的更新清单或安装文件；发布附件存在时会校验安装包的大小和 SHA-256。
 - 新仓库尚无 2.8.6 Release，网页下载入口暂时指向 Releases 页面并说明安装包尚未发布。

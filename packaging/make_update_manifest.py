@@ -16,7 +16,7 @@ def main():
     installer = ROOT / 'dist' / ('Cojam-Setup-%s.exe' % version)
     data = installer.read_bytes()
     result = {'app':'Cojam', 'version':version,
-              'url':'https://lugen4570-hash.github.io/Cojam/downloads/' + installer.name,
+              'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/' + installer.name,
               'sha256':hashlib.sha256(data).hexdigest(), 'size':len(data), 'notes':args.notes[:1000]}
     output = ROOT / 'website' / 'update.json'
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

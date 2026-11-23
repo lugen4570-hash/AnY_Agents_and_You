@@ -36,23 +36,23 @@ class Updates(unittest.TestCase):
 
     def manifest(self, payload=b'installer'):
         return {'app':'Cojam', 'version':'99.0.0',
-                'url':'https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-99.0.0.exe',
+                'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe',
                 'sha256':hashlib.sha256(payload).hexdigest(), 'size':len(payload)}
 
     def test_rejects_untrusted_urls_and_bad_manifest(self):
-        for url in ['http://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-99.0.0.exe',
+        for url in ['http://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe',
                     'https://evil.test/Cojam/downloads/Cojam-Setup-99.0.0.exe',
                     'https://jun-genyan.github.io/Cojam/downloads/Cojam-Setup-99.0.0.exe',
-                    'https://lugen4570-hash.github.io/Cojam/downloads/../Cojam-Setup-99.0.0.exe',
-                    'https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-99.0.0.exe?x=y']:
+                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/../Cojam-Setup-99.0.0.exe',
+                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe?x=y']:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 updater.parse_manifest(dict(self.manifest(),url=url))
         with self.assertRaises(ValueError):
             updater.parse_manifest(dict(self.manifest(), sha256='bad'))
 
     def test_new_account_is_the_only_trusted_update_origin(self):
-        self.assertEqual(updater.MANIFEST, 'https://lugen4570-hash.github.io/Cojam/update.json')
-        self.assertEqual(updater.DOWNLOAD_ROOT, 'https://lugen4570-hash.github.io/Cojam/downloads/')
+        self.assertEqual(updater.MANIFEST, 'https://lugen4570-hash.github.io/AnY_Agents_and_You/update.json')
+        self.assertEqual(updater.DOWNLOAD_ROOT, 'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/')
         self.assertEqual(updater.parse_manifest(self.manifest())['url'], self.manifest()['url'])
 
     def test_generated_manifest_matches_the_trusted_account(self):

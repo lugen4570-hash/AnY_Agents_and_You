@@ -17,7 +17,7 @@ let request=null;const ctx=vm.createContext({document:{getElementById:node},esc:
 vm.runInContext(fs.readFileSync('static/update.js','utf8'),ctx);
 (async()=>{node('updateApp').onclick();await new Promise(r=>global.setTimeout(r,10));
  assert.match(node('updateContent').innerHTML,/下载并更新/);
- assert.ok(node('updateContent').innerHTML.includes('https://lugen4570-hash.github.io/Cojam/download.html#desktop'));
+ assert.ok(node('updateContent').innerHTML.includes('https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html#desktop'));
  await node('updateDownload').onclick();
  assert.equal(request.url,'/api/update/download');assert.equal(request.body.auto_install,true)})().catch(e=>{console.error(e);process.exitCode=1});
 '''

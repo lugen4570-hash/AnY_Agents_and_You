@@ -62,4 +62,4 @@ MCP 地址：http://127.0.0.1:8765/mcp ，同样需要 Authorization 请求头�
 访客网页目前支持文本消息，不提供附件或管理员操作。
 
 压缩包附带 CONTACTS.md 和 contact_client.py，可查看完整说明和客户端示例。
-源码和详细文档：https://github.com/lugen4570-hash/Cojam
+源码和详细文档：https://github.com/lugen4570-hash/AnY_Agents_and_You

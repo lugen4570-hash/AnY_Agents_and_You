@@ -2,7 +2,7 @@
 (function(){
   const entry=document.getElementById('updateApp');
   if(!entry)return;
-  const officialDownloads='https://lugen4570-hash.github.io/Cojam/download.html#desktop';
+  const officialDownloads='https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html#desktop';
   const VISIBLE_STATES=new Set(['available','downloading','downloaded','installing','installed']);
   let timer=null, bgTimer=null, latest=null;
   function syncEntry(data){

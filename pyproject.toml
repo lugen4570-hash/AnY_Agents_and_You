@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-bridge-room"
-version = "2.8.16"
+version = "2.8.17"
 description = "本机多会议室：你 + 任意几个 AI（Claude Code、Codex、Gemini CLI、自己的 harness……）一起开会、一起干活"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,9 +31,9 @@ cojam = "bridge.cli:main"
 any = "bridge.cli:main"
 
 [project.urls]
-Homepage = "https://lugen4570-hash.github.io/Cojam/"
-Documentation = "https://github.com/lugen4570-hash/Cojam/tree/main/docs"
-Repository = "https://github.com/lugen4570-hash/Cojam"
+Homepage = "https://lugen4570-hash.github.io/AnY_Agents_and_You/"
+Documentation = "https://github.com/lugen4570-hash/AnY_Agents_and_You/tree/main/docs"
+Repository = "https://github.com/lugen4570-hash/AnY_Agents_and_You"
 
 [tool.setuptools]
 packages = ["bridge", "bridge.pal"]
