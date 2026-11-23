@@ -2,6 +2,13 @@
 
 最近更新：2026-11-23。
 
+## AnY (Cojam) 2.8.18 正式发布（2026-11-23）
+
+- 撤回自己的消息会一并撤回能确认来源的 Agent 回复和进度，取消正在排队或执行的对应任务。读过撤回内容的本机 Agent 下一轮会用过滤后的会议记录重建上下文。终端和桌面接管会拦住需要重建的旧会话。旧原生会话文件保留。
+- 构建源码为 [`27983cc`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/27983ccbfd91f6720372c15f03c324ea7df3648b)。170 项 Python 测试通过。Windows 核心、桌面壳和便携版启动退出通过，43 项包内资源与源码逐字节相符。打包后的核心实际验证了连带撤回和无关回复保留。隔离安装包通过安装、覆盖安装、卸载与数据保留验证。
+- [GitHub Release v2.8.18](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.18) 的 7 个附件均已重新下载并核对大小和 SHA-256。Windows 程序未签名。安装包为 `13,366,238` 字节，SHA-256 为 `d5bd7445947f37ae1b9bf03a9456c1d57441ba2e219e9fbf7404c4d7f938091f`。详细结果见 Release 附件中的校验清单和构建报告。
+- [GitHub Pages 部署 45137766220](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45137766220) 已成功。实测官网首页与下载页、Windows `update.json`、安装包和便携版一致。另核对了 Pages 生成的 macOS Python 与 CLI 下载清单，并实下载校验这两份压缩包。
+
 ## AnY (Cojam) 2.8.17 正式发布（2026-11-23）
 
 - **本版内容**：
