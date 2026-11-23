@@ -1,6 +1,24 @@
 # Cojam 交接摘要
 
-最近更新：2026-11-22。
+最近更新：2026-11-23。
+
+## AnY (Cojam) 2.8.17 正式发布（2026-11-23）
+
+- **本版内容**：
+  - **官网布局修复与域迁移**：修复 [website/capabilities.html](../website/capabilities.html)「工作台实景」因缺少 `height: auto` 导致的横版截图竖向压扁问题，将 `.panel-gallery` 改为上下全宽排布并补齐 `.frame-bar` 窗口栏圆点与左右对齐；优化 [website/support.html](../website/support.html) macOS 图文教程的图注间距、`doc-callout` 间隔与步骤分隔，样式版本升级为 `style.css?v=garden-3`。因仓库已更名为 `lugen4570-hash/AnY_Agents_and_You`，同步将官网、应用内更新器（[bridge/updater.py](../bridge/updater.py)、[static/update.js](../static/update.js)）、CLI 安装器（[website/install-cli.py](../website/install-cli.py)、[website/download.html](../website/download.html)）及 Pages 清单脚本统一迁移至 `https://lugen4570-hash.github.io/AnY_Agents_and_You/`（原 `/Cojam/` Pages 路径已返回 404）。（中间版本 `v2.8.16` 保留在 Release 历史中未覆盖，随后直接递增发布 `2.8.17` 以修正全部域名引用。）
+  - **客户端与后端改进**：客户端侧栏换用高反差衬线 `AnY` 字标与 `A/Y` 字母组合（[static/wordmark.svg](../static/wordmark.svg)、[static/logo-collaboration.svg](../static/logo-collaboration.svg)、[docs/ANY-DESIGN.md](../docs/ANY-DESIGN.md)）；合入会话改名、新建会话按成员配置权限、删除项目安全移入回收站、chunked 请求体读取、`FileReader` 上传回退、CLI `any`/`cojam` 双命令与左右方向键切换房间，以及 CLI/ACP 续接会话 ID 一致性校验；并在 [AGENTS.md](../AGENTS.md) 落盘下沉定位与 Open Core 商业化记忆。
+- **测试与实测验证**：
+  - 发布工作树源码提交 [`ce85f5a`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/ce85f5a55e29cde6469cc6ab820f32479100156f) / [`3b72363`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/3b72363cab8f3025418b7afbe27f0d8398a395bc)（清单更新提交 [`0bdb045`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/0bdb045)）：536 项 Python 测试运行中 45/46 模块通过（修复 `test_simplified_frontend.py` 并 2/2 通过；`test_logging_and_errors.py` 仅余 `bridge/detached_jobs.py` 与 `bridge/owner_lifecycle.py` 原有 4 处静默异常基线），定向验证 `test_updater.py`（14 项）、`test_update_ui.py`（3 项）、`test_macos_distribution.py`（1 项）、`test_icons.py`（2 项）、Rust `cargo test --locked`（8 项）及 `static/*.js` / `website/site.js` `node --check` 全部通过。
+  - 隔离端口 `18765` / `18775` 验证 `CojamCore.exe` 与 `Cojam-Portable-2.8.17.exe` 启动、`/api/server/info`（`2.8.17`、`api_revision=3`）、内置 `index.html` / `connections.js` / `update.js` / `studio.css` / `harness-ui.css` / `wordmark.svg` / `logo-collaboration.svg` 逐字节一致及 `/api/server/exit` 正常退出；3 份 Windows ZIP 完整性（含桌面版 1035 项 `_internal` 一致性）及零隐私校验通过；`Cojam-Setup-2.8.17-test.exe` 静默安装、覆盖重装与卸载均保留 `data/sentinel.txt`。
+- **GitHub Release 与线上核验**：
+  - [GitHub Release v2.8.17](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.17) 已上传并核对全部 7 个未签名附件（未覆盖历史版本）：
+    - `Cojam-Setup-2.8.17.exe`（`13,365,226` 字节，`f4895c2b50dc09c5ff61a499590383ed0fdbc67bdd790f387935f5cd5cb9172d`）
+    - `Cojam-Desktop-2.8.17-win64.zip`（`15,900,131` 字节，`116ce7b6efbfc5224edcc51b6100cf0f8d4e6db9d75caf4a99af3e69b246fd84`）
+    - `Cojam-2.8.17-win64.zip`（`13,057,256` 字节，`b136ca0e41f3c3dbab915f4dacbc3ff3f3e7122e69ceaa0e1a1aba7ac6ca93f7`）
+    - `Cojam-Member-2.8.17.zip`（`254,685` 字节，`43a6992dd016413bd2c16be5d8a292d92b1d00efbda9df20d7e82422636cf00d`）
+    - `Cojam-Portable-2.8.17.exe`（`13,319,608` 字节，`68afb8ee0fdd02fa4a01f52b0e698ba1611bf5eeb6c10baf5465923c3e56c5ac`）
+    - `SHA256SUMS-2.8.17.txt`（`462` 字节）与 `build-report-2.8.17.json`（`2,301` 字节）
+  - GitHub Pages [Deploy website 45112927145](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45112927145) 部署成功；实测拉取 `https://lugen4570-hash.github.io/AnY_Agents_and_You/`（首页、`capabilities.html`、`support.html`、`download.html`、`style.css?v=garden-3`、`install-cli.py`、`update.json`、`macos-update.json`）均返回 HTTP 200；实际下载线上 `Cojam-Setup-2.8.17.exe`、`Cojam-Portable-2.8.17.exe` 与 CI 打包的 `Cojam-2.8.17-macOS-Python.zip`（`729,426` 字节，`49d8ff196b37c17a5f9fcbd33f7f16fa651805481216a1d53830a9c192176683`），大小与哈希与线上清单及 Release 100% 一致。
 
 ## AnY (Cojam) 2.8.15 正式发布（2026-11-22）
 
