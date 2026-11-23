@@ -1,8 +1,8 @@
 {
   "app": "Cojam",
-  "version": "2.8.15",
-  "url": "https://lugen4570-hash.github.io/Cojam/downloads/Cojam-Setup-2.8.15.exe",
-  "sha256": "522ea9f88b4b7d4bd587d34490d61e88f4d0ab908275f9fa7ec97ce98fb0afb4",
-  "size": 13358291,
-  "notes": "升级为 AnY（Agents and You）霍克尼明亮多色画室设计，重构官网、客户端 GUI 浅/深双主题与发言者层次、CLI 终端发言者圆角卡片与 F3 分栏看板，并补齐 macOS .icns 图标与打包适配。"
+  "version": "2.8.17",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-2.8.17.exe",
+  "sha256": "f4895c2b50dc09c5ff61a499590383ed0fdbc67bdd790f387935f5cd5cb9172d",
+  "size": 13365226,
+  "notes": "修复官网工作台实景展示与图文排版，同步官网及应用内更新地址至 AnY_Agents_and_You，并包含客户端 A/Y 字标、会话改名与成员权限改进。"
 }
