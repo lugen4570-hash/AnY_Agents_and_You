@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.20",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.20.exe",
-  "sha256": "a976702ef1743eb6d9d4b78f3d7179c0f2c1dca00db2d6bfbb3f1ac3fa27793e",
-  "size": 13457695,
-  "notes": "AnY 2.8.20：支持项目改名与多目录/Worktree 分支选择、将教学集成到设置、「继续论道」移至最近论道最后一条消息下，并移除新建会话中的默认模型名称。"
+  "version": "2.8.27",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.27.exe",
+  "sha256": "860e8deef9b80958c7ffe248bba90866320e48744e1b9f809f7f58f62e24eade",
+  "size": 13370698,
+  "notes": "AnY 2.8.27：提供 Apple 芯片和 Intel 芯片 Mac 安装包，以及 macOS、Linux 和 Windows 的 CLI 一键安装。"
 }
