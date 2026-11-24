@@ -34,6 +34,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
       - id: version
         shell: pwsh
         run: |
@@ -134,9 +136,10 @@ jobs:
             'packaging/member-readme.md', 'packaging/start-member.bat', 'packaging/start-member.command'
           )
           New-Item -ItemType Directory -Force -Path _site/cli | Out-Null
-          $commit = git rev-parse HEAD
+          $commit = git rev-parse "refs/tags/v$version^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Release source tag v$version is unavailable" }
           $cliArchive = "_site/cli/any-cli-$commit.tar.gz"
-          git archive --format=tar.gz --prefix=AnY-CLI/ --output=$cliArchive HEAD -- @cliSources
+          git archive --format=tar.gz --prefix=AnY-CLI/ --output=$cliArchive $commit -- @cliSources
           if ($LASTEXITCODE -ne 0) { throw "CLI source bundle build failed" }
           @{
             commit = $commit

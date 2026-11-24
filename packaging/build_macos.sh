@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build on the target Mac architecture (PyInstaller cannot cross-compile).
+# Build natively by default. macOS can target either slice of universal2 Python.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [[ "$(uname -s)" != Darwin ]]; then echo '请在 macOS 上构建。' >&2; exit 1; fi
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/Library/Frameworks/Python.framework/Versions/Current/bin:${PATH:-/usr/bin:/bin}"
 python=''
-for candidate in "$(command -v python3 || true)" /opt/homebrew/bin/python3 /usr/local/bin/python3 \
+for candidate in "${ANY_MACOS_BUILD_PYTHON:-}" "$(command -v python3 || true)" /opt/homebrew/bin/python3 /usr/local/bin/python3 \
     /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3; do
   if [[ -x "$candidate" ]] && "$candidate" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
     python=$candidate
@@ -16,13 +16,19 @@ if [[ -z "$python" ]]; then
   echo '请先安装 macOS 版 Python 3.11 或更新版本：https://www.python.org/downloads/macos/' >&2
   exit 1
 fi
+arch="${ANY_MACOS_TARGET_ARCH:-$("$python" -c 'import platform; print(platform.machine())')}"
+case "$arch" in
+  arm64|x86_64) ;;
+  *) echo "Unsupported macOS build architecture: $arch" >&2; exit 1 ;;
+esac
+lipo -verify_arch "$arch" "$python"
 
 echo '正在准备桌面构建环境，首次构建需要联网下载 Python 依赖…'
 "$python" -m venv .venv-macos-build
 python="$PWD/.venv-macos-build/bin/python"
 "$python" -m pip install 'pywebview>=5.3' 'pyinstaller>=6'
 "$python" -m bridge.member_package
-"$python" -m PyInstaller --noconfirm --clean --onefile --name AnYCore \
+"$python" -m PyInstaller --noconfirm --clean --onefile --name AnYCore --target-arch "$arch" \
   --add-data 'index.html:.' --add-data 'static:static' --add-data 'bridge/presets:bridge/presets' \
   --add-data 'bridge/catalog:bridge/catalog' \
   --hidden-import bridge.web --hidden-import bridge.acp --hidden-import bridge.discovery \
@@ -31,12 +37,11 @@ icon_args=()
 if [[ -f roundtable.icns ]]; then
   icon_args=(--icon roundtable.icns)
 fi
-"$python" -m PyInstaller --noconfirm --clean --windowed --onedir --name AnY \
+"$python" -m PyInstaller --noconfirm --clean --windowed --onedir --name AnY --target-arch "$arch" \
   "${icon_args[@]}" \
   --osx-bundle-identifier com.any.desktop --collect-all webview desktop_launcher.py
 cp dist/AnYCore dist/AnY.app/Contents/MacOS/AnYCore
 version=$("$python" -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
-arch=$("$python" -c 'import platform; print(platform.machine())')
 "$python" - "$version" <<'PY'
 import plistlib
 from pathlib import Path

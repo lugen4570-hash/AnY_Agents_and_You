@@ -1,0 +1,69 @@
+name: Build Apple Silicon fallback on Intel
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Existing release tag to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install signed universal2 Python
+        run: |
+          set -euo pipefail
+          pkg="$RUNNER_TEMP/python-universal2.pkg"
+          curl -fsSL --retry 3 https://www.python.org/ftp/python/3.14.7/python-3.14.7-macos11.pkg -o "$pkg"
+          pkgutil --check-signature "$pkg" | tee "$RUNNER_TEMP/python-signature.txt"
+          grep -F 'Python Software Foundation' "$RUNNER_TEMP/python-signature.txt"
+          sudo installer -pkg "$pkg" -target /
+          py=/Library/Frameworks/Python.framework/Versions/3.14/bin/python3
+          lipo -verify_arch x86_64 arm64 "$py"
+          echo "ANY_MACOS_BUILD_PYTHON=$py" >> "$GITHUB_ENV"
+      - name: Cross-build the tagged application and validate the disk image
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          ANY_MACOS_TARGET_ARCH: arm64
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          commit=$(git rev-parse "refs/tags/$SOURCE_TAG^{commit}")
+          archive=$("$ANY_MACOS_BUILD_PYTHON" packaging/build_macos_python.py --source-ref "$commit")
+          target="$RUNNER_TEMP/any-arm64/AnY"
+          ditto -x -k "$archive" "$RUNNER_TEMP/any-arm64"
+          cp packaging/build_macos.sh "$target/packaging/build_macos.sh"
+          "$target/构建 AnY 桌面版.command"
+          cd "$target/dist"
+          dmg="AnY-${SOURCE_TAG#v}-macOS-arm64.dmg"
+          mount_dir=$(mktemp -d "$RUNNER_TEMP/arm-dmg-XXXXXX")
+          hdiutil attach "$dmg" -mountpoint "$mount_dir" -nobrowse -readonly
+          trap 'hdiutil detach "$mount_dir" -force >/dev/null 2>&1 || true' EXIT
+          app="$mount_dir/AnY.app"
+          test "$(readlink "$mount_dir/Applications")" = /Applications
+          test "$(lipo -archs "$app/Contents/MacOS/AnY")" = arm64
+          test "$(lipo -archs "$app/Contents/MacOS/AnYCore")" = arm64
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${SOURCE_TAG#v}"
+          codesign --verify --deep --strict "$app"
+          ../.venv-macos-build/bin/pyi-archive_viewer -l "$app/Contents/MacOS/AnYCore" > "$RUNNER_TEMP/arm64-archive.txt"
+          grep -F 'static/member-connector.zip' "$RUNNER_TEMP/arm64-archive.txt"
+          grep -F 'static/workspace.js' "$RUNNER_TEMP/arm64-archive.txt"
+          shasum -a 256 -c SHA256SUMS-macOS-arm64.txt
+          printf '%s\n' "Tag: $SOURCE_TAG" "Source: $commit" "Built on Intel from universal2 Python; Apple Silicon launch remains pending." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: any-macos-arm64-fallback
+          path: |
+            ${{ runner.temp }}/any-arm64/AnY/dist/AnY-*-macOS-arm64.dmg
+            ${{ runner.temp }}/any-arm64/AnY/dist/AnY-*-macOS-arm64.zip
+            ${{ runner.temp }}/any-arm64/AnY/dist/SHA256SUMS-macOS-arm64.txt
+          if-no-files-found: error
