@@ -36,6 +36,7 @@
       'composer.busy': '运行中锁定',
       'settings.title': '设置',
       'settings.general': '通用',
+      'settings.cloud': '账号与同步',
       'settings.agents': 'Agent 与连接',
       'settings.extensions': '扩展',
       'settings.about': '关于与更新',
@@ -113,6 +114,7 @@
       'composer.busy': 'Locked while busy',
       'settings.title': 'Settings',
       'settings.general': 'General',
+      'settings.cloud': 'Account & Sync',
       'settings.agents': 'Agents & Connections',
       'settings.extensions': 'Extensions',
       'settings.about': 'About & Updates',
@@ -1859,6 +1861,7 @@
   function renderSettingsShell(activeTab, bodyHtml, heading) {
     const tabs = [
       ['general', t('settings.general')],
+      ['cloud', t('settings.cloud')],
       ['agents', t('settings.agents')],
       ['extensions', t('settings.extensions')],
       ['tutorial', t('settings.tutorial')],
@@ -1984,11 +1987,21 @@
     if (!body) return;
     if (tab === 'general') {
       body.querySelectorAll('[data-theme-choice]').forEach(btn => {
-        btn.onclick = () => { applyTheme(btn.dataset.themeChoice); openAppSettings('general'); };
+        btn.onclick = () => {
+          applyTheme(btn.dataset.themeChoice);
+          root.anyCloudAccount?.setPreference('theme', getThemePref());
+          openAppSettings('general');
+        };
       });
       body.querySelectorAll('[data-lang-choice]').forEach(btn => {
-        btn.onclick = () => { applyLang(btn.dataset.langChoice); openAppSettings('general'); };
+        btn.onclick = () => {
+          applyLang(btn.dataset.langChoice);
+          root.anyCloudAccount?.setPreference('language', getLangPref());
+          openAppSettings('general');
+        };
       });
+    } else if (tab === 'cloud') {
+      root.anyCloudAccount?.mount(body);
     } else if (tab === 'tutorial') {
       renderOnboarding(body);
     } else if (tab === 'agents') {
@@ -2111,6 +2124,7 @@
     settingsTab = tab || settingsTab || 'general';
     const headings = {
       general: t('settings.general'),
+      cloud: t('settings.cloud'),
       agents: t('settings.agents'),
       extensions: t('settings.extensions'),
       tutorial: t('settings.tutorial'),
@@ -2148,6 +2162,10 @@
   // Apply persisted preferences immediately
   applyTheme(getThemePref());
   applyLang(getLangPref());
+  root.anyCloudAccount?.start({
+    read: key => key === 'theme' ? getThemePref() : getLangPref(),
+    apply: (key, value) => key === 'theme' ? applyTheme(value) : applyLang(value),
+  });
   setSideTab(currentSideTab);
 
   const openSettingsBtn = document.getElementById('openSettingsBtn');

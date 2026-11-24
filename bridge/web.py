@@ -527,6 +527,12 @@ class Handler(BaseHTTPRequestHandler):
         data = self._read_json()
         if data is None:
             return
+        if path == "/api/cloud/account":
+            if not self._is_host_owner():
+                return self._json(403, {"error": "请在运行 AnY 的电脑上管理云账号"})
+            from . import cloud_account
+            code, response = cloud_account.handle(data)
+            return self._json(code, response)
         if path == "/api/agents/config":
             from contextlib import ExitStack
             pid = str(data.get("id") or "")

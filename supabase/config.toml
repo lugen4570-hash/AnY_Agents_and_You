@@ -1,0 +1,2 @@
+[functions.any-cloud]
+verify_jwt = false

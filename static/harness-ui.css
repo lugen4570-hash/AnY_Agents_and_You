@@ -1154,3 +1154,13 @@ footer {
     margin: 8px;
   }
 }
+
+.cloud-actions, .cloud-consent, .cloud-devices li { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.cloud-consent, .cloud-actions { margin-block:12px; }
+.cloud-actions label { display:grid; gap:4px; }
+.cloud-actions input { max-width:100%; }
+.cloud-qr { display:grid; justify-items:start; gap:12px; margin-block:12px; }
+.cloud-qr[hidden], .cloud-actions[hidden], .cloud-qr img[hidden] { display:none; }
+.cloud-qr img { padding:6px; background:white; border:1px solid var(--line); border-radius:8px; }
+.cloud-devices { display:grid; gap:6px; padding:0; list-style:none; }
+.cloud-devices li { justify-content:space-between; padding-block:5px; border-bottom:1px solid var(--line); }

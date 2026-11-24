@@ -1149,6 +1149,7 @@ class FrontendModularStructure(unittest.TestCase):
             '/static/app-meeting.js',
             '/static/app-runtime.js',
             '/static/update.js',
+            '/static/cloud-account.js',
             '/static/harness-ui.js',
         ]
         found_srcs = []
