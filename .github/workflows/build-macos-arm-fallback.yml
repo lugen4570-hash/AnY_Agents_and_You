@@ -30,10 +30,10 @@ jobs:
           pkg="$RUNNER_TEMP/python-universal2.pkg"
           curl -fsSL --retry 3 https://www.python.org/ftp/python/3.14.7/python-3.14.7-macos11.pkg -o "$pkg"
           pkgutil --check-signature "$pkg" | tee "$RUNNER_TEMP/python-signature.txt"
-          grep -F 'Python Software Foundation' "$RUNNER_TEMP/python-signature.txt"
+          grep -F 'Developer ID Installer: Python Software Foundation (BMM5U3QVKW)' "$RUNNER_TEMP/python-signature.txt"
           sudo installer -pkg "$pkg" -target /
           py=/Library/Frameworks/Python.framework/Versions/3.14/bin/python3
-          lipo -verify_arch x86_64 arm64 "$py"
+          lipo "$py" -verify_arch x86_64 arm64
           echo "ANY_MACOS_BUILD_PYTHON=$py" >> "$GITHUB_ENV"
       - name: Cross-build the tagged application and validate the disk image
         env:

@@ -21,7 +21,7 @@ case "$arch" in
   arm64|x86_64) ;;
   *) echo "Unsupported macOS build architecture: $arch" >&2; exit 1 ;;
 esac
-lipo -verify_arch "$arch" "$python"
+lipo "$python" -verify_arch "$arch"
 
 echo '正在准备桌面构建环境，首次构建需要联网下载 Python 依赖…'
 "$python" -m venv .venv-macos-build
