@@ -2,6 +2,13 @@
 
 最近更新：2026-11-24。
 
+## AnY 2.8.28 正式发布（2026-11-24）
+
+- 输入 `/` 即显示内置命令，Agent 技能在后台加载。桌面聊天区移除顶部横幅，左栏分为「会话」和「联系人」，手机端保留一行导航。小改动完成必要验证后直接提交推送的约定已写入 [AGENTS.md](../AGENTS.md)。
+- 构建源码为 `07b230c8907f5aae0f77a422682d186d7331cf2e`。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45425570124)通过 Windows Rust 8 项、Python 全量回归 559 项（0 个失败模块）、静态检查、安装保护、卸载保留数据、双架构 macOS 安装包验证及 Linux、Intel macOS、Windows 的 CLI 安装测试。Apple Silicon 通过交叉构建后的架构、签名和 DMG 检查，原生启动待验收。
+- [v2.8.28 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.28) 的 12 个附件已全部实际下载并核对大小和 SHA-256，Windows 三份 ZIP 完整性通过。下载后的 `AnYCore.exe` 和便携版通过隔离启动、版本 `2.8.28` / API 修订 `3`、四份变更前端资源核对以及退出后端口关闭。Windows 二进制未签名，构建报告记录了打包工作树有改动。[校验清单](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.28/SHA256SUMS-2.8.28.txt) · [构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.28/build-report-2.8.28.json)
+- 官网提交 `784702a07d6e1be9e68d7e6767dd3075a13f5dab` 的 [Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45427198624)成功。线上首页、下载页、Windows 及三份 macOS 更新清单均已核对。实际下载的 Windows 安装版、便携版、两份 macOS DMG 以及两条 macOS Python ZIP 链接均与 Release 附件大小及哈希一致。CLI 源码包为 `423119` 字节，SHA-256 为 `cf5d4a5c590b7144a9cde4754ccdf6508833ca553765b434cdd8ed53005701bd`，清单、归档源码和发布标签一致。
+
 ## AnY 2.8.27 发布与云账号测试交接（2026-11-24）
 
 ### 下载安装与首次本地协作
