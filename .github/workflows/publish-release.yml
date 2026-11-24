@@ -1,0 +1,192 @@
+name: Publish verified AnY artifacts
+
+on:
+  workflow_call:
+    inputs:
+      source_tag:
+        required: true
+        type: string
+      mac_run:
+        type: string
+      windows_run:
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+      mac_run:
+        description: Run ID with successful same-tag Mac and Linux jobs
+        required: true
+        type: string
+      windows_run:
+        description: Successful Windows rebuild run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.source_tag }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.source_tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate release source and recovery runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          MAC_RUN: ${{ inputs.mac_run }}
+          WINDOWS_RUN: ${{ inputs.windows_run }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version=$(python -c "from bridge.version import VERSION; print(VERSION)")
+          if [[ "$SOURCE_TAG" != "v$version" ]]; then
+            echo "Release source does not match $SOURCE_TAG" >&2
+            exit 1
+          fi
+          if [[ -n "$MAC_RUN" || -n "$WINDOWS_RUN" ]]; then
+            [[ "$MAC_RUN" =~ ^[0-9]+$ && "$WINDOWS_RUN" =~ ^[0-9]+$ ]]
+            sha=$(git rev-parse HEAD)
+            gh api "repos/$REPOSITORY/actions/runs/$MAC_RUN" --jq '.head_sha' | grep -Fx "$sha"
+            gh api "repos/$REPOSITORY/actions/runs/$MAC_RUN/jobs" --jq '
+              [.jobs[] | select(.name == "cli-linux" or (.name | startswith("macos"))) | .conclusion]
+              | length == 3 and all(. == "success")' | grep -Fx true
+            gh api "repos/$REPOSITORY/actions/runs/$WINDOWS_RUN" --jq '.conclusion' | grep -Fx success
+          fi
+      - name: Download verified Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: any-*-windows
+          path: release-artifacts
+          merge-multiple: true
+          run-id: ${{ inputs.windows_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download verified macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: any-macos-*
+          path: release-artifacts
+          merge-multiple: true
+          run-id: ${{ inputs.mac_run || github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build macOS Python ZIP and verify all release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver=$(python -c "from bridge.version import VERSION; print(VERSION)")
+          python - "$ver" "$(git rev-parse HEAD)" <<'PY'
+          import json
+          import pathlib
+          import sys
+          ver, commit = sys.argv[1:]
+          report = pathlib.Path("release-artifacts", f"build-report-{ver}.json")
+          data = json.loads(report.read_text(encoding="utf-8"))
+          if data["version"] != ver or data["source_commit"] != commit:
+              raise SystemExit("Windows artifact source does not match the release tag")
+          PY
+          python packaging/build_macos_python.py --output-dir release-artifacts
+          cd release-artifacts
+          sha256sum -c "SHA256SUMS-${ver}.txt"
+          sha256sum -c "SHA256SUMS-macOS-arm64.txt"
+          sha256sum -c "SHA256SUMS-macOS-x86_64.txt"
+          sha256sum -c "AnY-${ver}-macOS-Python.zip.sha256"
+          required=(
+            "AnY-Setup-${ver}.exe"
+            "AnY-Portable-${ver}.exe"
+            "AnY-Desktop-${ver}-win64.zip"
+            "AnY-${ver}-win64.zip"
+            "AnY-Member-${ver}.zip"
+            "AnY-${ver}-macOS-arm64.dmg"
+            "AnY-${ver}-macOS-x86_64.dmg"
+            "AnY-${ver}-macOS-arm64.zip"
+            "AnY-${ver}-macOS-x86_64.zip"
+            "AnY-${ver}-macOS-Python.zip"
+            "build-report-${ver}.json"
+          )
+          for file in "${required[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "Missing expected release artifact: $file" >&2
+              exit 1
+            fi
+          done
+          sha256sum "${required[@]}" > "SHA256SUMS-${ver}.txt"
+          {
+            echo "## AnY ${ver} Release SHA-256"
+            echo '```'
+            cat "SHA256SUMS-${ver}.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
+        id: verify
+
+      - name: Verify uploaded assets and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver="${{ steps.verify.outputs.version }}"
+          tag="v${ver}"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          cd release-artifacts
+          assets=(
+            "AnY-Setup-${ver}.exe"
+            "AnY-Portable-${ver}.exe"
+            "AnY-Desktop-${ver}-win64.zip"
+            "AnY-${ver}-win64.zip"
+            "AnY-Member-${ver}.zip"
+            "AnY-${ver}-macOS-arm64.dmg"
+            "AnY-${ver}-macOS-x86_64.dmg"
+            "AnY-${ver}-macOS-arm64.zip"
+            "AnY-${ver}-macOS-x86_64.zip"
+            "AnY-${ver}-macOS-Python.zip"
+            "SHA256SUMS-${ver}.txt"
+            "build-report-${ver}.json"
+          )
+          gh release create "$tag" --repo "${{ github.repository }}" --verify-tag --draft --title "AnY ${ver}" --notes-file <(
+            echo "AnY ${ver} 正式安装包与校验文件。"
+            echo 'Apple 芯片版已核验架构、签名和 DMG 内容，Apple Silicon 原生启动待验收。'
+            echo ""
+            echo "### SHA-256"
+            echo '```'
+            cat "SHA256SUMS-${ver}.txt"
+            echo '```'
+          ) "${assets[@]}"
+          python - "$ver" "${{ github.repository }}" "${assets[@]}" <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          ver, repo, *expected = sys.argv[1:]
+          raw = subprocess.check_output(
+              ["gh", "api", f"repos/{repo}/releases", "--paginate", "--slurp"],
+              text=True,
+          )
+          from hashlib import file_digest
+
+          release = next(item for page in json.loads(raw) for item in page if item["tag_name"] == f"v{ver}")
+          remote = {item["name"]: item for item in release["assets"]}
+          for name in expected:
+              path = pathlib.Path(name)
+              with path.open("rb") as asset:
+                  digest = "sha256:" + file_digest(asset, "sha256").hexdigest()
+              uploaded = remote.get(name, {})
+              if (uploaded.get("size"), uploaded.get("digest")) != (path.stat().st_size, digest):
+                  raise SystemExit(f"Uploaded asset size or SHA-256 mismatch: {name}")
+          PY
+          gh release edit "$tag" --repo "${{ github.repository }}" --draft=false
