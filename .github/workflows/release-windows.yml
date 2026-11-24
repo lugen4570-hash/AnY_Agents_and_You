@@ -111,6 +111,10 @@ jobs:
             if ($blocked.ExitCode -eq 0 -or $core.HasExited -or -not (Test-Path -LiteralPath $sentinel)) { throw "Running-core install protection failed" }
             $blockedUninstall = Start-Process -FilePath "$testDir/unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru -WindowStyle Hidden
             if ($blockedUninstall.ExitCode -eq 0 -or $core.HasExited -or -not (Test-Path -LiteralPath $sentinel)) { throw "Running-core uninstall protection failed" }
+            $page = Invoke-WebRequest "http://127.0.0.1:19565/" -UseBasicParsing -TimeoutSec 5
+            if ($page.Content -notmatch 'name="rt-token" content="([^"]+)"') { throw "Packaged owner page did not load" }
+            $null = Invoke-RestMethod "http://127.0.0.1:19565/api/server/exit" -Method Post -ContentType 'application/json' -Body '{}' -Headers @{'X-RT-Token'=$Matches[1]} -TimeoutSec 5
+            if (-not $core.WaitForExit(15000) -or $core.ExitCode -ne 0) { throw "Packaged core did not exit normally" }
           } finally {
             if (-not $core.HasExited) { $core.Kill(); $core.WaitForExit() }
           }
@@ -121,7 +125,7 @@ jobs:
 
       - name: Generate final report and hashes after signing and validation
         run: |
-          '{"rust_tests":true,"python_regression":true,"static_checks":true,"installer_data_retention":true,"running_core_install_protection":true,"native_interaction_smoke":"requires desktop verification"}' | Set-Content -LiteralPath "$env:RUNNER_TEMP/any-validation.json" -Encoding utf8NoBOM
+          '{"rust_tests":true,"python_regression":true,"static_checks":true,"installer_data_retention":true,"running_core_install_protection":true,"core_start_exit":true,"cli_managed_python":true,"native_interaction_smoke":"requires desktop verification"}' | Set-Content -LiteralPath "$env:RUNNER_TEMP/any-validation.json" -Encoding utf8NoBOM
           python packaging/build_report.py --validation "$env:RUNNER_TEMP/any-validation.json"
 
       - uses: actions/upload-artifact@v4

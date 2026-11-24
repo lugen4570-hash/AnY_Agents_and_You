@@ -15,8 +15,7 @@ jobs:
   macos:
     uses: ./.github/workflows/build-macos.yml
 
-  publish:
-    needs: [windows, macos]
+  cli-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +24,15 @@ jobs:
           python-version: "3.12"
       - name: Install Linux CLI with fresh managed Python and run any --help
         run: python packaging/smoke_cli_install.py
+
+  publish:
+    needs: [windows, macos, cli-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:

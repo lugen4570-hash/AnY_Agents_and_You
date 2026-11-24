@@ -48,6 +48,8 @@ def main():
                        UV_PYTHON_INSTALL_DIR=str(root / "managed-python"), ANY_CLI_TEST_SOURCE=base,
                        ANY_CLI_MANAGED_PYTHON="1", ANY_CLI_INSTALL_DIR=str(root / "cli"), PYTHONUTF8="1")
             if sys.platform == "win32":
+                env = {key: value for key, value in env.items() if key.upper() != "PSMODULEPATH"}
+                # WinPS must rebuild its own module path when launched from PowerShell 7.
                 command = f'irm {base}install-cli.ps1 | iex; if (-not $?) {{ exit 1 }}; any --help; exit $LASTEXITCODE'
                 args = ["powershell.exe", "-NoProfile", "-Command", command]
             else:

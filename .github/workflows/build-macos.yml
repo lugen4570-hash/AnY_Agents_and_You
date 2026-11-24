@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: macos-latest
+          - runner: macos-26
             arch: arm64
           - runner: macos-15-intel
             arch: x86_64
