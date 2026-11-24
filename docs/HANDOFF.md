@@ -1,6 +1,19 @@
-# Cojam 交接摘要
+# AnY 交接摘要
 
 最近更新：2026-11-24。
+
+## AnY 2.8.19 正式发布（2026-11-24）
+
+- **更名与核心改动**：应用、桌面壳、安装包、命令行工具（`any`）、Cookie/环境变量与文档统一更名为 **AnY（Agents and You）**，保留历史 `Cojam` 数据与配置兼容；合并并保留了 2.8.18 撤回重建、API Key 直连文字模型、房间失败反馈/审批预览与零残留退出路径。
+- **构建与验证**：构建源码为 [`fc953d9`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/fc953d926631ce81957652395937fcb144e81de5)。`mypy bridge`（47 个源文件）、`ruff check`、`node --check`、`cargo test --locked`（8 项通过）与 `tests/run_all.py`（49 个测试模块共 549 项通过）均在隔离发布工作树中通过。打包后的 `AnYCore.exe`（端口 `18765`）与 `AnY-Portable-2.8.19.exe`（端口 `18766`）完成隔离启动、`/api/server/info`（`2.8.19` / `api_revision=3`）、静态资源逐字节一致与 `/api/server/exit` 零残留退出验证；`AnY-Setup-2.8.19-test.exe` 完成静默安装、覆盖升级、静默卸载、`{E49FBE28-CC82-4E08-B5CD-E48A2C894472}_is1` 清理与 `data/` 保留验证。
+- **GitHub Release**：[v2.8.19](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.19) 已上传并核对全部 7 个附件（Windows 程序未签名）：
+  - `AnY-Setup-2.8.19.exe`：`13,452,900` 字节，SHA-256 `83442904c17d4aba273cce1c20e192856e98d16be84c8e95feac9dd50d9e841c`
+  - `AnY-Desktop-2.8.19-win64.zip`：`15,994,328` 字节，SHA-256 `52b3a263c31d54dcbff307c79834d017e244a54570591563f45cdb50caae56d6`
+  - `AnY-2.8.19-win64.zip`：`13,146,642` 字节，SHA-256 `9a43a17c62f7058570301a3863f5af0efebd69eec6ab62b9460f14b2b523b2c0`
+  - `AnY-Member-2.8.19.zip`：`266,000` 字节，SHA-256 `b5281ca4f5718c84e31bc13cc5299c7dc2ddff1203d6040fdbebcfcce83ee14f`
+  - `AnY-Portable-2.8.19.exe`：`13,409,730` 字节，SHA-256 `866eedf2221ba765e16518cdfd8e167e417da03cf5ea02d8aa513ec4152aa755`
+  - `SHA256SUMS-2.8.19.txt`（`452` 字节）与 `build-report-2.8.19.json`（`3,170` 字节）
+- **官网与在线核对**：官网提交 [`d2dd14d`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/d2dd14d029ac1a9db2812f589bde6332c6ddb615) 触发 [GitHub Pages 部署 45324486997](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45324486997) 成功。实测 `download.html`、`support.html`、`install-cli.py`、`update.json`、`macos-update.json` 与 `cli/current.json` 返回 HTTP 200，并实际下载核对了线上 `AnY-Setup-2.8.19.exe`、`AnY-Portable-2.8.19.exe`、`AnY-2.8.19-macOS-Python.zip`（`769,204` 字节，SHA-256 `837dd14d233bb3613f02f50d58e4cd9b17d3398bc416b04782a7bd0f4a843350`）、`AnY-macOS-Python.zip` 与 `cli/any-cli-d2dd14d029ac1a9db2812f589bde6332c6ddb615.tar.gz`（`411,846` 字节，SHA-256 `d1676a871ceaf2521d6f0d170a8d206a1e18c7e0af4c8fc8155b234a772c4c9e`）。
 
 ## API Key 直连文字模型（2026-11-24）
 
