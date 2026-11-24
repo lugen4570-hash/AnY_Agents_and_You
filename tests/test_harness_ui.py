@@ -271,15 +271,15 @@ with tempfile.TemporaryDirectory() as wd:
             result = subprocess.run([sys.executable, '-c', script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_empty_room_onboarding_and_verification_tracker(self):
+    def test_settings_onboarding_and_verification_tracker(self):
         self.run_node(r'''
 const assert = require('assert/strict');
 const h = require('./static/harness-ui.js');
 
-// 1. No active meeting -> onboarding hidden
-assert.equal(h.buildEmptyRoomOnboardingState(null, [], []).visible, false);
+// Without a session, the guide can show connection steps but cannot send a test.
+assert.deepEqual(h.buildOnboardingState(null, []).roomAiIds, []);
 
-// 2. Empty room with 0 AI -> step 1 active, lists available non-user enabled contacts
+// A session with no AI can add enabled AI contacts.
 const contacts = [
   { id: 'codex', label: 'Codex', kind: 'ai', enabled: true, color: '#10a37f', letter: 'C' },
   { id: 'claude', label: 'Claude', kind: 'ai', enabled: true, color: '#d97706', letter: 'L' },
@@ -287,34 +287,22 @@ const contacts = [
   { id: 'alice', label: 'Alice', kind: 'user', enabled: true },
 ];
 const noAiState = { meeting: 'm1', participants: [], ais: {}, agents: contacts };
-const step1 = h.buildEmptyRoomOnboardingState(noAiState, contacts, []);
-assert.equal(step1.visible, true);
-assert.equal(step1.activeStep, 1);
+const step1 = h.buildOnboardingState(noAiState, contacts);
 assert.deepEqual(step1.roomAiIds, []);
 assert.deepEqual(step1.availableContactAis.map(a => a.id), ['codex', 'claude']);
 
-// 3. Room with only system/recalled messages + 2 AI -> step 2 active
+// A session with AI contacts can send a test from the guide.
 const twoAiState = {
   meeting: 'm1',
   participants: ['codex', 'claude'],
   ais: { codex: { busy: false }, claude: { busy: false } },
   agents: contacts,
 };
-const nonChatMsgs = [
-  { id: 1, speaker: '系统', text: '欢迎加入' },
-  { id: 2, speaker: '你', text: '旧消息', recalled: true },
-];
-const step2 = h.buildEmptyRoomOnboardingState(twoAiState, contacts, nonChatMsgs);
-assert.equal(step2.visible, true);
-assert.equal(step2.activeStep, 2);
+const step2 = h.buildOnboardingState(twoAiState, contacts);
 assert.deepEqual(step2.roomAiIds, ['codex', 'claude']);
 assert.ok(step2.testPrompt.length > 0);
 
-// 4. Room with a real user or AI message -> onboarding hidden
-assert.equal(h.buildEmptyRoomOnboardingState(twoAiState, contacts, [{ id: 3, speaker: '你', text: 'hi' }]).visible, false);
-assert.equal(h.buildEmptyRoomOnboardingState(twoAiState, contacts, [{ id: 4, speaker: 'codex', text: 'ready' }]).visible, false);
-
-// 5. Verification tracker transitions: waiting -> running -> replied -> failed -> dismissed / room switch
+// Verification tracker transitions: waiting -> running -> replied -> failed -> dismissed / room switch
 const tracker = { roomId: 'm1', baselineMaxId: 10, targetAiIds: ['codex', 'claude'], dismissed: false };
 const vWait = h.buildVerificationTrackerState(twoAiState, [], [], tracker);
 assert.equal(vWait.active, true);
@@ -363,6 +351,13 @@ assert.equal(exact.items[0].detail, 'timed out');
 
 assert.equal(h.buildVerificationTrackerState(twoAiState, [], [], { ...tracker, dismissed: true }).active, false);
 assert.equal(h.buildVerificationTrackerState({ ...twoAiState, meeting: 'm2' }, [], [], tracker).active, false);
+
+// 6. Empty rooms must not auto-inject onboarding into #feed; tutorial lives in Settings
+const harnessSrc = require('fs').readFileSync('static/harness-ui.js', 'utf8');
+assert.ok(!/syncEmptyRoomOnboarding\s*\(\)/.test(harnessSrc), 'empty rooms must not auto-render onboarding');
+assert.match(harnessSrc, /'tutorial',\s*t\('settings\.tutorial'\)/);
+assert.doesNotMatch(harnessSrc, /'默认模型'/);
+assert.match(harnessSrc, /<option value="">跟随接入设置<\/option>/);
 ''')
 
 

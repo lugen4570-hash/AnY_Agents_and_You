@@ -39,6 +39,7 @@
       'settings.agents': 'Agent 与连接',
       'settings.extensions': '扩展',
       'settings.about': '关于与更新',
+      'settings.tutorial': '使用教学',
       'settings.theme': '外观主题',
       'settings.themeHint': '仅影响当前客户端的界面外观。',
       'settings.themeSystem': '跟随系统',
@@ -76,7 +77,7 @@
       'onboard.sendTest': '发送测试消息验证',
       'onboard.fillTest': '填入输入框',
       'onboard.step3Title': '发第一条消息',
-      'onboard.step3Desc': '点击下方常用开场白快速填入输入框，或直接在底部输入你的任务：',
+      'onboard.step3Desc': '选一句开场白填入会话输入框，或回到会话后输入自己的任务。',
       'onboard.defaultTestPrompt': '请简短回复一句「已就绪」，确认我们可以开始协作。',
       'verify.runningTitle': '正在验证真实回复（{done}/{total}）',
       'verify.doneTitle': '全部 {total} 位 AI 已成功回复，可以开始协作！',
@@ -115,6 +116,7 @@
       'settings.agents': 'Agents & Connections',
       'settings.extensions': 'Extensions',
       'settings.about': 'About & Updates',
+      'settings.tutorial': 'Getting Started',
       'settings.theme': 'Appearance',
       'settings.themeHint': 'Applies only to this client.',
       'settings.themeSystem': 'System',
@@ -152,7 +154,7 @@
       'onboard.sendTest': 'Send Test & Verify',
       'onboard.fillTest': 'Fill Composer',
       'onboard.step3Title': 'Send First Message',
-      'onboard.step3Desc': 'Pick a starter prompt or type your task below:',
+      'onboard.step3Desc': 'Pick a starter prompt or return to your session to type your own task.',
       'onboard.defaultTestPrompt': 'Please reply briefly with "Ready" to confirm we can start collaborating.',
       'verify.runningTitle': 'Verifying real replies ({done}/{total})',
       'verify.doneTitle': 'All {total} AI(s) replied successfully — ready to collaborate!',
@@ -299,7 +301,7 @@
           : name + ' · ' + t('composer.desktopManaged');
         return { disabled: false, label: textLabel, readonly: true, pending: false, target };
       }
-      const modelLabel = mo.label || mo.model || mo.default_model || t('composer.model');
+      const modelLabel = (mo.model || mo.observed?.model) ? (mo.label || mo.model || mo.observed.model) : t('composer.model');
       const pending = mo.apply_status === 'pending';
       return {
         disabled: false,
@@ -763,19 +765,15 @@
     return ids.filter(id => state.permissions[id] && state.permissions[id].work === false);
   }
 
-  function buildEmptyRoomOnboardingState(state, contacts, messages) {
+  function buildOnboardingState(state, contacts) {
     if (!state || !state.meeting) {
       return {
-        visible: false,
-        activeStep: 1,
         roomAiIds: [],
         roomAis: [],
         availableContactAis: [],
         testPrompt: t('onboard.defaultTestPrompt'),
       };
     }
-    const list = Array.isArray(messages) ? messages : [];
-    const hasConversationMessages = list.some(m => m && !m.recalled && m.speaker && m.speaker !== '系统');
     const roomAiIds = getRoomAiIds(state);
     const allContacts = Array.isArray(contacts) ? contacts : ((state && state.agents) || []);
     const roomAis = roomAiIds.map(id => {
@@ -795,8 +793,6 @@
       .filter(c => c && c.kind !== 'user' && c.enabled && !inRoom.has(c.id))
       .map(c => ({ id: c.id, label: c.label || c.id }));
     return {
-      visible: !hasConversationMessages,
-      activeStep: roomAiIds.length === 0 ? 1 : 2,
       roomAiIds,
       roomAis,
       availableContactAis,
@@ -857,7 +853,7 @@
     resolveComposerTarget,
     buildModelChipState,
     blockedWorkTargets,
-    buildEmptyRoomOnboardingState,
+    buildOnboardingState,
     buildVerificationTrackerState,
     parseSlashQuery,
     filterSlashCommands,
@@ -886,7 +882,6 @@
   let extSubTab = 'skill';
   let extImportOpen = false;
   let verifyTracker = null;
-  let onboardingSig = '';
   let verifySig = '';
 
   function htmlEsc(v) {
@@ -920,19 +915,10 @@
     }
   }
 
-  function syncEmptyRoomOnboarding() {
-    const feedEl = document.getElementById('feed');
-    if (!feedEl) return;
+  function renderOnboarding(container) {
     const state = typeof S !== 'undefined' ? S : null;
     const contacts = typeof CONTACTS !== 'undefined' ? CONTACTS : [];
-    const messages = typeof msgById !== 'undefined' && msgById ? Object.values(msgById) : [];
-    const model = buildEmptyRoomOnboardingState(state, contacts, messages);
-    const existing = document.getElementById('roomOnboarding');
-    if (!model.visible) {
-      if (existing) existing.remove();
-      onboardingSig = '';
-      return;
-    }
+    const model = buildOnboardingState(state, contacts);
 
     const lang = resolveLang(getLangPref());
     const starters = lang === 'en'
@@ -946,17 +932,7 @@
           '我想做一个新功能，先一起讨论方案',
           '帮我排查最近的一处报错原因',
         ];
-    const sig = JSON.stringify({
-      meeting: state && state.meeting,
-      lang,
-      activeStep: model.activeStep,
-      roomAis: model.roomAis.map(a => a.id + ':' + a.label),
-      avail: model.availableContactAis.length,
-    });
-    if (existing && onboardingSig === sig) return;
-    onboardingSig = sig;
-
-    const card = existing || document.createElement('section');
+    const card = document.createElement('section');
     card.id = 'roomOnboarding';
     card.className = 'room-onboarding';
     card.setAttribute('aria-label', t('onboard.title'));
@@ -1015,8 +991,10 @@
         } else if (act === 'manage') {
           if (typeof openAgents === 'function') openAgents();
         } else if (act === 'fill-test') {
+          hideModal();
           fillComposerText(model.testPrompt, false);
         } else if (act === 'send-test') {
+          if (S?.meeting !== state.meeting) return;
           verifyTracker = {
             roomId: state.meeting,
             baselineMaxId: currentMaxMessageId(),
@@ -1034,6 +1012,7 @@
             actionBtn.disabled = false;
             alert(data.error || '发送失败，请重试。');
           } else {
+            if (card.isConnected) hideModal();
             poll();
           }
         }
@@ -1042,11 +1021,11 @@
       const starterBtn = e.target.closest('[data-onboard-starter]');
       if (starterBtn) {
         const text = starters[Number(starterBtn.dataset.onboardStarter)];
-        if (text) fillComposerText(text, false);
+        if (text) { hideModal(); fillComposerText(text, false); }
       }
     };
 
-    if (!existing) feedEl.appendChild(card);
+    container.appendChild(card);
   }
 
   function syncVerificationBanner() {
@@ -1335,7 +1314,7 @@
       const endpointLabel = desktop ? t('composer.desktopManaged') : ((state.execution && state.execution[id] && state.execution[id].endpoint) || 'CLI').toUpperCase();
       const modelDesc = desktop
         ? (mo.observed && mo.observed.model ? '实际回报：' + mo.observed.model : t('composer.desktopManaged'))
-        : (mo.label || mo.model || mo.default_model || '模型未回报');
+        : ((mo.model || mo.observed?.model) ? (mo.label || mo.model || mo.observed.model) : '跟随接入设置');
       const ctxDesc = typeof ctxTitle === 'function' ? ctxTitle(x) : '';
       const isDirectModel = state.agents?.some(agent => agent.id === id && agent.http_protocol === 'openai_chat');
       const permBlocked = !isDirectModel && state.mode === 'work' && state.permissions && state.permissions[id] && state.permissions[id].work === false;
@@ -1436,11 +1415,11 @@
       const curModel = mo.model || '';
       const efforts = typeof modelEfforts === 'function' ? modelEfforts(mo, curModel) : (mo.efforts || []);
       const curEffort = mo.effort || '';
-      const statusText = busy ? t('composer.busy') : (mo.apply_status === 'pending' ? t('composer.pending') : (mo.label || ''));
-      const modelOptions = '<option value="">' + esc(mo.default_model ? '默认：' + modelOptionLabel(mo, mo.default_model) : '默认模型') + '</option>'
+      const statusText = busy ? t('composer.busy') : (mo.apply_status === 'pending' ? t('composer.pending') : ((mo.model || mo.observed?.model) ? (mo.label || '') : ''));
+      const modelOptions = '<option value="">跟随接入设置</option>'
         + models.map(v => '<option value="' + esc(v) + '"' + (v === curModel ? ' selected' : '') + '>' + esc(modelOptionLabel(mo, v)) + '</option>').join('');
       const effortOptions = efforts.length
-        ? '<select data-pop-effort="' + esc(id) + '"' + (busy ? ' disabled' : '') + '><option value="">默认强度</option>'
+        ? '<select data-pop-effort="' + esc(id) + '"' + (busy ? ' disabled' : '') + '><option value="">跟随接入设置</option>'
           + efforts.map(e => '<option value="' + esc(e) + '"' + (e === curEffort ? ' selected' : '') + '>' + esc((EFFORT_LABELS[e] || e)) + '</option>').join('') + '</select>'
         : '';
       return '<div class="pop-agent-row" data-pop-ai="' + esc(id) + '">'
@@ -1622,12 +1601,11 @@
         return true;
       }
       case 'debate-continue': {
-        const button = document.getElementById('debateContinueBtn');
-        if (!button || button.hidden || button.disabled) {
+        if (typeof canContinueDebate !== 'function' || !canContinueDebate()) {
           alert('当前没有可继续的论道。');
           return false;
         }
-        button.click();
+        openDebateContinue();
         const feedback = document.querySelector('#debateContinueForm [name="feedback"]');
         if (!feedback) return false;
         feedback.value = argText;
@@ -1883,6 +1861,7 @@
       ['general', t('settings.general')],
       ['agents', t('settings.agents')],
       ['extensions', t('settings.extensions')],
+      ['tutorial', t('settings.tutorial')],
       ['about', t('settings.about')],
     ];
     return '<div id="appSettingsModal">'
@@ -2010,6 +1989,8 @@
       body.querySelectorAll('[data-lang-choice]').forEach(btn => {
         btn.onclick = () => { applyLang(btn.dataset.langChoice); openAppSettings('general'); };
       });
+    } else if (tab === 'tutorial') {
+      renderOnboarding(body);
     } else if (tab === 'agents') {
       const mgr = document.getElementById('settingsOpenManager');
       if (mgr) mgr.onclick = () => { if (typeof openAgentManager === 'function') openAgentManager(); };
@@ -2132,11 +2113,13 @@
       general: t('settings.general'),
       agents: t('settings.agents'),
       extensions: t('settings.extensions'),
+      tutorial: t('settings.tutorial'),
       about: t('settings.about'),
     };
     const bodyHtml = settingsTab === 'general' ? renderGeneralTab()
       : settingsTab === 'agents' ? renderAgentsTab()
       : settingsTab === 'about' ? renderAboutTab()
+      : settingsTab === 'tutorial' ? ''
       : '<p class="hint">正在加载…</p>';
     showModal(renderSettingsShell(settingsTab, bodyHtml, headings[settingsTab] || t('settings.title')));
     document.body.classList.remove('nav-open');
@@ -2152,7 +2135,6 @@
   function syncHarnessUi() {
     syncComposerBar();
     setSideTab(currentSideTab);
-    syncEmptyRoomOnboarding();
     syncVerificationBanner();
     syncRoomFeedback();
   }
@@ -2234,7 +2216,7 @@
       const effSel = composerPopover.querySelector('[data-pop-effort="' + aiId + '"]');
       if (!effSel || typeof modelEfforts !== 'function') return;
       const choices = modelEfforts(mo, sel.value);
-      effSel.innerHTML = '<option value="">默认强度</option>' + choices.map(c => '<option value="' + esc(c) + '">' + esc(EFFORT_LABELS[c] || c) + '</option>').join('');
+      effSel.innerHTML = '<option value="">跟随接入设置</option>' + choices.map(c => '<option value="' + esc(c) + '">' + esc(EFFORT_LABELS[c] || c) + '</option>').join('');
       effSel.disabled = !choices.length;
     });
     composerPopover.addEventListener('click', async e => {

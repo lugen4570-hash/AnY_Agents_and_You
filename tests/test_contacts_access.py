@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import threading
@@ -63,6 +64,47 @@ class Contacts(unittest.TestCase):
         self.assertEqual((r.meta["project"], r.ais, r.workdir()), (p["id"], ["alice"], DATA))
         self.assertFalse(r.meta["permissions"]["alice"]["work"])
         self.assertEqual(call("/api/rooms/new", {"project": "invalid"}, owner=True)[0], 400)
+
+    def test_project_update_persists_legacy_group_and_pins_existing_room(self):
+        with tempfile.TemporaryDirectory(dir=DATA) as root:
+            original = str(Path(root, "original"))
+            replacement = str(Path(root, "replacement"))
+            os.mkdir(original)
+            os.mkdir(replacement)
+            before = R.rooms.create("已有会议", wd=original, participants=[])
+            pid = projects.legacy_id(original)
+            settings = {"id": pid, "name": "新项目名", "workdirs": [replacement, original]}
+            update = "/api/projects/update"
+            self.assertEqual(call(update, settings, key=self.key)[0], 403)
+            self.assertEqual(call(update, {**settings, "workdirs": [root + "-missing"]}, owner=True)[0], 400)
+            self.assertEqual(call(update, settings, owner=True)[0], 200)
+            _, listing = call("/api/rooms", owner=True)
+            project = next(p for p in listing["projects"] if p["id"] == pid)
+            self.assertEqual((project["name"], project["workdir"], project["workdirs"]), ("新项目名", replacement, [replacement, original]))
+            self.assertEqual(before.workdir(), original)
+            status, room = call("/api/rooms/new", {"project": pid, "participants": []}, owner=True)
+            self.assertEqual(status, 200)
+            self.assertEqual(R.rooms.get(room["id"]).workdir(), replacement)
+
+    @unittest.skipUnless(shutil.which("git"), "Git is needed for linked worktree tests")
+    def test_project_worktree_selection_uses_checked_out_branch(self):
+        with tempfile.TemporaryDirectory(dir=DATA) as root:
+            repo = str(Path(root, "repo"))
+            linked = str(Path(root, "另一分支 worktree"))
+            os.mkdir(repo)
+            projects.git(["init", "-b", "main"], repo)
+            projects.git(["commit", "--allow-empty", "-m", "initial"], repo)
+            projects.git(["worktree", "add", "-b", "feature", linked], repo)
+            project = projects.create("Repo", repo)
+            status, result = call("/api/projects/workspaces", {"id": project["id"]}, owner=True)
+            self.assertEqual(status, 200)
+            self.assertEqual({w["path"]: w["branch"] for w in result["workspaces"]}, {repo: "main", linked: "feature"})
+            payload = {"project": project["id"], "workspace": linked, "participants": []}
+            self.assertEqual(call("/api/rooms/new", {**payload, "workspace": root}, owner=True)[0], 400)
+            status, result = call("/api/rooms/new", payload, owner=True)
+            self.assertEqual(status, 200)
+            self.assertEqual(R.rooms.get(result["id"]).workdir(), linked)
+            self.assertEqual(projects.git(["branch", "--show-current"], repo).strip(), b"main")
 
     def test_macos_folder_picker_is_local_and_can_cancel(self):
         path = "/api/projects/choose-workdir"

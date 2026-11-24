@@ -55,7 +55,12 @@ assert.equal(boxes.mSave.disabled,false);assert.match(boxes.mHint.textContent,/�
  const markup=ctx.modelSettingsMarkup({model_supported:false,effort_supported:false,note:'Agent 自己管理'},false);
  assert.doesNotMatch(markup,/id="mModel"|id="mSave"/);assert.match(markup,/Agent 自己管理/);
  const labeled=ctx.modelSettingsMarkup({model_supported:true,effort_supported:true,default_model:'gemini-4-argon',models:['gemini-4-argon','gemini-pro-orchestrator-g1-pro','plain-id'],model_labels:{'gemini-4-argon':'Gemini 4 Argon','gemini-pro-orchestrator-g1-pro':'Orchestrator (Argon)'},efforts:['low','high'],efforts_by_model:{}},false);
- assert.match(labeled,/>会话默认：Gemini 4 Argon<\/option>/);
+ assert.match(labeled,/<option value="">跟随接入设置<\/option>/);
+ assert.match(labeled,/当前设置：跟随接入设置/);
+ assert.doesNotMatch(labeled,/会话默认：Gemini 4 Argon/);
+ assert.equal(ctx.roomModelSummary({default_model:'inherited',label:'Inherited'}),'跟随接入设置');
+ assert.equal(ctx.roomModelSummary({model:'explicit',label:'Explicit'}),'Explicit');
+ assert.equal(ctx.roomModelSummary({observed:{model:'actual'}}),'actual');
  assert.match(labeled,/value="gemini-4-argon">Gemini 4 Argon<\/option>/);
  assert.match(labeled,/value="gemini-pro-orchestrator-g1-pro">Orchestrator \(Argon\)<\/option>/);
  assert.doesNotMatch(labeled,/Gemini 4 Argon · gemini-4-argon/);

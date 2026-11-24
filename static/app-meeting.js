@@ -226,19 +226,29 @@ function openRename(rid,title,after=loadState){
 document.getElementById('bRename').onclick=()=>{if(S&&S.meeting===RID)openRename(RID,S.title)};
 
 const debateBtn=document.getElementById('debateBtn');
-const debateContinueBtn=document.getElementById('debateContinueBtn');
+function canContinueDebate(){
+  return !!(S&&S.meeting===RID&&!S.archived&&['completed','cancelled','failed','interrupted'].includes(S.debate?.status));
+}
 function drawDebate(){
   const d=S&&S.debate,active=d&&['running','summarizing'].includes(d.status);
   debateBtn.disabled=!(S&&S.meeting)||!!(active&&(d.finish_requested||d.status==='summarizing'));
   debateBtn.textContent=!active?'论道':d.status==='summarizing'?'正在总结':d.finish_requested?'等待总结':'结束并总结';
   debateBtn.title=active?d.topic+' · 已完成 '+d.completed_rounds+' 轮':'设定议题，让 Agent 独立表态、交叉反驳并总结';
   debateBtn.classList.toggle('is-debating',!!active);
-  if(debateContinueBtn){
-    const canContinue=!!(S&&S.meeting&&d&&!active&&['completed','cancelled','failed','interrupted'].includes(d.status));
-    debateContinueBtn.hidden=!canContinue;
-    debateContinueBtn.disabled=!canContinue;
-    debateContinueBtn.title=canContinue?'对「'+d.topic+'」补充反馈或新回答后继续论道':'';
+  let button=document.getElementById('debateContinueBtn');
+  let message;
+  if(canContinueDebate()){
+    message=Object.values(msgById).filter(m=>m&&!m.recalled).sort((a,b)=>Number(b.id)-Number(a.id)).find(m=>m.origin==='debate-summary'||m.origin==='debate'||
+      (m.speaker==='系统'&&/^(开始论道：|继续论道：|论道未完成。)/.test(m.text||'')));
   }
+  const anchor=message&&feed.querySelector('.msg[data-id="'+message.id+'"]');
+  if(!anchor){button?.remove();return}
+  if(!button){
+    button=document.createElement('button');button.type='button';button.id='debateContinueBtn';
+    button.className='composer-chip';button.textContent='继续论道';button.onclick=openDebateContinue;
+  }
+  button.title='对「'+d.topic+'」补充反馈或新回答后继续论道';
+  if(button.parentElement!==anchor)anchor.appendChild(button);
 }
 debateBtn.onclick=async()=>{
   const rid=RID;if(!S||S.meeting!==rid)return;
@@ -274,8 +284,8 @@ debateBtn.onclick=async()=>{
     if(rid===RID){S.debate=j.debate;drawDebate();poll()}
   };
 };
-if(debateContinueBtn)debateContinueBtn.onclick=()=>{
-  const rid=RID;if(!S||S.meeting!==rid||!S.debate)return;
+function openDebateContinue(){
+  const rid=RID;if(!canContinueDebate())return;
   const d=S.debate;
   const ids=(S.participants||[]).filter(id=>(agentMeta(id)||{}).kind!=='user'&&S.permissions?.[id]?.read&&S.permissions?.[id]?.post&&!S.ais?.[id]?.handed_off);
   const label=id=>(agentMeta(id)||{}).label||id;
@@ -351,7 +361,9 @@ async function openList(showTrash){
   }));
   const projectRows=projects.map(p=>{
     const st=projectStats.get(p.id)||{count:0,busy:0,inTrash:0};
-    return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+st.count+' 场会话'+(st.inTrash?' · 回收站 '+st.inTrash+' 场':'')+'</small></span><span class="acts"><button type="button" data-project-delete="'+esc(p.id)+'"'+(st.busy?' disabled':'')+'>删除项目</button></span></div>';
+    const isRemote=typeof agCat!=='undefined'&&agCat&&agCat.local_workspace===false;
+    const folders=(p.workdirs||[p.workdir]).filter(Boolean);
+    return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+st.count+' 场会话'+(folders.length>1?' · '+folders.length+' 个目录':'')+(st.inTrash?' · 回收站 '+st.inTrash+' 场':'')+'</small></span><span class="acts">'+(isRemote?'':'<button type="button" data-project-edit="'+esc(p.id)+'">设置</button>')+'<button type="button" data-project-delete="'+esc(p.id)+'"'+(st.busy?' disabled':'')+'>删除项目</button></span></div>';
   }).join('');
   const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
     '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
@@ -367,6 +379,12 @@ async function openList(showTrash){
   document.getElementById('lClose').onclick=hideModal;
   document.getElementById('lTrash').onclick=()=>{const b=document.getElementById('trashBox');b.style.display=b.style.display==='none'?'block':'none'};
   const act=async(url,body)=>{const [ok,jj]=await post(url,body);if(!ok){alert(jj.error||'失败');return false}return true};
+  mbox.querySelectorAll('[data-project-edit]').forEach(button=>{
+    button.onclick=()=>{
+      const project=projects.find(p=>p.id===button.dataset.projectEdit);
+      if(project&&typeof openProject==='function')openProject(project);
+    };
+  });
   mbox.querySelectorAll('[data-project-delete]').forEach(button=>{
     button.onclick=async()=>{
       const id=button.dataset.projectDelete,st=projectStats.get(id)||{count:0,busy:0,inTrash:0};

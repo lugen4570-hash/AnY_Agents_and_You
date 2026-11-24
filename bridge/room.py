@@ -1408,6 +1408,8 @@ class Room:
         with self.lock:
             if self.closed or source in self.recalled:
                 return False
+            if external and speaker in self.state.get("debate_blind_posts", {}):
+                return self.post_progress(speaker, text, attachments) is not None
             cmd = text.strip().lower().split()
             if speaker == "你" and not attachments and cmd and cmd[0] == "/compact" and len(cmd) <= 2 and set(cmd[1:]) <= set(AIS):
                 self.request_compact(cmd[1:] or self.ais)
@@ -1470,6 +1472,10 @@ class Room:
         with self.lock:
             if self.turn_recalled(ai) or (not text and not atts):
                 return None
+            blind_posts = self.state.get("debate_blind_posts", {})
+            if ai in blind_posts:
+                blind_posts[ai].append((text, atts))
+                return {"deferred": True}
             return self.add_message(ai, text, atts or None, to_user="用户" in mentions(text, exclude=ai),
                                     source=self.turn_sources.get(ai))
 
@@ -2047,7 +2053,8 @@ class Room:
                     "git": gi,
                     "running": list(self.state["running"]), "queued": self.queued_count(),
                     "claims": [c for c in guard.listing() if c["room"] == self.id or in_dir(c["shown"], self.workdir())],
-                    "live": {a: {"text": v["text"], "details": v.get("details", ""), "time": v["time"], "secs": int(time.time() - v["since"])} for a, v in list(self.live.items())}}
+                    "live": {a: {"text": v["text"], "details": v.get("details", ""), "time": v["time"], "secs": int(time.time() - v["since"])}
+                             for a, v in list(self.live.items()) if a not in self.state.get("debate_blind_posts", {})}}
 
     def messages_since(self, since):
         with self.lock:

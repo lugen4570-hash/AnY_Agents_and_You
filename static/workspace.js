@@ -99,7 +99,9 @@ function drawRooms(){
     const rooms=live.filter(m=>(m.project||legacyProject(m.workdir))===p.id&&(matchesProject||m.title.toLocaleLowerCase().includes(query)));
     if(query&&!matchesProject&&!rooms.length)return '';
     const expanded=!!query||!collapsedProjects.has(p.id);
-    return '<li class="project" data-project-drop="'+esc(p.id)+'"><div class="project-head"><button data-project-toggle="'+esc(p.id)+'" aria-expanded="'+expanded+'">'+uiIcon('folder')+' <span>'+esc(p.name)+'</span><span class="project-count">'+rooms.length+'</span></button><button data-project-new="'+esc(p.id)+'" title="在此项目下新建会话" aria-label="新建会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+rooms.map(row).join('')+'</ul></li>';
+    const isRemote=typeof agCat!=='undefined'&&agCat&&agCat.local_workspace===false;
+    const settings=isRemote?'':'<button data-project-edit="'+esc(p.id)+'" title="项目设置" aria-label="'+esc(p.name)+'的项目设置">⚙</button>';
+    return '<li class="project" data-project-drop="'+esc(p.id)+'"><div class="project-head"><button data-project-toggle="'+esc(p.id)+'" aria-expanded="'+expanded+'">'+uiIcon('folder')+' <span>'+esc(p.name)+'</span><span class="project-count">'+rooms.length+'</span></button>'+settings+'<button data-project-new="'+esc(p.id)+'" title="在此项目下新建会话" aria-label="新建会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+rooms.map(row).join('')+'</ul></li>';
   }).join('')||'<li class="nav-empty">'+(query?'没有匹配的项目或会话':'创建项目，开始第一场会话。')+'</li>';
   if(!roomList.dataset.dragging&&roomList.innerHTML!==html)roomList.innerHTML=html;
   const wait=ROOMS.filter(m=>m.id!==RID&&!m.archived&&(roomBadge(m)||[])[0]==='you').length;
@@ -117,10 +119,11 @@ const collapsedProjects=new Set();
 async function pollRooms(){try{const r=await fetch('/api/rooms',{cache:'no-store'});if(!r.ok)throw Error('读取项目失败');const j=await r.json();ROOMS=j.rooms||[];PROJECTS=j.projects||[];const m=seenMap();ROOMS.forEach(r=>{if(m[r.id]==null)m[r.id]=r.count});try{localStorage.setItem('rt_seen',JSON.stringify(m))}catch(e){}drawRooms();return j}catch(e){return null}}
 function attachWorkspaceFolderPicker(inputId){
   const input=document.getElementById(inputId);if(!input)return;
+  const append=input.dataset?.appendFolders!==undefined;
   const catalog=typeof agCat!=='undefined'&&agCat;
   if(catalog&&catalog.local_workspace===false)return;
   const macBrowserPicker=catalog&&catalog.macos_workspace_picker===true;
-  const button=document.createElement('button');button.type='button';button.textContent='选择文件夹';button.hidden=true;
+  const button=document.createElement('button');button.type='button';button.textContent=append?'添加文件夹':'选择文件夹';button.hidden=true;
   button.setAttribute('aria-label','选择文件夹');
   input.parentElement.after(button);
   const bridge=(typeof window!=='undefined'&&(window.anyDesktop||window.cojamDesktop))||null;
@@ -141,7 +144,7 @@ function attachWorkspaceFolderPicker(inputId){
         if(!ok)throw Error(result.error);
         path=result.workdir;
       }
-      if(path){input.value=path;input.dispatchEvent(new Event('input',{bubbles:true}))}
+      if(path){input.value=append&&input.value.trim()?input.value.trimEnd()+'\n'+path:path;input.dispatchEvent(new Event('input',{bubbles:true}))}
     } catch(e){
       alert('无法打开文件夹选择器，请重试或手动填写路径。');
     } finally {
@@ -149,11 +152,32 @@ function attachWorkspaceFolderPicker(inputId){
     }
   };
 }
-async function openProject(){document.body.classList.remove('nav-open');
+async function openProject(project){document.body.classList.remove('nav-open');
   if(!agCat){
     try{await refreshContacts()}catch(e){alert('无法读取本机项目设置，请重试。');return}
   }
-  if(agCat.local_workspace===false){showModal('<h3>新建项目</h3><p class="hint">当前是通过其他设备连接。手机网页不支持使用本地文件夹创建项目，也不能选择或指定运行 AnY 的电脑文件夹。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}showModal('<h3>新建项目</h3><p class="hint">项目中的会话共用工作文件夹，各自管理成员和权限。</p><label>项目名称<input id="pName" maxlength="60" placeholder="例如：我的应用"></label><label>工作文件夹<input id="pWd" placeholder="工作文件夹完整路径" value="'+esc((S&&S.workdir)||agCat.default_dir||'')+'"></label><p id="pErr" role="alert"></p><div class="btns"><button id="pCancel">取消</button><button id="pSave" class="pri">创建项目</button></div>');attachWorkspaceFolderPicker('pWd');document.getElementById('pCancel').onclick=hideModal;document.getElementById('pSave').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const name=document.getElementById('pName').value,workdir=document.getElementById('pWd').value;button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/projects/new',{name,workdir});if(!ok){const error=document.getElementById('pErr');if(error)error.textContent=j.error||'创建失败';return}await pollRooms();if(document.getElementById('pSave')===button){hideModal();openNew(false,j.project.id)}}finally{button.disabled=false;button.textContent='创建项目'}};document.getElementById('pName').focus()}
+  if(agCat.local_workspace===false){showModal('<h3>项目设置</h3><p class="hint">请在运行 AnY 的设备上管理项目工作目录。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}
+  const paths=project?(project.workdirs||[project.workdir]):[];
+  showModal('<h3>'+(project?'项目设置':'新建项目')+'</h3><form id="projectForm"><label>项目名称<input id="pName" maxlength="60" required value="'+esc(project?.name||'')+'" placeholder="例如：我的应用"></label><label>工作文件夹<textarea id="pWd" rows="4" required data-append-folders placeholder="每行一个完整路径">'+esc(paths.join('\n'))+'</textarea></label><p class="hint">每行填一个完整路径。第一行是新会话的默认目录，已有会话保留各自的目录。</p><p id="pErr" class="form-error" role="alert"></p><div class="btns"><button type="button" id="pCancel">取消</button><button id="pSave" class="pri" type="submit">'+(project?'保存设置':'创建项目')+'</button></div></form>');
+  attachWorkspaceFolderPicker('pWd');
+  const form=document.getElementById('projectForm'),button=document.getElementById('pSave');
+  document.getElementById('pCancel').onclick=hideModal;
+  form.onsubmit=async e=>{
+    e.preventDefault();if(button.disabled)return;
+    const name=document.getElementById('pName').value;
+    const workdirs=document.getElementById('pWd').value.split(/\r?\n/).map(path=>path.trim()).filter(Boolean);
+    const error=document.getElementById('pErr');
+    button.disabled=true;error.textContent='';
+    try{
+      const [ok,j]=await post(project?'/api/projects/update':'/api/projects/new',{id:project?.id,name,workdirs});
+      if(!ok){error.textContent=j.error||'保存失败';return}
+      await pollRooms();
+      if(document.getElementById('projectForm')!==form||!modal.classList.contains('show'))return;
+      hideModal();if(!project)openNew(false,j.project.id);
+    }finally{button.disabled=false}
+  };
+  document.getElementById('pName').focus();
+}
 async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
   await pollRooms();await refreshContacts();if(!PROJECTS.length)return openProject();
@@ -161,6 +185,28 @@ async function openNew(first,projectId){
   const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,false,a.default_permissions||{})).join('');
   showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
   const rows=[...document.getElementById('nContacts').querySelectorAll('[data-member]')];
+  const projectChoice=document.getElementById('nProject'),createButton=document.getElementById('nOk');
+  let workspaceChoice;
+  const localWs=typeof agCat==='undefined'||!agCat||agCat.local_workspace!==false;
+  if(localWs&&typeof document.createElement==='function'&&typeof post==='function'){
+    const label=document.createElement('label');label.textContent='工作目录与分支';
+    workspaceChoice=document.createElement('select');workspaceChoice.id='nWorkspace';label.appendChild(workspaceChoice);
+    projectChoice.parentElement.after(label);
+    let request=0;
+    projectChoice.onchange=async()=>{
+      const id=projectChoice.value,current=++request;
+      const project=PROJECTS.find(p=>p.id===id);
+      const folders=(project?.workdirs||[project?.workdir]).filter(Boolean);
+      workspaceChoice.innerHTML='<option value="">正在读取工作目录…</option>';
+      workspaceChoice.disabled=true;createButton.disabled=true;
+      const [ok,j]=await post('/api/projects/workspaces',{id});
+      if(current!==request||!workspaceChoice.isConnected)return;
+      const options=ok?j.workspaces:folders.map(path=>({path,branch:''}));
+      workspaceChoice.innerHTML=options.map(w=>'<option value="'+esc(w.path)+'">'+esc(w.branch?w.branch+' · '+w.path:w.path)+'</option>').join('')||'<option value="">项目没有可用的工作目录</option>';
+      workspaceChoice.disabled=!options.length;createButton.disabled=!options.length;
+    };
+    projectChoice.onchange();
+  }
   rows.forEach(row=>{
     const update=()=>syncMemberPermissionRow(row);update();row.querySelector('[data-member-check]').onchange=update;
     row.querySelectorAll('[data-perm-group]').forEach(i=>{i.onchange=()=>{i.dataset.edited='true'}});
@@ -168,10 +214,11 @@ async function openNew(first,projectId){
   document.getElementById('nCancel').onclick=hideModal;
   document.getElementById('nOk').onclick=async e=>{
     const button=e.currentTarget;if(button.disabled)return;
-    const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:document.getElementById('nProject').value,...readMemberPermissions(rows)};
+    const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:projectChoice.value,workspace:workspaceChoice?.value,...readMemberPermissions(rows)};
+    projectChoice.disabled=true;if(workspaceChoice)workspaceChoice.disabled=true;
     button.disabled=true;button.textContent='正在创建…';
     try{const [ok,j]=await post('/api/rooms/new',body);if(!ok)return alert(j.error||'创建失败');if(document.getElementById('nOk')===button){hideModal();switchRoom(j.id)}pollRooms()}
-    finally{button.disabled=false;button.textContent='创建会话'}
+    finally{projectChoice.disabled=false;if(workspaceChoice)workspaceChoice.disabled=false;button.disabled=false;button.textContent='创建会话'}
   };
   document.getElementById('nTitle').focus();
 }
@@ -251,7 +298,7 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
 document.getElementById('contactsAdd').onclick=()=>startConnectionWizard();
 if(document.getElementById('agentSettingsBtn'))document.getElementById('agentSettingsBtn').onclick=()=>openAgentManager();
 document.getElementById('contactList').onclick=async e=>{const del=e.target.closest('[data-contact-delete]');if(del){const id=del.dataset.contactDelete,contact=CONTACTS.find(a=>a.id===id);if(!confirm('删除联系人 '+(contact?contact.label:id)+'？将自动从所有会话移除，接入密钥失效，历史消息保留。'))return;del.disabled=true;const [ok,j]=await post('/api/agents/remove',{id});if(!ok){del.disabled=false;return alert(j.error||'删除失败')}await refreshContacts();if(RID)await loadState();return}if(e.target.closest('[data-owner-devices]'))return startConnectionWizard('','mydevice');const b=e.target.closest('[data-contact-open]');if(b)openConnection(b.dataset.contactOpen)};
-document.getElementById('projectAdd').onclick=openProject;
+document.getElementById('projectAdd').onclick=()=>openProject();
 const NAV_COLLAPSE_KEY='any_nav_collapsed';
 const LEGACY_NAV_COLLAPSE_KEY='cojam_nav_collapsed';
 const isDesktopNav=()=>typeof matchMedia==='function'&&matchMedia('(min-width:850px)').matches;
@@ -268,7 +315,7 @@ try{if((localStorage.getItem(NAV_COLLAPSE_KEY)||localStorage.getItem(LEGACY_NAV_
 document.getElementById('navToggle').onclick=()=>isDesktopNav()?setNavCollapsed(false):document.body.classList.toggle('nav-open');
 document.getElementById('navClose').onclick=()=>isDesktopNav()?setNavCollapsed(true):document.body.classList.remove('nav-open');
 document.getElementById('navShade').onclick=()=>document.body.classList.remove('nav-open');
-document.getElementById('roomList').addEventListener('click',e=>{const add=e.target.closest('[data-project-new]'),toggle=e.target.closest('[data-project-toggle]');if(add)openNew(false,add.dataset.projectNew);if(toggle){const id=toggle.dataset.projectToggle;collapsedProjects.has(id)?collapsedProjects.delete(id):collapsedProjects.add(id);drawRooms()}if(e.target.closest('a[data-id]'))document.body.classList.remove('nav-open')});
+document.getElementById('roomList').addEventListener('click',e=>{const add=e.target.closest('[data-project-new]'),edit=e.target.closest('[data-project-edit]'),toggle=e.target.closest('[data-project-toggle]');if(add)openNew(false,add.dataset.projectNew);if(edit){const project=PROJECTS.find(p=>p.id===edit.dataset.projectEdit);if(project)openProject(project)}if(toggle){const id=toggle.dataset.projectToggle;collapsedProjects.has(id)?collapsedProjects.delete(id):collapsedProjects.add(id);drawRooms()}if(e.target.closest('a[data-id]'))document.body.classList.remove('nav-open')});
 
 function bindRoomDrag(list){
   let source=null,highlight=null;

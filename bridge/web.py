@@ -708,14 +708,29 @@ class Handler(BaseHTTPRequestHandler):
                 logger.warning("macOS folder picker failed: %s", error)
                 return self._json(503, {"error": "无法打开 macOS 文件夹选择器，请重试或手动填写路径。"})
             return self._json(200, {"workdir": workdir})
-        if path == "/api/projects/new":
-            if not self._is_local_owner() or bool(getattr(self, "_device_id", "")):
-                return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹；请在运行 AnY 的设备上创建项目。"})
+        if path in ("/api/projects/new", "/api/projects/update", "/api/projects/workspaces"):
+            if not self._is_host_owner():
+                return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹；请在运行 AnY 的设备上管理项目。"})
             try:
-                p = projects.create(data.get("name"), data.get("workdir"))
+                if path == "/api/projects/new":
+                    p = projects.create(data.get("name"), data.get("workdir"), data.get("workdirs"))
+                else:
+                    pid = str(data.get("id") or "")
+                    with R.rooms.lock:
+                        rows = R.rooms.listing()
+                        if path == "/api/projects/update":
+                            p = projects.update(pid, data.get("name"), data.get("workdirs"), rows)
+                        else:
+                            p = next((p for p in projects.listing(rows) if p["id"] == pid), None)
+                    if p is None:
+                        return self._json(404, {"error": "项目不存在"})
+                    if path == "/api/projects/workspaces":
+                        return self._json(200, {"workspaces": projects.workspaces(p)})
                 return self._json(200, {"ok": True, "project": p})
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
+            except OSError:
+                return self._json(500, {"error": "无法保存项目变更，请检查数据目录的写入权限和剩余空间"})
         if path in ("/api/projects/delete", "/api/rooms/move"):
             try:
                 with R.rooms.lock:
@@ -749,17 +764,29 @@ class Handler(BaseHTTPRequestHandler):
             if len(ann.encode("utf-8")) > MAX_ANN:
                 return self._json(413, {"error": "too large (max 16KB)"})
             pid = str(data.get("project") or "")
+            workspace = data.get("workspace")
+            if workspace is not None and (not isinstance(workspace, str) or not pid):
+                return self._json(400, {"error": "请选择项目里的工作目录"})
+            if workspace and not self._is_host_owner():
+                return self._json(403, {"error": "请在运行 AnY 的设备上选择工作目录"})
             member_ids = data.get("participants")
             if member_ids is not None and (not isinstance(member_ids, list) or any(not isinstance(a, str) or a not in registry.enabled_ids() for a in member_ids)):
                 return self._json(400, {"error": "请选择已有且启用的联系人"})
             try:
                 if "permissions" in data and not isinstance(data["permissions"], dict):
                     raise ValueError("权限必须是对象")
-                with R.rooms.lock:
+                project = None
+                if workspace:
                     project = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
-                    if pid and project is None:
+                    if project is None or workspace not in {w["path"] for w in projects.workspaces(project)}:
+                        raise ValueError("工作目录不在项目中，或已不可用")
+                with R.rooms.lock:
+                    current = next((p for p in projects.listing(R.rooms.listing()) if p["id"] == pid), None)
+                    if pid and current is None:
                         raise ValueError("项目不存在")
-                    wd = (project["workdir"] if project else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
+                    if workspace and current != project:
+                        raise ValueError("项目工作目录已更新，请重新选择")
+                    wd = workspace or (current["workdir"] if current else str(data.get("workdir") or "").strip().strip('"')) or PROJECT
                     wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
                     if not os.path.isabs(wd) or not os.path.isdir(wd):
                         raise ValueError("工作文件夹不存在：" + wd)

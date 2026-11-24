@@ -22,15 +22,17 @@ function modelEfforts(info, model) {
   const catalog = info.efforts_by_model || {};
   return Object.prototype.hasOwnProperty.call(catalog, key) ? catalog[key] : (info.efforts || []);
 }
+function roomModelSummary(info) {
+  return info.model || info.observed?.model ? (info.label || info.model || info.observed.model) : '跟随接入设置';
+}
 function modelSettingsMarkup(info, busy) {
   const supported = info.model_supported !== false;
   const models = info.models || [], custom = !!info.model && !models.includes(info.model);
   return '<section id="modelSettings"><h3>模型与思考强度</h3><p class="hint" id="mCurrent">当前设置：'
-    + esc(info.label || '模型未回报') + ' · 仅此会话</p>'
+    + esc(roomModelSummary(info)) + ' · 仅此会话</p>'
     + '<p class="hint">' + esc(info.note || '') + '</p>'
     + '<p class="hint" id="mApplyStatus">'+esc(modelApplicationLabel(info))+'</p><p class="hint" id="mCatalogStatus">'+esc(modelCatalogLabel(info))+'</p><button type="button" id="mRefreshCatalog"'+(busy?' disabled':'')+'>刷新模型索引</button>'
-    + (supported ? '<label>模型<select id="mModelChoice"' + (busy ? ' disabled' : '') + '><option value="">'
-      + esc(info.default_model ? '会话默认：' + modelOptionLabel(info, info.default_model) : '使用 Agent 默认模型') + '</option>'
+    + (supported ? '<label>模型<select id="mModelChoice"' + (busy ? ' disabled' : '') + '><option value="">跟随接入设置</option>'
       + models.map(value => '<option value="' + esc(value) + '"' + (value === info.model ? ' selected' : '') + '>' + esc(modelOptionLabel(info, value)) + '</option>').join('')
       + '<option value="__custom__"' + (custom ? ' selected' : '') + '>自定义模型 ID…</option></select></label>'
       + '<label id="mCustomModel"' + (custom ? '' : ' hidden') + '>模型 ID<input class="mi" id="mModel" placeholder="填写此 Agent 支持的模型 ID" value="' + esc(info.model || '')
@@ -92,7 +94,7 @@ function bindModelSettings(ai, info, busy) {
         catch (error) { hint('设置已保存，暂时无法刷新会话状态。'); }
         if (current()) {
           const latest = S && S.ais && S.ais[ai] && S.ais[ai].model;
-          if (latest) document.getElementById('mCurrent').textContent = '当前设置：' + latest.label + ' · 仅此会话';
+          if (latest) document.getElementById('mCurrent').textContent = '当前设置：' + roomModelSummary(latest) + ' · 仅此会话';
         }
       }
     } catch (error) { hint(error.message || '保存失败，请检查连接后重试。'); }
@@ -125,7 +127,7 @@ function bindModelCatalogRefresh(ai, info, busy) {
       document.getElementById('mCatalogStatus').textContent=modelCatalogLabel(info);
       document.getElementById('mApplyStatus').textContent=modelApplicationLabel(info);
       const choice=document.getElementById('mModelChoice');
-      if(choice){const selected=choice.value;choice.innerHTML='<option value="">'+esc(info.default_model?'会话默认：'+modelOptionLabel(info, info.default_model):'使用程序默认模型')+'</option>'+(info.models || []).map(value=>'<option value="'+esc(value)+'">'+esc(modelOptionLabel(info, value))+'</option>').join('')+'<option value="__custom__">自定义模型 ID…</option>';choice.value=[...(info.models || []),'','__custom__'].includes(selected)?selected:'__custom__';const input=document.getElementById('mModel');if(input && input.oninput)input.oninput();}
+      if(choice){const selected=choice.value;choice.innerHTML='<option value="">跟随接入设置</option>'+(info.models || []).map(value=>'<option value="'+esc(value)+'">'+esc(modelOptionLabel(info, value))+'</option>').join('')+'<option value="__custom__">自定义模型 ID…</option>';choice.value=[...(info.models || []),'','__custom__'].includes(selected)?selected:'__custom__';const input=document.getElementById('mModel');if(input && input.oninput)input.oninput();}
     }catch(error){if(RID===rid && document.getElementById('modelSettings')===box)document.getElementById('mCatalogStatus').textContent=error.message;}
     finally{if(!rebuilt && RID===rid && document.getElementById('modelSettings')===box)button.disabled=busy;}
   };

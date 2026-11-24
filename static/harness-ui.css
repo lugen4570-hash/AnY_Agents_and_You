@@ -1132,6 +1132,15 @@ footer {
   background: var(--soft);
   color: var(--fg);
 }
+#feed .msg #debateContinueBtn {
+  margin-top: 8px;
+  display: inline-flex;
+}
+#feed .msg.sys #debateContinueBtn {
+  display: block;
+  margin: 8px auto 0;
+}
+
 @media (max-width: 680px) {
   .room-onboarding {
     margin: 12px 8px;

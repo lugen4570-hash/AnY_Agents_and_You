@@ -84,6 +84,43 @@ class DebateTests(unittest.TestCase):
         self.assertEqual([(m["speaker"], m["text"]) for m in debate_msgs[:2]],
                          [("codex", "codex 首轮独立看法"), ("claude", "claude 首轮独立看法")])
 
+    def test_opening_round_holds_live_progress_and_posts_until_all_agents_finish(self):
+        progress_written, release_round = threading.Event(), threading.Event()
+        second_round = []
+
+        def caller(ai, prompt, sid, images, mode, room):
+            if "（独立表态）" in prompt:
+                if ai == "codex":
+                    room.push_live(ai, {"live": "首轮实时观点"})
+                    room.post_progress(ai, "首轮中途发帖", [])
+                    room.handle_message(ai, "首轮外部发帖", origin="external")
+                    progress_written.set()
+                release_round.wait(8)
+                return True, f"{ai} 的独立观点", sid or ai, []
+            if "【论道第 2 轮】" in prompt:
+                second_round.append(prompt)
+            return True, f"{ai} 的后续答复\n{debate.READY}", sid or ai, []
+
+        with patch.object(support.R, "ai_caller", caller):
+            self.assertEqual(self.start(min_rounds=2, max_rounds=2)[0], 200)
+            try:
+                self.assertTrue(progress_written.wait(5))
+                reply = support.call("GET", support.rp(self.room, "state"))[1]
+                self.assertIn("codex", reply["running"])
+                self.assertNotIn("codex", reply["live"])
+                with self.room.lock:
+                    self.assertFalse(any("首轮" in m["text"] or m.get("origin") == "debate" for m in self.room.messages))
+            finally:
+                release_round.set()
+            self.assertTrue(support.idle(self.room))
+
+        texts = [m["text"] for m in self.room.messages]
+        self.assertIn("首轮中途发帖", texts)
+        self.assertIn("首轮外部发帖", texts)
+        first = next(m for m in self.room.messages if m["text"] == "codex 的独立观点")
+        self.assertIn("首轮实时观点", first["progress"])
+        self.assertTrue(any("codex 的独立观点" in prompt for prompt in second_round))
+
     def test_agent_can_skip_turn_until_new_objection_while_counting_rounds(self):
         counts = {"codex": 0, "claude": 0}
 

@@ -1061,7 +1061,7 @@ class AnYTerminal(App):
             model = models.get(args[0], {})
             if index == 1 and (model.get("model_supported") or model.get("effort_supported")):
                 hints = model.get("model_labels", {})
-                return {"default": "会话默认模型", **{name: hints.get(name, "模型") for name in model.get("models", [])}}, " "
+                return {"default": "由 Agent 决定", **{name: hints.get(name, "模型") for name in model.get("models", [])}}, " "
             if index == 2 and model.get("effort_supported"):
                 model_id = model.get("default_model") if args[1] == "default" else args[1]
                 efforts = model.get("efforts_by_model", {}).get(model_id, [])

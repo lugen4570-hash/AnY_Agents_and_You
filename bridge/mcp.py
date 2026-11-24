@@ -182,7 +182,8 @@ def call_room_tool(rid: str, ai: str, name: str, args: dict[str, Any]) -> str:
         m = r.post_progress(ai, str(args.get("text") or ""), atts)
         if m is None and not errs:
             raise ToolError("没写内容也没给文件")
-        return ("发出去了" + ("（%d 个文件）" % len(atts) if atts else "")) + ("；没发成：" + "；".join(errs) if errs else "")
+        status = "已暂存，盲发轮结束后随发言公开" if m and m.get("deferred") else "发出去了"
+        return (status + ("（%d 个文件）" % len(atts) if atts else "")) + ("；没发成：" + "；".join(errs) if errs else "")
     if name == "board":
         op = str(args.get("op") or "")
         ids = [int(x) for x in args.get("ids") or [] if isinstance(x, int) or str(x).isdigit()]

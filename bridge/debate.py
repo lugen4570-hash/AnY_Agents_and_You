@@ -161,6 +161,7 @@ def run(room):
                         return
                     participants = list(state["participants"])
                     tags = [(ai, room.job_tag(ai)) for ai in participants]
+                    room.state["debate_blind_posts"] = {ai: [] for ai in participants}
                     state["speaker"] = "、".join(participants)
                     room.save_meta()
                 turn = _blind_turn_prompt(state, rounds)
@@ -186,6 +187,7 @@ def run(room):
                 if errors:
                     raise errors[0]
                 with room.lock:
+                    posts = room.state.pop("debate_blind_posts")
                     if room.closed or room.state["debate_cancelled"] or any(results.get(ai) is None for ai in participants):
                         return
                     for ai in participants:
@@ -193,6 +195,8 @@ def run(room):
                         if res["skipped"]:
                             room.system_note("%s 第 %d 轮无异议，跳过发言" % (ai, rounds + 1))
                         else:
+                            for text, attachments in posts[ai]:
+                                room.post_progress(ai, text, attachments)
                             room.add_message(ai, res["text"], to_user=False, origin="debate", progress=res.get("progress"))
                         ready = ready and (res["ready"] or res["skipped"])
             else:
@@ -236,6 +240,7 @@ def run(room):
         room.system_note("论道运行失败：%s" % error)
     finally:
         with room.lock:
+            room.state.pop("debate_blind_posts", None)
             if room.state["debate_cancelled"]:
                 status = "cancelled"
             state.update(status=status, speaker=None)

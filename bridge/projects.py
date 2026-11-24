@@ -6,6 +6,7 @@ import threading
 import uuid
 
 from .common import LOG_DIR, PROJECT, read_json, write_json
+from .workspace import git
 
 LOCK = threading.RLock()
 
@@ -39,22 +40,81 @@ def listing(conversations):
             if pid not in result:
                 wd = r["workdir"]
                 result[pid] = {"id": pid, "name": os.path.basename(wd.rstrip("\\/")) or wd, "workdir": wd}
-        return list(result.values())
+        return [dict(p, workdirs=p.get("workdirs") or [p["workdir"]]) for p in result.values()]
 
 
-def create(name, workdir):
+def _settings(name, workdir, workdirs, existing=()):
     name = str(name or "").strip()[:60]
-    wd = os.path.normpath(os.path.expandvars(os.path.expanduser(str(workdir or "").strip().strip('"'))))
-    if not name or not os.path.isabs(wd) or not os.path.isdir(wd):
+    if workdirs is None:
+        workdirs = [workdir]
+    if not isinstance(workdirs, list) or not workdirs or any(not isinstance(wd, str) for wd in workdirs):
+        raise ValueError("请填写至少一个工作文件夹")
+    known = {os.path.normcase(wd) for wd in existing}
+    folders: dict[str, str] = {}
+    for value in workdirs:
+        raw = value.strip().strip('"')
+        if not raw:
+            raise ValueError("请填写工作文件夹完整路径")
+        wd = os.path.normpath(os.path.expandvars(os.path.expanduser(raw)))
+        key = os.path.normcase(wd)
+        if not os.path.isabs(wd) or (key not in known and not os.path.isdir(wd)):
+            raise ValueError("工作文件夹不存在：" + wd)
+        folders.setdefault(key, wd)
+    if not name:
         raise ValueError("请填写项目名称和存在的工作文件夹完整路径")
+    paths = list(folders.values())
+    return {"name": name, "workdir": paths[0], "workdirs": paths}
+
+
+def create(name, workdir=None, workdirs=None):
+    settings = _settings(name, workdir, workdirs)
     with LOCK:
         path = os.path.join(LOG_DIR, "projects.json")
         saved = read_json(path) or []
-        p = {"id": uuid.uuid4().hex, "name": name, "workdir": wd}
+        p = {"id": uuid.uuid4().hex, **settings}
         saved.append(p)
         os.makedirs(LOG_DIR, exist_ok=True)
         write_json(path, saved)
         return p
+
+
+def update(pid, name, workdirs, conversations):
+    with LOCK:
+        project = next((p for p in listing(conversations) if p["id"] == pid), None)
+        if project is None:
+            return None
+        settings = _settings(name, None, workdirs, project["workdirs"])
+        path = os.path.join(LOG_DIR, "projects.json")
+        saved = {p["id"]: p for p in read_json(path) or []}
+        saved[pid] = {**project, **settings}
+        os.makedirs(LOG_DIR, exist_ok=True)
+        write_json(path, list(saved.values()))
+        return saved[pid]
+
+
+def workspaces(project):
+    folders = project.get("workdirs") or [project["workdir"]]
+    result = {os.path.normcase(wd): {"path": wd, "branch": ""} for wd in folders if os.path.isdir(wd)}
+    for folder in list(result.values()):
+        cwd = folder["path"]
+        try:
+            head = git(["symbolic-ref", "--quiet", "--short", "HEAD"], cwd, check=False)
+            if head.returncode == 0:
+                folder["branch"] = os.fsdecode(head.stdout).rstrip("\r\n")
+            entries = git(["worktree", "list", "--porcelain", "-z"], cwd)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            continue
+        for entry in entries.split(b"\0\0"):
+            fields = entry.split(b"\0")
+            if not fields[0].startswith(b"worktree ") or b"bare" in fields:
+                continue
+            wd = os.path.normpath(os.fsdecode(fields[0].removeprefix(b"worktree ")))
+            if not os.path.isabs(wd) or not os.path.isdir(wd) or any(f.startswith(b"prunable") for f in fields):
+                continue
+            branch_prefix = b"branch refs/heads/"
+            branch = next((os.fsdecode(f.removeprefix(branch_prefix)) for f in fields if f.startswith(branch_prefix)), "")
+            result.setdefault(os.path.normcase(wd), {"path": wd, "branch": branch})
+    return list(result.values())
 
 
 def delete(pid, conversations=None):
