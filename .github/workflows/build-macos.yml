@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install CLI with fresh managed Python and run any --help
+        run: python packaging/smoke_cli_install.py
       - name: Build AnY.app, ZIP and DMG from clean archive
         run: |
           python tests/test_macos_distribution.py

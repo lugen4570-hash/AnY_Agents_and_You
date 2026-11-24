@@ -1,6 +1,6 @@
 [package]
 name = "any-desktop"
-version = "2.8.21"
+version = "2.8.22"
 description = "AnY Tauri 2 Desktop Shell"
 edition = "2021"
 

@@ -1,6 +1,9 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $BaseUrl = 'https://lugen4570-hash.github.io/AnY_Agents_and_You/'
+if ($env:ANY_CLI_TEST_SOURCE -match '^http://127\.0\.0\.1:[0-9]+/$') {
+  $BaseUrl = $env:ANY_CLI_TEST_SOURCE
+}
 
 function Test-Python311 {
   param([string]$Exe, [string[]]$PrefixArgs = @())
@@ -110,7 +113,7 @@ function Install-Uv {
 }
 
 $installOnly = $args -contains '--install-only'
-$pythonExe = Find-Python311
+$pythonExe = if ($env:ANY_CLI_MANAGED_PYTHON -ne '1') { Find-Python311 }
 
 if (-not $pythonExe) {
   Write-Host '未检测到 Python 3.11+，正在自动配置独立 Python 运行环境…'
@@ -118,7 +121,7 @@ if (-not $pythonExe) {
   if (-not $uv) {
     $uv = Install-Uv
   }
-  & $uv python install 3.12
+  & $uv python install --no-bin --no-registry 3.12
   if ($LASTEXITCODE -ne 0) { throw '安装独立 Python 3.12 环境失败。' }
   $pythonExe = & $uv python find --managed-python 3.12
   if ($LASTEXITCODE -ne 0 -or -not $pythonExe) { throw '未能定位已安装的 Python 3.12。' }
@@ -135,7 +138,7 @@ try {
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   $segments = @()
   if ($userPath) { $segments = $userPath -split ';' | Where-Object { $_ } }
-  if (-not ($segments | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
+  if ($env:ANY_CLI_MANAGED_PYTHON -ne '1' -and -not ($segments | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
     $newUserPath = if ($userPath) { "$userPath;$binDir" } else { $binDir }
     [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
   }

@@ -18,6 +18,8 @@ import urllib.request
 from pathlib import Path, PurePosixPath
 
 BASE = "https://lugen4570-hash.github.io/AnY_Agents_and_You/"
+if re.fullmatch(r"http://127\.0\.0\.1:[0-9]+/", os.environ.get("ANY_CLI_TEST_SOURCE", "")):
+    BASE = os.environ["ANY_CLI_TEST_SOURCE"]
 
 
 def install_root():

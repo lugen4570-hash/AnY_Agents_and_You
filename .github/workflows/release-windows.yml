@@ -35,6 +35,8 @@ jobs:
         run: cargo test --locked
 
       - name: Run static checks and core Python regression suites
+        env:
+          PYTHONUTF8: "1"
         run: |
           node --check static/workspace.js
           node --check static/agent-settings.js
@@ -42,7 +44,16 @@ jobs:
           node --check static/connections.js
           python -m mypy bridge
           python -m ruff check bridge tests/test_headless.py packaging/build_release.py
+          $fixtures = Join-Path $env:RUNNER_TEMP 'any-test-harnesses'
+          New-Item -ItemType Directory -Path $fixtures -Force | Out-Null
+          foreach ($tool in @('codex', 'claude')) {
+            Set-Content -LiteralPath (Join-Path $fixtures "$tool.cmd") -Value '@exit /b 88' -Encoding ascii
+          }
+          $env:Path = "$fixtures;$env:Path"
           python tests/run_all.py
+
+      - name: Install CLI with fresh managed Python and run any --help
+        run: python packaging/smoke_cli_install.py
 
       - name: Resolve version and verify tag parity
         id: meta

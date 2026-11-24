@@ -2,6 +2,9 @@
 set -euo pipefail
 
 BASE="https://lugen4570-hash.github.io/AnY_Agents_and_You/"
+if [[ ${ANY_CLI_TEST_SOURCE:-} =~ ^http://127\.0\.0\.1:[0-9]+/$ ]]; then
+  BASE=$ANY_CLI_TEST_SOURCE
+fi
 original_path=${PATH:-}
 uv_dir="${XDG_DATA_HOME:-$HOME/.local/share}/any-cli/bootstrap"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/Library/Frameworks/Python.framework/Versions/Current/bin:${PATH:-/usr/bin:/bin}"
@@ -62,13 +65,13 @@ for arg in "$@"; do
   fi
 done
 
-if ! py=$(find_python); then
+if [[ ${ANY_CLI_MANAGED_PYTHON:-0} == 1 ]] || ! py=$(find_python); then
   echo "未检测到 Python 3.11+，正在自动配置独立 Python 运行环境…"
   if ! uv_bin=$(find_uv); then
     curl -LsSf https://astral.sh/uv/0.13.9/install.sh | UV_UNMANAGED_INSTALL="$uv_dir" sh
     uv_bin="$uv_dir/uv"
   fi
-  "$uv_bin" python install 3.12
+  "$uv_bin" python install --no-bin 3.12
   py=$("$uv_bin" python find --managed-python 3.12)
 fi
 
