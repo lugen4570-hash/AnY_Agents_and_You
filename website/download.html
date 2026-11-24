@@ -7,8 +7,8 @@
   <meta name="description" content="下载 AnY：选择 Windows、macOS 或 CLI 终端方式，装好即可开始多人与多 Agent 协作。">
   <title>下载 AnY</title>
   <link rel="icon" href="assets/logo.svg?v=garden-2">
-  <link rel="stylesheet" href="style.css?v=garden-3">
-  <script src="site.js?v=garden-2" defer></script>
+  <link rel="stylesheet" href="style.css?v=garden-4">
+  <script src="site.js?v=garden-4" defer></script>
 </head>
 <body class="page-download">
   <header class="topbar">
@@ -58,50 +58,99 @@
         </button>
       </div>
 
+      <div class="wechat-tip-banner" data-wechat-banner hidden>
+        <div>
+          <b>检测到手机或微信内置浏览器</b>
+          <p>桌面端安装包需要在电脑上打开安装，请复制链接后发到电脑浏览器打开：</p>
+        </div>
+        <div class="wechat-tip-actions">
+          <code data-share-url>https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html</code>
+          <button type="button" class="copy-command" data-copy-share>复制下载页链接</button>
+        </div>
+      </div>
+
       <div class="platform-panels">
         <div class="platform-panel" id="windows" role="tabpanel" aria-labelledby="tab-windows" data-platform-panel="windows">
           <h2>Windows</h2>
-          <p class="platform-requirements">Windows 10 / 11 · 64 位</p>
-          <a class="dl-primary-btn" href="downloads/AnY-Setup-2.8.20.exe" download>
+          <p class="platform-requirements">Windows 10 / 11 · 64 位 · 内置运行环境</p>
+          <a class="dl-primary-btn" href="downloads/AnY-Setup-2.8.20.exe" download data-dl-target="win-setup" data-guide-trigger="windows">
             <span>下载安装版</span>
             <i aria-hidden="true">↓</i>
           </a>
           <p class="dl-subnote">安装版和便携版都无需额外安装 Python。</p>
           <div class="platform-links">
-            <a href="downloads/AnY-Portable-2.8.20.exe" download>下载便携版 ↓</a>
+            <a href="downloads/AnY-Portable-2.8.20.exe" download data-dl-target="win-portable" data-guide-trigger="windows">下载便携版 ↓</a>
             <a href="support.html#install-win">Windows 安装说明 ↗</a>
           </div>
         </div>
 
         <div class="platform-panel" id="macos" role="tabpanel" aria-labelledby="tab-macos" data-platform-panel="macos" hidden>
           <h2>macOS</h2>
-          <p class="platform-requirements">Apple Silicon / Intel · Python 3.11+</p>
-          <a class="dl-primary-btn" href="downloads/AnY-macOS-Python.zip" download>
-            <span>下载 ZIP 压缩包</span>
-            <i aria-hidden="true">↓</i>
-          </a>
-          <div class="platform-links"><a href="support.html#install-mac">Mac 安装与开启指南 ↗</a></div>
+          <p class="platform-requirements">打开下载的文件，把 AnY 拖到「应用程序」。无需另装 Python。</p>
+          <div class="mac-arch-actions">
+            <a class="dl-primary-btn" href="downloads/AnY-macOS-arm64.dmg" download data-dl-target="mac-arm64" data-guide-trigger="macos">
+              <span>Apple 芯片 (.dmg)</span>
+              <i aria-hidden="true">↓</i>
+            </a>
+            <a class="dl-primary-btn dl-secondary-btn" href="downloads/AnY-macOS-x86_64.dmg" download data-dl-target="mac-x86_64" data-guide-trigger="macos">
+              <span>Intel 芯片 (.dmg)</span>
+              <i aria-hidden="true">↓</i>
+            </a>
+          </div>
+          <p class="dl-subnote">不确定芯片型号？点左上角  苹果菜单 →「关于本机」，看「芯片」（M 系列选 Apple 芯片）或「处理器」（选 Intel 芯片）。</p>
+          <div class="platform-links">
+            <a href="support.html#install-mac">Mac 安装与开启指南 ↗</a>
+            <a href="downloads/AnY-macOS-Python.zip" download data-dl-target="mac-python">高级：Python 源码包 ↓</a>
+          </div>
         </div>
 
         <div class="platform-panel" id="cli" role="tabpanel" aria-labelledby="tab-cli" data-platform-panel="cli" hidden>
           <h2>CLI 终端</h2>
-          <p class="platform-requirements">Python 3.11+</p>
+          <p class="platform-requirements">macOS / Linux / Windows · 复制一行命令即可安装（无需先装 Python）</p>
           <div class="cli-card" data-installer>
             <div class="cli-card-bar">
               <div class="platform-picker" aria-label="终端系统">
                 <button type="button" data-platform="posix" aria-pressed="true">macOS / Linux</button>
-                <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+                <button type="button" data-platform="windows" aria-pressed="false">Windows PowerShell</button>
               </div>
               <button class="copy-command" type="button" data-copy>复制安装命令</button>
             </div>
-            <pre tabindex="0"><code data-command>python3 -c "import urllib.request as u; exec(compile(u.urlopen('https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.py', timeout=30).read(), 'install-cli.py', 'exec'))"</code></pre>
-            <noscript><p class="noscript-tip">Windows 请把开头的 <code>python3</code> 换成 <code>py -3</code> 后执行。</p></noscript>
+            <pre tabindex="0"><code data-command data-windows-command="irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex">curl -fsSL https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.sh | bash</code></pre>
+            <noscript><p class="noscript-tip">Windows 请在 PowerShell 执行 <code>irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex</code>。</p></noscript>
           </div>
           <p class="copy-status" data-copy-status role="status" aria-live="polite"></p>
           <div class="platform-links"><a href="support.html#install-cli">CLI 安装与使用说明 ↗</a></div>
         </div>
       </div>
     </section>
+
+    <dialog class="install-guide-dialog" data-install-guide aria-labelledby="installGuideTitle">
+      <div class="install-guide-head">
+        <h3 id="installGuideTitle" data-guide-title>下载已开始</h3>
+        <button type="button" class="guide-close-btn" data-guide-close aria-label="关闭引导">✕</button>
+      </div>
+      <div class="install-guide-body" data-guide-body="windows" hidden>
+        <p class="guide-lead">安装程序正在下载。由于目前尚未购买商业代码签名证书，首次运行按下面两步放行即可：</p>
+        <ol class="doc-steps">
+          <li>若弹出蓝色「Windows 已保护你的电脑」提示，点击「更多信息」→「仍要运行」。</li>
+          <li>按向导完成安装后，从桌面或开始菜单启动 AnY（升级时历史对话会完整保留）。</li>
+        </ol>
+        <p class="doc-note">如系统提示红色恶意软件警告或企业策略禁止运行，请停止打开并前往 <a href="support.html#install-win">Windows 安装说明</a> 核对校验值。</p>
+      </div>
+      <div class="install-guide-body" data-guide-body="macos" hidden>
+        <p class="guide-lead">安装包正在下载。打开 <code>.dmg</code> 后按以下三步完成首次开启：</p>
+        <ol class="doc-steps">
+          <li>双击下载好的 <code>.dmg</code>，把 <b>AnY</b> 图标拖进旁边的「应用程序（Applications）」文件夹。</li>
+          <li>从「应用程序」打开 AnY；因暂未购买苹果商业公证，首次会提示「无法验证开发者」。</li>
+          <li>打开 Mac「系统设置 → 隐私与安全性」，向下滚动找到拦截提示，点击「仍要打开」并输入开机密码即可（此后不再拦截）。</li>
+        </ol>
+        <p class="doc-note">旧版系统也可在「应用程序」中按住 <code>Control</code> 键点击 AnY →「打开」。如遇提示“文件已损坏”，请查看 <a href="support.html#install-mac">Mac 安装与开启指南</a>。</p>
+      </div>
+      <div class="install-guide-foot">
+        <a class="button" href="support.html#install" data-guide-support-link>查看完整图文教程 ↗</a>
+        <button type="button" class="button primary" data-guide-close>我知道了</button>
+      </div>
+    </dialog>
   </main>
 
   <footer class="footer wrap">

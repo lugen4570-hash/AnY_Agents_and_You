@@ -6,6 +6,16 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/pages.yml"
+      - ".github/workflows/build-macos.yml"
+      - "packaging/**"
+      - "bridge/**"
+      - "static/**"
+      - "desktop_shell/**"
+      - "desktop_launcher.py"
+      - "index.html"
+      - "roundtable.py"
+      - "roundtable.icns"
+      - "pyproject.toml"
   workflow_dispatch:
 
 permissions:
@@ -19,13 +29,23 @@ concurrency:
 
 jobs:
   build:
+    outputs:
+      ready: ${{ steps.version.outputs.ready }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - id: version
+        shell: pwsh
+        run: |
+          $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json
+          $source = (Select-String '^VERSION = "(.*)"' bridge/version.py).Matches[0].Groups[1].Value
+          "ready=$($manifest.version -eq $source)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
       - uses: actions/setup-python@v5
+        if: steps.version.outputs.ready == 'true'
         with:
           python-version: "3.12"
       - name: Assemble site
+        if: steps.version.outputs.ready == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,6 +53,82 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path _site/downloads | Out-Null
           Copy-Item website/* _site -Recurse -Force
+
+          $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json
+          $version = $manifest.version
+          $releaseJson = gh release view "v$version" --repo "${{ github.repository }}" --json tagName,assets 2>$null
+          if ($LASTEXITCODE -ne 0 -or -not $releaseJson) {
+            throw "Release v$version is unavailable; aborting Pages deployment to preserve the live site."
+          }
+          $release = $releaseJson | ConvertFrom-Json
+          $releaseAssets = @{}
+          foreach ($asset in $release.assets) {
+            $releaseAssets[$asset.name] = $asset
+          }
+
+          gh release download "v$version" --repo "${{ github.repository }}" `
+            --pattern "AnY-Setup-$version.exe" --pattern "AnY-Portable-$version.exe" `
+            --dir _site/downloads --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Release downloads failed for v$version" }
+
+          $installer = "_site/downloads/AnY-Setup-$version.exe"
+          $portable = "_site/downloads/AnY-Portable-$version.exe"
+          if (-not (Test-Path $installer) -or -not (Test-Path $portable)) {
+            throw "Windows installer or portable executable missing from Release v$version"
+          }
+          if ((Get-Item $installer).Length -ne [long]$manifest.size -or
+              (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256.ToLowerInvariant()) {
+            throw "Installer does not match update.json"
+          }
+
+          $checksumMap = @{}
+          if ($releaseAssets.ContainsKey("SHA256SUMS-$version.txt")) {
+            $sumsDir = Join-Path $env:RUNNER_TEMP "any-sums"
+            New-Item -ItemType Directory -Force -Path $sumsDir | Out-Null
+            gh release download "v$version" --repo "${{ github.repository }}" `
+              --pattern "SHA256SUMS-$version.txt" --dir $sumsDir --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download SHA256SUMS-$version.txt" }
+            foreach ($line in Get-Content (Join-Path $sumsDir "SHA256SUMS-$version.txt")) {
+              if ($line -match '^([0-9a-fA-F]{64})\s+(.+)$') {
+                $checksumMap[$Matches[2].Trim()] = $Matches[1].ToLowerInvariant()
+              }
+            }
+          }
+          $portableHash = (Get-FileHash $portable -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($checksumMap.ContainsKey("AnY-Portable-$version.exe") -and $checksumMap["AnY-Portable-$version.exe"] -ne $portableHash) {
+            throw "Portable executable does not match SHA256SUMS-$version.txt"
+          }
+
+          $macDmgManifest = @{}
+          foreach ($arch in @('arm64', 'x86_64')) {
+            $stableName = "AnY-macOS-$arch.dmg"
+            $dest = "_site/downloads/$stableName"
+            $verName = "AnY-$version-macOS-$arch.dmg"
+            gh release download "v$version" --repo "${{ github.repository }}" --pattern $verName --dir _site/downloads
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download $verName" }
+            $srcDmg = "_site/downloads/$verName"
+            $digest = (Get-FileHash -LiteralPath $srcDmg -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($checksumMap[$verName] -ne $digest) {
+              throw "macOS disk image checksum mismatch against Release sums: $verName"
+            }
+            Move-Item -LiteralPath $srcDmg -Destination $dest
+            "$digest  $stableName`n" | Set-Content -LiteralPath "$dest.sha256" -Encoding utf8NoBOM
+            $dmgSize = (Get-Item -LiteralPath $dest).Length
+            @{
+              app = 'AnY'
+              version = $version
+              url = "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/$stableName"
+              sha256 = $digest
+              size = $dmgSize
+            } | ConvertTo-Json | Set-Content "_site/macos-update-$arch.json" -Encoding utf8NoBOM
+            $macDmgManifest[$arch] = @{
+              filename = $stableName
+              url = "downloads/$stableName"
+              sha256 = $digest
+              size = $dmgSize
+            }
+          }
+
           $cliSources = @(
             'bridge', 'static', 'index.html', 'roundtable.py', 'pyproject.toml', 'README.md', 'LICENSE', 'docs/CLI.md',
             'packaging/member-readme.md', 'packaging/start-member.bat', 'packaging/start-member.command'
@@ -47,47 +143,60 @@ jobs:
             sha256 = (Get-FileHash -LiteralPath $cliArchive -Algorithm SHA256).Hash.ToLowerInvariant()
             size = (Get-Item -LiteralPath $cliArchive).Length
           } | ConvertTo-Json | Set-Content _site/cli/current.json -Encoding utf8NoBOM
-          $macBundle = python packaging/build_macos_python.py
-          if ($LASTEXITCODE -ne 0) { throw "macOS source bundle build failed" }
-          $macArchive = Get-Item -LiteralPath $macBundle
-          if ($macArchive.Name -notmatch '^AnY-(?<version>\d+\.\d+\.\d+)-macOS-Python\.zip$') {
-            throw "Invalid macOS archive name: $($macArchive.Name)"
-          }
+
+          $macName = "AnY-$version-macOS-Python.zip"
+          gh release download "v$version" --repo "${{ github.repository }}" --pattern $macName --dir _site/downloads
+          if ($LASTEXITCODE -ne 0) { throw "macOS source bundle download failed" }
+          $macArchive = Get-Item -LiteralPath "_site/downloads/$macName"
+          $macHash = (Get-FileHash -LiteralPath $macArchive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($checksumMap[$macName] -ne $macHash) { throw 'macOS source bundle checksum mismatch' }
           @{
             app = 'AnY'
-            version = $Matches.version
+            version = $version
             url = "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/$($macArchive.Name)"
-            sha256 = (Get-FileHash -LiteralPath $macBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256 = $macHash
             size = $macArchive.Length
           } | ConvertTo-Json | Set-Content _site/macos-update.json -Encoding utf8NoBOM
-          Copy-Item -LiteralPath $macBundle -Destination _site/downloads/
-          Copy-Item -LiteralPath $macBundle -Destination _site/downloads/AnY-macOS-Python.zip
-          $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json
-          $version = $manifest.version
-          # Publish an update manifest only when its exact installer is available and verified.
-          gh release view "v$version" --repo "${{ github.repository }}" --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            gh release download "v$version" --repo "${{ github.repository }}" `
-              --pattern "AnY-Setup-$version.exe" --pattern "AnY-Portable-$version.exe" `
-              --dir _site/downloads --clobber
-            if ($LASTEXITCODE -ne 0) { throw "Release downloads failed for v$version" }
-            $installer = "_site/downloads/AnY-Setup-$version.exe"
-            if (-not (Test-Path $installer)) { throw "Installer missing from Release v$version" }
-            if ((Get-Item $installer).Length -ne [long]$manifest.size -or
-                (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256.ToLowerInvariant()) {
-              throw "Installer does not match update.json"
+          Copy-Item -LiteralPath $macArchive.FullName -Destination _site/downloads/AnY-macOS-Python.zip
+
+          @{
+            version = $version
+            release_tag = "v$version"
+            windows = @{
+              setup = @{
+                filename = "AnY-Setup-$version.exe"
+                url = "downloads/AnY-Setup-$version.exe"
+                release_url = $releaseAssets["AnY-Setup-$version.exe"].url
+                sha256 = $manifest.sha256.ToLowerInvariant()
+                size = [long]$manifest.size
+              }
+              portable = @{
+                filename = "AnY-Portable-$version.exe"
+                url = "downloads/AnY-Portable-$version.exe"
+                release_url = $releaseAssets["AnY-Portable-$version.exe"].url
+                sha256 = $portableHash
+                size = (Get-Item $portable).Length
+              }
             }
-          } else {
-            Write-Warning "Release v$version is unavailable; publishing the website without update.json or downloads."
-            Remove-Item _site/update.json -Force
-            $global:LASTEXITCODE = 0
-          }
+            macos = @{
+              arm64 = $macDmgManifest['arm64']
+              x86_64 = $macDmgManifest['x86_64']
+              python = @{
+                filename = $macArchive.Name
+                url = "downloads/$($macArchive.Name)"
+                sha256 = $macHash
+                size = $macArchive.Length
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content _site/downloads/manifest.json -Encoding utf8NoBOM
       - uses: actions/upload-pages-artifact@v3
+        if: steps.version.outputs.ready == 'true'
         with:
           path: _site
 
   deploy:
     needs: build
+    if: needs.build.outputs.ready == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

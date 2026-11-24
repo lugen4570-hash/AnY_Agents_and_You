@@ -1,6 +1,6 @@
 # AnY 终端客户端
 
-打开 [官网下载页的终端客户端](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html#cli)，选择操作系统并复制命令。需要 Python 3.11 或更新版本。安装命令会创建独立环境并打开 AnY。已有兼容的本机后台时会复用，未运行时会自动启动。再次运行同一条命令会复用已安装版本，也可以运行安装结束时显示的启动文件。
+打开 [官网下载页的终端客户端](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html#cli)，选择操作系统并复制一键安装命令（macOS / Linux 为 `curl ... | bash`，Windows PowerShell 为 `irm ... | iex`）。即使本机尚未安装 Python 3.11+，安装脚本也会自动配置独立运行环境并打开 AnY。已有兼容的本机后台时会复用，未运行时会自动启动。之后在终端直接运行 `any` 即可。
 
 如果已经有源码，在源码目录运行：
 

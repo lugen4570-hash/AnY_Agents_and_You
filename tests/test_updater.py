@@ -34,6 +34,27 @@ class Updates(unittest.TestCase):
             self.assertEqual(updater.status()['state'], 'downloaded')
             self.assertEqual(Path(tmp, archive).read_bytes(), b'macos archive')
 
+    def test_packaged_mac_downloads_its_architecture_dmg(self):
+        payload = b'macos disk image'
+        with patch.object(updater.sys, 'platform', 'darwin'), \
+             patch.object(updater.sys, 'frozen', True, create=True):
+            for arch in ('arm64', 'x86_64'):
+                with self.subTest(arch=arch), tempfile.TemporaryDirectory() as tmp:
+                    manifest = dict(self.manifest(payload), url=updater.DOWNLOAD_ROOT + f'AnY-macOS-{arch}.dmg')
+                    other_arch = 'x86_64' if arch == 'arm64' else 'arm64'
+                    with self.assertRaises(ValueError):
+                        updater.parse_manifest(manifest, macos=True, macos_arch=other_arch)
+                    with patch.object(updater.platform, 'machine', return_value=arch), \
+                         patch.object(updater, 'STATE', {'state': 'idle'}), patch.object(updater, 'RELEASE', None), \
+                         patch.object(updater, '_open', side_effect=[
+                             io.BytesIO(json.dumps(manifest).encode()), io.BytesIO(payload)
+                         ]) as request:
+                        self.assertTrue(updater.check()['macos_dmg'])
+                        request.assert_called_once_with(updater.MACOS_MANIFEST.replace('.json', f'-{arch}.json'))
+                        updater._download(updater.RELEASE, tmp)
+                        self.assertEqual(updater.status()['state'], 'downloaded')
+                        self.assertEqual(Path(tmp, f'AnY-99.0.0-macOS-{arch}.dmg').read_bytes(), payload)
+
     def manifest(self, payload=b'installer'):
         return {'app':'AnY', 'version':'99.0.0',
                 'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-99.0.0.exe',

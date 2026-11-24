@@ -7,8 +7,8 @@
   <meta name="description" content="AnY 站内支持文档：快速入门、Windows / macOS / CLI 安装指南、多 Agent 与伙伴连接教程及常见问题。">
   <title>文档与支持 · AnY</title>
   <link rel="icon" href="assets/logo.svg?v=garden-2">
-  <link rel="stylesheet" href="style.css?v=garden-3">
-  <script src="site.js?v=garden-2" defer></script>
+  <link rel="stylesheet" href="style.css?v=garden-4">
+  <script src="site.js?v=garden-4" defer></script>
 </head>
 <body class="page-support">
   <header class="topbar">
@@ -116,32 +116,26 @@
               </article>
 
               <article class="nested-panel" id="install-mac" data-nested-panel="install-mac" hidden>
-                <h3>macOS 下载、解压与开启（Apple Silicon / Intel）</h3>
+                <h3>在 Mac 上安装 AnY</h3>
                 <div class="mac-doc-flow">
                   <div class="mac-doc-step">
-                    <h4>第一步：检查 Python 版本</h4>
-                    <p>打开 Mac 的「终端」，输入 <code>python3 --version</code> 并回车。看到 Python 3.11 或更新版本即可继续；如果找不到命令或版本过低，请先从 <a href="https://www.python.org/downloads/macos/" target="_blank" rel="noopener noreferrer">Python 官网</a> 安装 macOS 软件包，装完后重新打开终端检查一次。</p>
+                    <h4>第一步　选你的 Mac 版本</h4>
+                    <p>点击屏幕左上角的苹果菜单，选择「关于本机」。看到「芯片 · Apple」就下载 Apple 芯片版，看到「处理器 · Intel」就下载 Intel 版。两版都自带运行环境。</p>
                   </div>
 
                   <div class="mac-doc-step">
-                    <h4>第二步：下载并解压整个文件夹</h4>
-                    <p>在 <a href="download.html#macos">下载中心</a> 获取 macOS 压缩包，在访达「下载」里双击解压。打开解压得到的 <code>AnY</code> 文件夹，保持两个启动脚本（<code>启动 AnY.command</code> 与 <code>构建 AnY 桌面版.command</code>）和旁边的程序文件放在一起：</p>
-                    <pre class="doc-code">AnY/
-  › 启动 AnY.command
-  › 构建 AnY 桌面版.command</pre>
+                    <h4>第二步　拖到「应用程序」</h4>
+                    <p>在 <a href="download.html#macos">下载中心</a> 下载对应版本，双击下载的文件，把 AnY 图标拖到旁边的「应用程序」。</p>
                   </div>
 
                   <div class="mac-doc-step">
-                    <h4>第三步：选择启动方式</h4>
-                    <div class="doc-two-cols">
-                      <div class="mini-box">
-                        <b>浏览器版（最快上手）</b>
-                        <p>直接双击 <code>启动 AnY.command</code>，服务起好后会自动唤起浏览器。使用期间请保留弹出的终端窗口，结束后在应用左下角点击「退出」。</p>
-                      </div>
-                      <div class="mini-box">
-                        <b>本机桌面版（从应用程序打开）</b>
-                        <p>保持联网双击 <code>构建 AnY 桌面版.command</code>，脚本会自动补全依赖并在文件夹下的 <code>dist</code> 目录生成 <code>AnY.app</code>，随后可拖入「应用程序」。</p>
-                      </div>
+                    <h4>第三步　打开 AnY</h4>
+                    <p>在访达的「应用程序」中双击 AnY。如出现开发者验证提醒，打开「系统设置 → 隐私与安全性」，向下找到 AnY 的拦截提示，点「仍要打开」，再按屏幕提示确认。</p>
+                    <div class="mac-security-picture">
+                      <b>系统设置 › 隐私与安全性</b>
+                      <span>安全性</span>
+                      <div><span>已阻止使用「AnY」</span><strong>仍要打开</strong></div>
+                      <small>设置位置示意</small>
                     </div>
                   </div>
 
@@ -156,16 +150,19 @@
                 </div>
                 <div class="doc-callout">
                   <b>Mac 提示未公证无法直接打开？</b>
-                  <p>本机自行构建的应用未经过 Apple 公证流程，首次开启可能出现常规安全提醒，可按 <a href="https://support.apple.com/102445" target="_blank" rel="noopener noreferrer">Apple 官方安全打开指引</a> 处理；如遇损坏或恶意软件警告请停止打开。</p>
+                  <p>此版本尚未经过 Apple 公证。请确认安装包来自 AnY 官网。遇到开发者验证提醒时，可查看 <a href="https://support.apple.com/zh-cn/102445" target="_blank" rel="noopener noreferrer">Apple 官方图文步骤</a>。如遇损坏或恶意软件警告，请停止打开。</p>
                 </div>
+                <details class="doc-callout">
+                  <summary><b>高级方式：从 Python 源码压缩包运行（需 Python 3.11+）</b></summary>
+                  <p>在 <a href="download.html#macos">下载中心</a> 选择「高级：Python 源码包」下载解压后，双击其中的 <code>启动 AnY.command</code>（浏览器版）或 <code>构建 AnY 桌面版.command</code>。</p>
+                </details>
               </article>
 
               <article class="nested-panel" id="install-cli" data-nested-panel="install-cli" hidden>
                 <h3>CLI 终端客户端安装与常用指令</h3>
                 <ol class="doc-steps">
-                  <li>确认本机已安装 Python 3.11 或更新版本。</li>
-                  <li>前往 <a href="download.html#cli">下载中心 · CLI 终端</a>，按你的系统（macOS / Linux 或 Windows）复制一条命令粘贴到终端执行。</li>
-                  <li>首次执行会自动建立独立运行目录并安装所需组件，完成后立即进入 AnY 终端界面；后续重复执行该命令会直接复用已装版本并显示启动文件位置。</li>
+                  <li>前往 <a href="download.html#cli">下载中心 · CLI 终端</a>，选择系统并复制一行安装命令：macOS / Linux 在终端执行 <code>curl ... | bash</code>，Windows 在 PowerShell 执行 <code>irm ... | iex</code>。</li>
+                  <li>若本机尚未安装 Python 3.11+，安装脚本会自动配置独立 Python 运行环境并完成安装；装好后会自动进入终端界面，并把 <code>any</code> 加入常用命令目录方便下次直接输入 <code>any</code> 启动。</li>
                 </ol>
                 <div class="doc-callout">
                   <b>CLI 里顺手的快捷键与指令</b>

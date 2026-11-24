@@ -4,6 +4,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import subprocess
 import sys
@@ -110,20 +111,25 @@ def can_install():
     )
 
 
-def parse_manifest(data, *, macos=False):
+def parse_manifest(data, *, macos=False, macos_arch=None):
     if not isinstance(data, dict) or data.get('app') != 'AnY':
         raise ValueError('更新信息不完整')
     v = str(data.get('version') or '')
     version(v)
     url = str(data.get('url') or '')
-    filename = f'AnY-{v}-macOS-Python.zip' if macos else f'AnY-Setup-{v}.exe'
+    if macos_arch is not None:
+        if not macos or macos_arch not in ('arm64', 'x86_64'):
+            raise ValueError('不支持的 macOS 芯片类型')
+        filename = f'AnY-macOS-{macos_arch}.dmg'
+    else:
+        filename = f'AnY-{v}-macOS-Python.zip' if macos else f'AnY-Setup-{v}.exe'
     if url != DOWNLOAD_ROOT + filename:
         raise ValueError('安装包地址无效')
     sha = str(data.get('sha256') or '').lower()
     size = data.get('size')
     if not re.fullmatch(r'[0-9a-f]{64}', sha) or type(size) is not int or not 0 < size <= MAX_INSTALLER:
         raise ValueError('安装包校验信息无效')
-    return {'version': v, 'url': url, 'sha256': sha, 'size': size, 'macos': macos,
+    return {'version': v, 'url': url, 'sha256': sha, 'size': size, 'macos': macos, 'macos_arch': macos_arch,
             'notes': str(data.get('notes') or '')[:1000]}
 
 
@@ -134,17 +140,23 @@ def check():
         if STATE['state'] in ('downloading', 'installing'):
             return status()
     try:
-        with _open(MACOS_MANIFEST if macos else MANIFEST) as response:
+        macos_arch = platform.machine() if macos and getattr(sys, 'frozen', False) else None
+        manifest = MACOS_MANIFEST if macos else MANIFEST
+        if macos_arch:
+            if macos_arch not in ('arm64', 'x86_64'):
+                raise ValueError('不支持的 macOS 芯片类型')
+            manifest = MACOS_MANIFEST.replace('.json', f'-{macos_arch}.json')
+        with _open(manifest) as response:
             raw = response.read(65537)
         if len(raw) > 65536:
             raise ValueError('更新信息过大')
-        release = parse_manifest(json.loads(raw), macos=macos)
+        release = parse_manifest(json.loads(raw), macos=macos, macos_arch=macos_arch)
         available = version(release['version']) > version(VERSION)
         with LOCK:
             RELEASE = release if available else None
             STATE.update(state='available' if available else 'current', current=VERSION,
                          latest=release['version'], notes=release['notes'], error='', path='', downloaded=0,
-                         speed=0, size=release['size'])
+                         speed=0, size=release['size'], macos_dmg=bool(macos_arch))
             return status()
     except Exception:
         with LOCK:
@@ -392,7 +404,9 @@ def _download(release, directory=None, auto_install=False, busy=None, stop_backe
         total, digest_hex = _hash_file(temp_file)
         if total != release['size'] or digest_hex != release['sha256']:
             raise ValueError('安装包校验失败')
-        if release.get('macos'):
+        if arch := release.get('macos_arch'):
+            name, extension = f"AnY-{release['version']}-macOS-{arch}", '.dmg'
+        elif release.get('macos'):
             name, extension = f"AnY-{release['version']}-macOS-Python", '.zip'
         else:
             name, extension = 'AnY-Setup-' + release['version'], '.exe'

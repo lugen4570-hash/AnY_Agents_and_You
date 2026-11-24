@@ -475,6 +475,44 @@ html:not(.has-js) .stage-tabs { display: none; }
 .platform-panel h2 { margin-bottom: 6px; font: 700 clamp(34px, 5vw, 69px)/1.02 var(--display); letter-spacing: -.06em; }
 .platform-requirements { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
 .dl-primary-btn { border-radius: 999px; min-width: min(236px, 100%); }
+.dl-secondary-btn { background: var(--surface); color: var(--ink); border-color: var(--control-line); }
+.dl-secondary-btn:hover { background: var(--panel); color: var(--ink); }
+.mac-arch-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.wechat-tip-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--control-line);
+  border-radius: 14px;
+  background: var(--garden-paper);
+  color: var(--garden-ink);
+}
+.wechat-tip-banner p { margin: 2px 0 0; font-size: 14px; color: #36564c; }
+.wechat-tip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.wechat-tip-actions code { max-width: 100%; overflow-wrap: anywhere; user-select: all; }
+.install-guide-dialog {
+  width: min(560px, calc(100% - 28px));
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 60px #122d2633;
+}
+.install-guide-dialog::backdrop { background: #10242070; }
+.install-guide-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.install-guide-head h3 { margin: 0; font-size: 20px; }
+.guide-close-btn { border: 1px solid var(--control-line); border-radius: 999px; width: 32px; height: 32px; background: transparent; line-height: 1; }
+.guide-lead { margin-bottom: 10px; }
+.install-guide-body .doc-steps { padding-inline-start: 20px; margin: 0 0 12px; }
+.install-guide-body .doc-steps li + li { margin-top: 6px; }
+.install-guide-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.install-guide-foot .button { background: transparent; color: var(--ink); border-color: var(--control-line); }
+.install-guide-foot .button.primary { background: var(--action); color: var(--action-text); border-color: var(--action); }
 .dl-subnote { margin: 12px 0 0; color: var(--muted); font-size: 14px; }
 .platform-links { display: flex; flex-wrap: wrap; gap: 6px 19px; margin-top: 14px; font-size: 14px; }
 .platform-links a, .doc-steps a, .doc-callout a, .mac-doc-step a { text-decoration: underline; text-underline-offset: 3px; }
@@ -589,3 +627,6 @@ html:not(.has-js) .stage-tabs { display: none; }
   .platform-tile { justify-content: center; gap: 4px; padding: 8px 3px; line-height: 1.35; font-size: 12px; }
   .tile-icon { width: 18px; height: 18px; }
 }
+.mac-security-picture { display: grid; gap: 9px; margin-top: 16px; padding: 16px; border: 1px solid #c6d1de; border-radius: 12px; background: #f1f6fb; color: #23374b; }
+.mac-security-picture > div { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.mac-security-picture strong { padding: 4px 10px; border: 1px solid #a5b8cb; border-radius: 7px; background: #fff; }

@@ -300,7 +300,7 @@ if (installer) {
   const posixCommand = command.textContent;
 
   function selectCliOs(platform) {
-    command.textContent = platform === 'windows' ? posixCommand.replace(/^python3/, 'py -3') : posixCommand;
+    command.textContent = platform === 'windows' ? command.dataset.windowsCommand : posixCommand;
     for (const button of platformButtons) {
       button.setAttribute('aria-pressed', String(button.dataset.platform === platform));
     }
@@ -315,6 +315,88 @@ if (installer) {
   installer.querySelector('[data-copy]').addEventListener('click', () => {
     copyTextWithFeedback(command.textContent, command, status, '已复制。粘贴到终端后按回车即可。', '命令已选中，可手动复制。');
   });
+}
+
+const wechatBanner = document.querySelector('[data-wechat-banner]');
+if (wechatBanner) {
+  const ua = navigator.userAgent || '';
+  if (/MicroMessenger|Android|iPhone|iPad|Mobile/i.test(ua)) {
+    wechatBanner.hidden = false;
+  }
+  const shareUrlEl = wechatBanner.querySelector('[data-share-url]');
+  const copyShareBtn = wechatBanner.querySelector('[data-copy-share]');
+  if (shareUrlEl && window.location.protocol.startsWith('http')) {
+    shareUrlEl.textContent = window.location.href.split('#')[0];
+  }
+  copyShareBtn?.addEventListener('click', () => {
+    copyTextWithFeedback(
+      shareUrlEl?.textContent || window.location.href,
+      shareUrlEl,
+      copyShareBtn,
+      '已复制链接',
+      '请长按链接手动复制',
+    );
+  });
+}
+
+const guideDialog = document.querySelector('[data-install-guide]');
+if (guideDialog) {
+  const guideTitle = guideDialog.querySelector('[data-guide-title]');
+  const guideBodies = [...guideDialog.querySelectorAll('[data-guide-body]')];
+  const guideSupportLink = guideDialog.querySelector('[data-guide-support-link]');
+
+  function openGuide(platform) {
+    for (const body of guideBodies) {
+      body.hidden = body.dataset.guideBody !== platform;
+    }
+    if (guideTitle) {
+      guideTitle.textContent = platform === 'macos' ? 'macOS 下载已开始' : 'Windows 下载已开始';
+    }
+    if (guideSupportLink) {
+      guideSupportLink.href = platform === 'macos' ? 'support.html#install-mac' : 'support.html#install-win';
+    }
+    if (typeof guideDialog.showModal === 'function') {
+      if (!guideDialog.open) guideDialog.showModal();
+    } else {
+      guideDialog.setAttribute('open', '');
+    }
+  }
+
+  for (const trigger of document.querySelectorAll('[data-guide-trigger]')) {
+    trigger.addEventListener('click', () => {
+      openGuide(trigger.dataset.guideTrigger);
+    });
+  }
+  for (const closeBtn of guideDialog.querySelectorAll('[data-guide-close]')) {
+    closeBtn.addEventListener('click', () => {
+      if (typeof guideDialog.close === 'function') guideDialog.close();
+      else guideDialog.removeAttribute('open');
+    });
+  }
+  guideDialog.addEventListener('click', (event) => {
+    if (event.target === guideDialog && typeof guideDialog.close === 'function') {
+      guideDialog.close();
+    }
+  });
+}
+
+if (dlSelector) {
+  fetch('downloads/manifest.json', { cache: 'no-store' })
+    .then((resp) => (resp.ok ? resp.json() : null))
+    .then((manifest) => {
+      if (!manifest) return;
+      const setupBtn = document.querySelector('[data-dl-target="win-setup"]');
+      const portableBtn = document.querySelector('[data-dl-target="win-portable"]');
+      const armBtn = document.querySelector('[data-dl-target="mac-arm64"]');
+      const intelBtn = document.querySelector('[data-dl-target="mac-x86_64"]');
+      const pyBtn = document.querySelector('[data-dl-target="mac-python"]');
+      if (setupBtn && manifest.windows?.setup?.url) setupBtn.href = manifest.windows.setup.url;
+      if (portableBtn && manifest.windows?.portable?.url) portableBtn.href = manifest.windows.portable.url;
+      if (armBtn && manifest.macos?.arm64?.url) armBtn.href = manifest.macos.arm64.url;
+      if (intelBtn && manifest.macos?.x86_64?.url) intelBtn.href = manifest.macos.x86_64.url;
+      if (pyBtn && manifest.macos?.python?.url) pyBtn.href = manifest.macos.python.url;
+    })
+    .catch(() => {});
 }
 
 const docSearch = document.querySelector('[data-doc-search]');

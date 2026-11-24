@@ -18,8 +18,9 @@
     const box=document.getElementById('updateContent');if(!box)return;
     let body='<p>当前版本：'+esc(data.current||'未知')+'</p>';
     if(data.state==='available'){
-      const label=data.macos?'下载 macOS ZIP':(data.can_install?'下载并更新':'下载安装程序');
-      const hint=data.macos?'解压新版后运行「构建 AnY 桌面版.command」，退出 AnY 后替换 AnY.app。浏览器版可以直接从新目录启动。'
+      const label=data.macos_dmg?'下载 Mac 安装包':(data.macos?'下载 macOS ZIP':(data.can_install?'下载并更新':'下载安装程序'));
+      const hint=data.macos_dmg?'退出 AnY，打开安装包，把新版拖到「应用程序」并选择替换。'
+        :data.macos?'解压新版后运行「构建 AnY 桌面版.command」，退出 AnY 后替换 AnY.app。浏览器版可以直接从新目录启动。'
         :(data.can_install?'更新会在任务结束后关闭并重新打开 AnY，会话数据会保留。':'下载后请关闭 AnY，再手动运行安装程序。原来使用解压版时，请在安装向导中选择原来的程序文件夹，以继续使用其中的 data 数据。');
       body+='<p>发现新版本 '+esc(data.latest)+'。</p>'+(data.notes?'<p>'+esc(data.notes)+'</p>':'')+'<button id="updateDownload" class="pri">'+label+'</button><p class="hint">'+hint+'</p>';
     }
@@ -31,7 +32,8 @@
       body+='<p>正在下载… '+pct+'%'+(parts.length?'（'+parts.join(' · ')+'）':'')+'</p>';
     }
     else if(data.state==='downloaded'){
-      const next=data.macos?'<p>请解压 ZIP。桌面版可双击其中的构建脚本，退出 AnY 后替换应用。</p>'
+      const next=data.macos_dmg?'<p>请退出 AnY，然后打开下载的文件，把 AnY 拖到「应用程序」并选择替换。</p>'
+        :data.macos?'<p>请解压 ZIP。桌面版可双击其中的构建脚本，退出 AnY 后替换应用。</p>'
         :(data.can_install?'<button id="updateInstall" class="pri">安装并重新打开</button>':'<p>请关闭 AnY 后手动运行：</p>');
       body+='<p>下载完成，文件已校验。</p>'+(data.error?'<p role="alert">'+esc(data.error)+'</p>':'')+next+'<p><code>'+esc(data.path)+'</code></p>';
     }

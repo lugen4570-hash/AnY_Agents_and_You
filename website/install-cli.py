@@ -97,6 +97,35 @@ def write_launcher(root, interpreter):
     return launcher
 
 
+def _find_uv():
+    found = shutil.which("uv")
+    if found:
+        return found
+    if sys.platform == "win32":
+        candidates = (install_root() / "bootstrap" / "uv.exe", Path.home() / ".local" / "bin" / "uv.exe")
+    else:
+        data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+        candidates = (data / "any-cli" / "bootstrap" / "uv", Path.home() / ".local" / "bin" / "uv")
+    return next((str(candidate) for candidate in candidates if candidate.is_file()), None)
+
+
+def _setup_venv(generation, interpreter):
+    venv_dir = generation / "venv"
+    source_dir = generation / "AnY-CLI"
+    try:
+        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+        subprocess.run([str(interpreter), "-m", "pip", "--disable-pip-version-check", "install", "-e", ".[cli]"],
+                       cwd=source_dir, check=True, stdout=sys.stderr)
+    except subprocess.CalledProcessError:
+        uv_bin = _find_uv()
+        if not uv_bin:
+            raise
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        subprocess.run([uv_bin, "venv", "--python", sys.executable, str(venv_dir)], check=True)
+        subprocess.run([uv_bin, "pip", "install", "--python", str(interpreter), "-e", ".[cli]"],
+                       cwd=source_dir, check=True, stdout=sys.stderr)
+
+
 def install(root):
     root.mkdir(parents=True, exist_ok=True)
     commit, digest, size = source_manifest()
@@ -105,17 +134,19 @@ def install(root):
         if interpreter.is_file() and ready.read_text(encoding="utf-8") == digest:
             return interpreter, write_launcher(root, interpreter)
 
-    print("正在下载并安装 AnY CLI…", flush=True)
+    print("正在下载并安装 AnY CLI…", file=sys.stderr, flush=True)
     bundle = download(f"cli/any-cli-{commit}.tar.gz", size)
     if len(bundle) != size or hashlib.sha256(bundle).hexdigest() != digest:
         raise ValueError("CLI 安装文件的校验未通过，请重试。")
     generation = Path(tempfile.mkdtemp(prefix=f"release-{commit[:12]}-", dir=root))
-    extract_source(bundle, generation)
     interpreter = python_in(generation)
-    subprocess.run([sys.executable, "-m", "venv", str(generation / "venv")], check=True)
-    subprocess.run([str(interpreter), "-m", "pip", "--disable-pip-version-check", "install", "-e", ".[cli]"],
-                   cwd=generation / "AnY-CLI", check=True)
-    atomic_text(generation / ".complete", digest)
+    try:
+        extract_source(bundle, generation)
+        _setup_venv(generation, interpreter)
+        atomic_text(generation / ".complete", digest)
+    except BaseException:
+        shutil.rmtree(generation, ignore_errors=True)
+        raise
     return interpreter, write_launcher(root, interpreter)
 
 
@@ -125,10 +156,14 @@ def main(argv=None):
         return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--install-only", action="store_true", help="只安装，安装后不打开聊天界面")
+    parser.add_argument("--print-launcher", action="store_true", help="安装并输出启动脚本路径")
     args = parser.parse_args(argv)
     try:
         root = Path(os.environ.get("ANY_CLI_INSTALL_DIR") or os.environ.get("COJAM_CLI_INSTALL_DIR") or install_root()).expanduser().resolve()
         interpreter, launcher = install(root)
+        if args.print_launcher:
+            print(launcher, flush=True)
+            return 0
         print(f"AnY CLI 已就绪。下次也可运行：{launcher}", flush=True)
         if not args.install_only:
             return subprocess.call([str(interpreter), "-I", "-m", "bridge.cli"])

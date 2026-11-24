@@ -50,5 +50,14 @@ PY
 codesign --force --deep --sign - dist/AnY.app
 codesign --verify --deep --strict dist/AnY.app
 ditto -c -k --sequesterRsrc --keepParent dist/AnY.app "dist/AnY-${version}-macOS-${arch}.zip"
+dmg_stage=$(mktemp -d "${TMPDIR:-/tmp}/any-dmg-XXXXXX")
+trap 'rm -rf "$dmg_stage"' EXIT
+ditto dist/AnY.app "$dmg_stage/AnY.app"
+ln -s /Applications "$dmg_stage/Applications"
+dmg_path="dist/AnY-${version}-macOS-${arch}.dmg"
+hdiutil create -volname "AnY ${version}" -srcfolder "$dmg_stage" -ov -format UDZO "$dmg_path"
+hdiutil verify "$dmg_path"
+(cd dist && shasum -a 256 "AnY-${version}-macOS-${arch}.zip" "${dmg_path##*/}") > "dist/SHA256SUMS-macOS-${arch}.txt"
 echo "构建完成：$PWD/dist/AnY.app"
 echo "应用压缩包：$PWD/dist/AnY-${version}-macOS-${arch}.zip"
+echo "安装镜像：$PWD/$dmg_path"

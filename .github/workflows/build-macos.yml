@@ -1,7 +1,8 @@
-name: Verify macOS desktop builds
+name: Build macOS desktop installers
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -18,16 +19,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build from the same ZIP provided by the website
+      - name: Build AnY.app, ZIP and DMG from clean archive
         run: |
           python tests/test_macos_distribution.py
           archive=$(python packaging/build_macos_python.py)
           ditto -x -k "$archive" "$RUNNER_TEMP/mac-package"
           "$RUNNER_TEMP/mac-package/AnY/构建 AnY 桌面版.command"
-      - name: Verify signatures and start the packaged backend
+      - name: Verify signatures, DMG mount and packaged backend
         working-directory: ${{ runner.temp }}/mac-package/AnY/dist
         run: |
           codesign --verify --deep --strict AnY.app
+          dmg=(AnY-*-macOS-*.dmg)
+          if [[ ${#dmg[@]} -ne 1 || ! -f "${dmg[0]}" ]]; then
+            echo "Expected exactly one DMG artifact" >&2
+            exit 1
+          fi
+          mount_dir=$(mktemp -d "$RUNNER_TEMP/dmg-mount-XXXXXX")
+          hdiutil attach "${dmg[0]}" -mountpoint "$mount_dir" -nobrowse -readonly
+          trap 'hdiutil detach "$mount_dir" -force >/dev/null 2>&1 || true' EXIT
+          test -d "$mount_dir/AnY.app"
+          test "$(readlink "$mount_dir/Applications")" = /Applications
+          app="$mount_dir/AnY.app"
+          expected_arch=${{ matrix.runner == 'macos-15' && 'arm64' || 'x86_64' }}
+          test "$(lipo -archs "$app/Contents/MacOS/AnY")" = "$expected_arch"
+          test "$(lipo -archs "$app/Contents/MacOS/AnYCore")" = "$expected_arch"
+          version=$(cd "$GITHUB_WORKSPACE" && python -c 'from bridge.version import VERSION; print(VERSION)')
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          codesign --verify --deep --strict "$mount_dir/AnY.app"
+          hdiutil detach "$mount_dir"
+          trap - EXIT
           export ROUNDTABLE_PORT=18765 ROUNDTABLE_NO_BROWSER=1
           export ROUNDTABLE_LOG_DIR="$RUNNER_TEMP/any-data"
           AnY.app/Contents/MacOS/AnYCore > "$RUNNER_TEMP/core.log" 2>&1 &
@@ -39,7 +59,20 @@ jobs:
           curl --max-time 3 -fsS "$base/static/workspace.js" -o "$RUNNER_TEMP/workspace.js"
           curl --max-time 3 -fsS "$base/static/member-connector.zip" -b "$RUNNER_TEMP/any-cookies" -o "$RUNNER_TEMP/member.zip"
           unzip -tq "$RUNNER_TEMP/member.zip"
+          token=$(sed -n 's/.*name="rt-token" content="\([^"]*\)".*/\1/p' "$RUNNER_TEMP/any.html")
+          curl --max-time 3 -fsS -X POST "$base/api/server/exit" -b "$RUNNER_TEMP/any-cookies" -H "X-RT-Token: $token"
+          for _ in {1..50}; do
+            kill -0 "$core_pid" 2>/dev/null || break
+            sleep 0.2
+          done
+          ! kill -0 "$core_pid" 2>/dev/null
+          wait "$core_pid"
+          trap - EXIT
       - uses: actions/upload-artifact@v4
         with:
-          name: AnY-desktop-${{ matrix.runner }}
-          path: ${{ runner.temp }}/mac-package/AnY/dist/AnY-*-macOS-*.zip
+          name: any-macos-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/mac-package/AnY/dist/AnY-*-macOS-*.dmg
+            ${{ runner.temp }}/mac-package/AnY/dist/AnY-*-macOS-*.zip
+            ${{ runner.temp }}/mac-package/AnY/dist/SHA256SUMS-macOS-*.txt
+          if-no-files-found: error
