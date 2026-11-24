@@ -53,7 +53,7 @@ def main():
                 command = f'irm {base}install-cli.ps1 | iex; if (-not $?) {{ exit 1 }}; any --help; exit $LASTEXITCODE'
                 args = ["powershell.exe", "-NoProfile", "-Command", command]
             else:
-                command = f'curl -fsSL {base}install-cli.sh | bash -s -- --install-only && "$HOME/.local/bin/any" --help'
+                command = f'export PATH="$HOME/.local/bin:$PATH"; curl -fsSL {base}install-cli.sh | bash -s -- --install-only && any --help'
                 args = ["bash", "-o", "pipefail", "-c", command]
             output = subprocess.check_output(args, env=env, stdin=subprocess.DEVNULL)
             if b"usage:" not in output.lower() or not list((root / "managed-python").glob("cpython-3.12*")):

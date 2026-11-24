@@ -80,6 +80,7 @@ trap 'rm -f "$tmp_py"' EXIT
 curl -fsSL "${BASE}install-cli.py" -o "$tmp_py"
 
 launcher=$("$py" "$tmp_py" --print-launcher)
+rm -f "$tmp_py"
 
 mkdir -p "$HOME/.local/bin"
 shortcut="$HOME/.local/bin/any"
