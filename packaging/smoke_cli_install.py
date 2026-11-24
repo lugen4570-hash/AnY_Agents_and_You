@@ -58,7 +58,7 @@ def main():
             output = subprocess.check_output(args, env=env, stdin=subprocess.DEVNULL)
             if b"usage:" not in output.lower() or not list((root / "managed-python").glob("cpython-3.12*")):
                 raise SystemExit("Managed Python or any --help output missing")
-            print(output.decode("utf-8", errors="replace"))
+            print("AnY CLI help verified with a fresh managed Python runtime.")
         finally:
             server.shutdown()
             server.server_close()
