@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.19",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.19.exe",
-  "sha256": "83442904c17d4aba273cce1c20e192856e98d16be84c8e95feac9dd50d9e841c",
-  "size": 13452900,
-  "notes": "AnY 2.8.19：全面更名为 AnY（Agents and You），优化零残留退出、斜杠命令与安装升级体验。"
+  "version": "2.8.20",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.20.exe",
+  "sha256": "a976702ef1743eb6d9d4b78f3d7179c0f2c1dca00db2d6bfbb3f1ac3fa27793e",
+  "size": 13457695,
+  "notes": "AnY 2.8.20：支持项目改名与多目录/Worktree 分支选择、将教学集成到设置、「继续论道」移至最近论道最后一条消息下，并移除新建会话中的默认模型名称。"
 }
