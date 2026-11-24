@@ -2,6 +2,11 @@ name: Build AnY (Windows)
 
 on:
   workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Optional existing release tag to rebuild
+        required: false
+        type: string
   workflow_call:
 
 permissions:
@@ -11,11 +16,15 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
     defaults:
       run:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_tag || github.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -35,8 +44,6 @@ jobs:
         run: cargo test --locked
 
       - name: Run static checks and core Python regression suites
-        env:
-          PYTHONUTF8: "1"
         run: |
           node --check static/workspace.js
           node --check static/agent-settings.js
@@ -57,17 +64,21 @@ jobs:
 
       - name: Resolve version and verify tag parity
         id: meta
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
         run: |
           $ver = (python -c "from bridge.version import VERSION; print(VERSION)").Trim()
-          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$ver") {
-            throw "Git tag ${{ github.ref_name }} does not match bridge/version.py ($ver)"
+          if ($env:SOURCE_TAG -and $env:SOURCE_TAG -ne "v$ver") {
+            throw "Git tag $env:SOURCE_TAG does not match bridge/version.py ($ver)"
           }
           "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Build Windows core (onefile + onedir) and Tauri 2 desktop shell
         run: |
           .\build_exe.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows core build failed' }
           .\build_desktop.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows desktop shell build failed' }
           python packaging/build_release.py
 
       - name: Compile TEST_BUILD and production installers and sign before hashing
