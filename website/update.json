@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.27",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.27.exe",
-  "sha256": "860e8deef9b80958c7ffe248bba90866320e48744e1b9f809f7f58f62e24eade",
-  "size": 13370698,
-  "notes": "AnY 2.8.27：提供 Apple 芯片和 Intel 芯片 Mac 安装包，以及 macOS、Linux 和 Windows 的 CLI 一键安装。"
+  "version": "2.8.28",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.28.exe",
+  "sha256": "f47867629996aa91ee2fd02e36463d88734657d8a459897feade1a918569a6b2",
+  "size": 13369563,
+  "notes": "AnY 2.8.28：输入 / 即可打开命令菜单，桌面聊天区移除顶部横幅，侧栏分为会话和联系人视图。"
 }
