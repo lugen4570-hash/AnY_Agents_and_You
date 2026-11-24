@@ -50,6 +50,7 @@ roomList.addEventListener('click',e=>{
 });
 function resetRoomView(){
   hideMenu();selectionTools.hidden=true;setMeetingSide(false);
+  if(typeof closeComposerSlashMenu==='function')closeComposerSlashMenu();
   since=0;recallCount=0;curMeeting=undefined;S=null;feed.innerHTML='';
   for(const k in msgById)delete msgById[k];
   restoreDraft();lastRun={running:[],queued:0};

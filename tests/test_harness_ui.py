@@ -36,7 +36,42 @@ class HarnessUiTests(unittest.TestCase):
         ):
             self.assertIn(marker, html, f'Missing marker {marker} in index.html')
         self.assertNotIn('id="toolBox"', html)
+        self.assertNotIn('id="roomSummary"', html)
+        self.assertNotIn('id="roomMemberFaces"', html)
+        self.assertNotIn('id="sessionBrief"', html)
+        for marker in ('id="navSessionsButton"', 'id="navContactsButton"', 'id="navSessions"', 'id="contactsSection"'):
+            self.assertIn(marker, html, f'Missing sidebar marker {marker} in index.html')
+        studio_css = (ROOT / 'static' / 'studio.css').read_text(encoding='utf-8')
+        self.assertIn('.chat-toolbar .room-heading,.chat-toolbar #wd{display:none}', studio_css)
+        self.assertIn('.nav-switch{', studio_css)
         self.assertNotIn('data-inline-tools', (ROOT / 'static' / 'harness-ui.js').read_text(encoding='utf-8'))
+
+    def test_slash_commands_render_before_tools_and_escape_cancels_refresh(self):
+        self.run_node(r'''
+const fs=require('fs'), vm=require('vm'), assert=require('assert/strict');
+const src=fs.readFileSync('static/harness-ui.js','utf8');
+const events={};
+const input={value:'/',selectionStart:1,addEventListener(k,f){events[k]=f}};
+const menu={hidden:true,innerHTML:'',addEventListener(){}};
+let requests=0, finish;
+const ctx=vm.createContext({esc:String, RID:'room', S:{meeting:'room',participants:['codex'],ais:{codex:{}}}, CONTACTS:[],
+  feed:{querySelectorAll:()=>[]},
+  document:{documentElement:{dataset:{}},getElementById:id=>({ta:input,slashMenu:menu}[id]),
+    querySelector:()=>null,querySelectorAll:()=>[],addEventListener(k,f){events['document:'+k]=f}},
+  api:()=>'/tools', fetch:()=>{requests++;return new Promise(resolve=>{finish=resolve})}});
+vm.runInContext(src,ctx);
+events.input();
+assert.equal(menu.hidden,false);
+assert.match(menu.innerHTML,/\/compact/);
+assert.equal(requests,1);
+input.value='/mo';input.selectionStart=3;
+events.input();
+assert.match(menu.innerHTML,/\/model/);
+assert.equal(requests,1);
+events['document:keydown']({key:'Escape'});
+finish({ok:true,json:async()=>({skills:[]})});
+setImmediate(()=>assert.equal(menu.hidden,true));
+''')
 
     def test_agent_settings_fold_unconfigured_presets(self):
         self.run_node(r'''
@@ -361,6 +396,11 @@ assert.ok(!/syncEmptyRoomOnboarding\s*\(\)/.test(harnessSrc), 'empty rooms must 
 assert.match(harnessSrc, /'tutorial',\s*t\('settings\.tutorial'\)/);
 assert.doesNotMatch(harnessSrc, /'默认模型'/);
 assert.match(harnessSrc, /<option value="">跟随接入设置<\/option>/);
+assert.match(harnessSrc, /function updateSlashMenu\(\)/);
+assert.doesNotMatch(harnessSrc, /async function updateSlashMenu\(\)/);
+assert.match(harnessSrc, /function prewarmRoomTools\(\)/);
+assert.match(harnessSrc, /prewarmRoomTools\(\);/);
+assert.match(harnessSrc, /function moveSlashSelection\(step\)/);
 ''')
 
 

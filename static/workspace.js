@@ -84,10 +84,8 @@ let contactListMarkup='';
 function drawContacts(){const box=document.getElementById('contactList');const contacts=CONTACTS.filter(a=>a.enabled||a.user&&!['cli','acp','claude','codex'].includes(a.driver)),devices=agCat.owner_devices||[];const own='<li><button data-owner-devices><span class="avatar" style="--c:#8257ed">我</span><span>我<small>用户 · 本机账户</small><small class="contact-channel">↳ 本机会议室</small>'+devices.map(d=>'<small class="contact-channel">↳ '+esc(d.label)+' · '+(d.online?'最近在线':'离线')+'</small>').join('')+'</span></button></li>';const html=own+contacts.map(a=>'<li class="contact-row"><button data-contact-open="'+esc(a.id)+'"><span class="avatar" style="--c:'+esc(a.color)+'">'+esc(a.letter)+'</span><span>'+esc(a.label)+'<small>@'+esc(a.id)+' · '+esc(a.kind==='user'?'用户':'Harness')+'</small><small class="contact-channel">↳ '+esc(contactChannelLabel(a))+' · '+esc(a.enabled?contactStatusLabel(a):'未找到程序')+'</small></span></button>'+(a.builtin?'':'<button class="contact-delete" data-contact-delete="'+esc(a.id)+'" aria-label="删除联系人 '+esc(a.label)+'" title="删除联系人">×</button>')+'</li>').join('');if(html!==contactListMarkup){const scroll=box.scrollTop;const active=document.activeElement;const owner=active&&active.hasAttribute&&active.hasAttribute('data-owner-devices');const id=active&&active.dataset&&(active.dataset.contactOpen||active.dataset.contactDelete);const deleting=active&&active.dataset&&!!active.dataset.contactDelete;box.innerHTML=html;contactListMarkup=html;box.scrollTop=scroll;if(owner||id){const buttons=box.querySelectorAll('button');const target=[...buttons].find(b=>owner?b.hasAttribute('data-owner-devices'):(deleting?b.dataset.contactDelete:b.dataset.contactOpen)===id);if(target)target.focus({preventScroll:true})}}document.getElementById('contactCount').textContent=contacts.length+1}
 function drawRoomIdentity(){
   const selected=ROOMS.find(m=>m.id===RID),project=PROJECTS.find(p=>p.id===(selected&&selected.project));
-  document.getElementById('roomContext').textContent=project?project.name:'会话空间';
-  document.getElementById('roomSummary').textContent=S&&S.participants?S.participants.length+' 位受邀成员 · 独立会话与权限':'人和 AI，在同一张桌上';
-  document.getElementById('roomMemberFaces').innerHTML=((S&&S.participants)||[]).slice(0,4).map(id=>{const a=CONTACTS.find(c=>c.id===id);return '<span style="--c:'+esc(a?a.color:'#787d83')+'">'+esc(a?a.letter:id.slice(0,1).toUpperCase())+'</span>'}).join('');
-  const brief=S&&S.announcement||'';document.getElementById('sessionBrief').hidden=!brief.trim();document.getElementById('sessionBriefText').textContent=brief;
+  const context=document.getElementById('roomContext');
+  context.hidden=!project;context.textContent=project?.name||'';
 }
 function drawRooms(){
   const live=ROOMS.filter(m=>!m.archived||m.id===RID),query=document.getElementById('navSearch').value.trim().toLocaleLowerCase();
@@ -373,9 +371,18 @@ function bindRoomDrag(list){
 bindRoomDrag(document.getElementById('roomList'));
 
 const navSearch=document.getElementById('navSearch');
+const navSessionsButton=document.getElementById('navSessionsButton'),navContactsButton=document.getElementById('navContactsButton');
+function showContactsNav(show){
+  document.getElementById('navSessions').hidden=show;
+  document.getElementById('contactsSection').hidden=!show;
+  navSessionsButton.setAttribute('aria-pressed',String(!show));
+  navContactsButton.setAttribute('aria-pressed',String(show));
+}
+navSessionsButton.onclick=()=>showContactsNav(false);
+navContactsButton.onclick=()=>showContactsNav(true);
 navSearch.addEventListener('input',drawRooms);
 navSearch.addEventListener('keydown',e=>{if(e.key==='Escape'){navSearch.value='';drawRooms();navSearch.blur()}});
-document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&!document.getElementById('modal').classList.contains('show')){e.preventDefault();if(isDesktopNav())setNavCollapsed(false);else document.body.classList.add('nav-open');navSearch.focus();navSearch.select()}});
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&!document.getElementById('modal').classList.contains('show')){e.preventDefault();if(isDesktopNav())setNavCollapsed(false);else document.body.classList.add('nav-open');showContactsNav(false);navSearch.focus();navSearch.select()}});
 if(!/Mac|iPhone|iPad/.test(navigator.platform))document.querySelector('.nav-search kbd').textContent='Ctrl K';
 
 function placeSidebarMenu(menu,x,y){

@@ -267,6 +267,47 @@ assert.match(modalHtml,/已辩 1 轮/);
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_sidebar_switches_between_sessions_and_contacts(self):
+        script = r"""
+const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const src = fs.readFileSync('static/workspace.js', 'utf8');
+const start = src.indexOf('const navSearch=document.getElementById(\'navSearch\');');
+const end = src.indexOf('if(!/Mac|iPhone|iPad/', start);
+const nodes = {};
+const node = id => nodes[id] ||= {
+  id, hidden: false, value: '', attrs: {}, listeners: {}, onclick: null,
+  setAttribute(k, v) { this.attrs[k] = String(v); },
+  addEventListener(type, fn) { this.listeners[type] = fn; },
+  focus() {}, select() {}, blur() {},
+};
+node('contactsSection').hidden = true;
+node('navSessionsButton').setAttribute('aria-pressed', 'true');
+node('navContactsButton').setAttribute('aria-pressed', 'false');
+const ctx = vm.createContext({
+  document: { getElementById: node, addEventListener() {}, body: { classList: { add() {} } } },
+  navigator: { platform: 'Win32' },
+  isDesktopNav: () => true,
+  setNavCollapsed() {},
+  drawRooms() {},
+});
+vm.runInContext(src.slice(start, end), ctx);
+assert.equal(node('navSessions').hidden, false);
+assert.equal(node('contactsSection').hidden, true);
+node('navContactsButton').onclick();
+assert.equal(node('navSessions').hidden, true);
+assert.equal(node('contactsSection').hidden, false);
+assert.equal(node('navSessionsButton').attrs['aria-pressed'], 'false');
+assert.equal(node('navContactsButton').attrs['aria-pressed'], 'true');
+node('navSessionsButton').onclick();
+assert.equal(node('navSessions').hidden, false);
+assert.equal(node('contactsSection').hidden, true);
+assert.equal(node('navSessionsButton').attrs['aria-pressed'], 'true');
+assert.equal(node('navContactsButton').attrs['aria-pressed'], 'false');
+"""
+        result = subprocess.run(['node', '-e', script], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

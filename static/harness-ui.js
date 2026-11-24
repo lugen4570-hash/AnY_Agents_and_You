@@ -28,6 +28,7 @@
       'composer.desktopManaged': '由桌面端管理',
       'composer.desktopSkillHint': '为桌面端接入，技能由原软件管理，请在原软件中使用。',
       'composer.noSkills': '当前没有可用命令或技能。',
+      'composer.loadingSkills': '正在读取 Agent 技能…',
       'composer.sendTo': '将发送给',
       'composer.allAgents': '全员',
       'composer.save': '保存',
@@ -106,6 +107,7 @@
       'composer.desktopManaged': 'Managed by desktop app',
       'composer.desktopSkillHint': 'is connected via desktop MCP. Skills are managed in its host app.',
       'composer.noSkills': 'No matching commands or skills.',
+      'composer.loadingSkills': 'Loading agent skills…',
       'composer.sendTo': 'To',
       'composer.allAgents': 'All agents',
       'composer.save': 'Save',
@@ -876,6 +878,8 @@
 
   // ===== Live Browser Integration =====
   const toolsCache = new Map(); // key: rid + ':' + aiId -> tools payload
+  const toolsRequests = new Map();
+  let slashRevision = 0;
   let slashActiveIndex = 0;
   let slashState = null;
   let currentSideTab = safeStorageGet(SIDE_TAB_KEY, 'agents');
@@ -1098,19 +1102,20 @@
     return !(typeof agCat !== 'undefined' && agCat && agCat.local_workspace === false);
   }
 
-  async function ensureRoomTools(aiId) {
-    if (typeof RID === 'undefined' || !RID || !aiId) return null;
+  function ensureRoomTools(aiId) {
     const key = RID + ':' + aiId;
     if (toolsCache.has(key)) return toolsCache.get(key);
-    try {
-      const r = await fetch(api('tools') + '?ai=' + encodeURIComponent(aiId), { cache: 'no-store' });
-      if (!r.ok) return null;
-      const data = await r.json();
-      toolsCache.set(key, data);
-      return data;
-    } catch (e) {
-      return null;
-    }
+    if (toolsRequests.has(key)) return toolsRequests.get(key);
+    const request = fetch(api('tools') + '?ai=' + encodeURIComponent(aiId), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && toolsRequests.get(key) === request) toolsCache.set(key, data);
+        return data;
+      })
+      .catch(() => null)
+      .finally(() => { if (toolsRequests.get(key) === request) toolsRequests.delete(key); });
+    toolsRequests.set(key, request);
+    return request;
   }
 
   let inspectedStep = null;
@@ -1441,11 +1446,9 @@
   // ---- Slash Skill & Command Autocomplete ----
   function invalidateRoomTools(rid, aiId) {
     if (!rid) return;
-    if (aiId) toolsCache.delete(rid + ':' + aiId);
-    else {
-      for (const k of [...toolsCache.keys()]) {
-        if (k.startsWith(rid + ':')) toolsCache.delete(k);
-      }
+    for (const cache of [toolsCache, toolsRequests]) {
+      if (aiId) cache.delete(rid + ':' + aiId);
+      else for (const key of cache.keys()) if (key.startsWith(rid + ':')) cache.delete(key);
     }
   }
 
@@ -1741,11 +1744,13 @@
   exported.invalidateRoomTools = invalidateRoomTools;
 
   function closeSlashMenu() {
+    slashRevision++;
     const menu = document.getElementById('slashMenu');
     if (menu) menu.hidden = true;
     slashState = null;
     slashActiveIndex = 0;
   }
+  root.closeComposerSlashMenu = closeSlashMenu;
 
   function renderSlashItem(item, idx, showOwnerTags) {
     const active = idx === slashActiveIndex ? ' active' : '';
@@ -1757,7 +1762,7 @@
       rightHtml = '<span class="slash-item-agents">' + item.agentLabels.map(l => '<span class="slash-agent-tag">' + esc(l) + '</span>').join('') + '</span>';
     }
     return (
-      '<button type="button" role="option" class="slash-item' + active + cmdCls + '" data-slash-idx="' + idx + '">'
+      '<button type="button" role="option" aria-selected="' + (idx === slashActiveIndex) + '" class="slash-item' + active + cmdCls + '" data-slash-idx="' + idx + '">'
       + '<span class="slash-item-main"><span class="slash-item-name">/' + esc(item.name) + '</span>'
       + (item.desc ? '<span class="slash-item-desc">' + esc(item.desc) + '</span>' : '') + '</span>'
       + rightHtml
@@ -1765,27 +1770,38 @@
     );
   }
 
-  async function updateSlashMenu() {
+  function updateSlashMenu() {
     const taEl = document.getElementById('ta');
     const menu = document.getElementById('slashMenu');
     if (!taEl || !menu || !S || !S.meeting) return closeSlashMenu();
-    const slash = parseSlashQuery(taEl.value, taEl.selectionStart);
+    const roomId = RID, value = taEl.value, cursor = taEl.selectionStart;
+    const slash = parseSlashQuery(value, cursor);
     if (!slash) return closeSlashMenu();
-
-    const target = resolveComposerTarget(taEl.value, S);
+    const revision = ++slashRevision;
+    const target = resolveComposerTarget(value, S);
     const needIds = (target.mode === 'single' ? [target.aiId] : target.aiIds).filter(id => !isDesktopManaged(S, id));
-    await Promise.all(needIds.map(id => ensureRoomTools(id)));
+    const missing = needIds.filter(id => !toolsCache.has(roomId + ':' + id));
+    drawSlashMenu(menu, value, cursor, roomId, needIds, missing.length > 0);
+    if (!missing.length) return;
+    Promise.all(missing.map(ensureRoomTools)).then(() => {
+      if (revision !== slashRevision || RID !== roomId || S?.meeting !== roomId || taEl.value !== value || taEl.selectionStart !== cursor) return;
+      drawSlashMenu(menu, value, cursor, roomId, needIds, false);
+    });
+  }
 
+  function drawSlashMenu(menu, value, cursor, roomId, needIds, loading) {
     const toolsByAi = {};
-    needIds.forEach(id => { toolsByAi[id] = toolsCache.get(RID + ':' + id) || null; });
-    const model = buildSlashMenuModel(taEl.value, taEl.selectionStart, S, toolsByAi, CONTACTS);
+    needIds.forEach(id => { toolsByAi[id] = toolsCache.get(roomId + ':' + id) || null; });
+    const model = buildSlashMenuModel(value, cursor, S, toolsByAi, CONTACTS);
+    const selected = slashState?.items[slashActiveIndex];
+    const selectedIndex = selected ? model.items.findIndex(item => item.kind === selected.kind && item.name === selected.name) : -1;
+    slashActiveIndex = Math.max(0, selectedIndex);
     slashState = model;
-    if (slashActiveIndex >= model.items.length) slashActiveIndex = 0;
 
     let html = '';
     if (model.notice) html += '<div class="slash-notice">' + esc(model.notice) + '</div>';
     if (!model.items.length) {
-      if (!model.desktopOnly) html += '<div class="slash-notice">' + esc(t('composer.noSkills')) + '</div>';
+      if (!model.desktopOnly) html += '<div class="slash-notice">' + esc(loading ? t('composer.loadingSkills') : t('composer.noSkills')) + '</div>';
     } else {
       let cursorIdx = 0;
       if (model.commandItems.length) {
@@ -1802,6 +1818,19 @@
     }
     menu.innerHTML = html;
     menu.hidden = false;
+  }
+
+  function moveSlashSelection(step) {
+    const menu = document.getElementById('slashMenu');
+    const previous = menu.querySelector('.slash-item.active');
+    previous?.classList.remove('active');
+    previous?.setAttribute('aria-selected', 'false');
+    const count = slashState.items.length;
+    slashActiveIndex = (slashActiveIndex + step + count) % count;
+    const next = menu.querySelector('[data-slash-idx="' + slashActiveIndex + '"]');
+    next?.classList.add('active');
+    next?.setAttribute('aria-selected', 'true');
+    next?.scrollIntoView({block:'nearest'});
   }
 
   async function pickSlashItem(idx, mode = 'execute') {
@@ -2145,10 +2174,18 @@
     bindSettingsTab(settingsTab);
   }
 
+  function prewarmRoomTools() {
+    if (typeof fetch !== 'function' || typeof api !== 'function' || !RID || !S || S.meeting !== RID) return;
+    (S.participants || []).filter(id => !isDesktopManaged(S, id)).forEach(id => {
+      if (!toolsCache.has(RID + ':' + id)) ensureRoomTools(id);
+    });
+  }
+
   // ---- Wire DOM Events ----
   function syncHarnessUi() {
     syncComposerBar();
     setSideTab(currentSideTab);
+    prewarmRoomTools();
     syncVerificationBanner();
     syncRoomFeedback();
   }
@@ -2286,12 +2323,10 @@
       if (!slashState || !slashState.items.length) return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        slashActiveIndex = (slashActiveIndex + 1) % slashState.items.length;
-        updateSlashMenu();
+        moveSlashSelection(1);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        slashActiveIndex = (slashActiveIndex - 1 + slashState.items.length) % slashState.items.length;
-        updateSlashMenu();
+        moveSlashSelection(-1);
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
         e.stopImmediatePropagation();
