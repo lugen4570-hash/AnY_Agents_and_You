@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(shutil.which('node'), 'Node is required for frontend UI unit tests')
 class HarnessUiTests(unittest.TestCase):
     def run_node(self, script):
-        result = subprocess.run(['node', '-e', script], cwd=ROOT, capture_output=True, text=True, timeout=20)
+        locale = "Object.defineProperty(globalThis, 'navigator', {value: {language: 'zh-CN'}});\n"
+        result = subprocess.run(['node', '-e', locale + script], cwd=ROOT, capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_index_html_has_harness_ui_mounts(self):
@@ -245,10 +246,12 @@ assert.equal(h.resolveLang('zh-CN'), 'zh-CN');
             env = dict(os.environ, ROUNDTABLE_LOG_DIR=tmp)
             script = r'''
 import os, tempfile
+from unittest.mock import patch
 from bridge import room as R
 
 with tempfile.TemporaryDirectory() as wd:
-    r = R.rooms.create('codex perm sync', '', wd, participants=['codex'])
+    with patch('bridge.agents.prewarm'):
+        r = R.rooms.create('codex perm sync', '', wd, participants=['codex'])
     r.meta['codex_session'] = 'thread-1'
     r.meta.setdefault('permissions', {})['codex'] = {
         'read': True, 'post': True, 'trigger': True, 'board': False, 'files': False, 'work': False,

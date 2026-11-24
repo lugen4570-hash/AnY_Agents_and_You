@@ -73,7 +73,7 @@ function Install-Uv {
     'AMD64' { 'x86_64'; break }
     'ARM64' { 'aarch64'; break }
     'x86'   { 'i686'; break }
-    default { throw "AnY CLI 暂不支持此 Windows 芯片类型：$cpu" }
+    default { throw "AnY CLI does not support this Windows architecture: $cpu" }
   }
   $sha256 = @{
     x86_64  = 'edd61f7f5728a56cc62455386661860bdfc7bab65872f39b0c25bdcc1d8e1beb'
@@ -91,11 +91,11 @@ function Install-Uv {
     Invoke-WebRequest "https://releases.astral.sh/github/uv/releases/download/0.13.9/$asset.zip" `
       -UseBasicParsing -TimeoutSec 120 -OutFile $archive
     if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $sha256[$target]) {
-      throw 'CLI 运行环境校验未通过，请重试。'
+      throw 'AnY CLI runtime checksum did not match. Please retry.'
     }
     Expand-Archive -LiteralPath $archive -DestinationPath $work
     $binary = @(Get-ChildItem -LiteralPath $work -Recurse -File -Filter 'uv.exe')
-    if ($binary.Count -ne 1) { throw 'CLI 运行环境压缩包内未找到 uv.exe。' }
+    if ($binary.Count -ne 1) { throw 'uv.exe is missing from the AnY CLI runtime archive.' }
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
     $pending = Join-Path $dest ('uv-' + [Guid]::NewGuid() + '.tmp')
     try {
@@ -116,15 +116,15 @@ $installOnly = $args -contains '--install-only'
 $pythonExe = if ($env:ANY_CLI_MANAGED_PYTHON -ne '1') { Find-Python311 }
 
 if (-not $pythonExe) {
-  Write-Host '未检测到 Python 3.11+，正在自动配置独立 Python 运行环境…'
+  Write-Host 'Preparing a standalone Python runtime for AnY CLI...'
   $uv = Find-Uv
   if (-not $uv) {
     $uv = Install-Uv
   }
   & $uv python install --no-bin --no-registry 3.12
-  if ($LASTEXITCODE -ne 0) { throw '安装独立 Python 3.12 环境失败。' }
+  if ($LASTEXITCODE -ne 0) { throw 'Could not install the standalone Python 3.12 runtime.' }
   $pythonExe = & $uv python find --managed-python 3.12
-  if ($LASTEXITCODE -ne 0 -or -not $pythonExe) { throw '未能定位已安装的 Python 3.12。' }
+  if ($LASTEXITCODE -ne 0 -or -not $pythonExe) { throw 'Could not find the installed Python 3.12 runtime.' }
   $pythonExe = $pythonExe.Trim()
 }
 
@@ -132,7 +132,7 @@ $tmpPy = Join-Path $env:TEMP ("any-install-cli-" + [guid]::NewGuid().ToString('N
 try {
   Invoke-WebRequest -UseBasicParsing -Uri ($BaseUrl + 'install-cli.py') -OutFile $tmpPy
   $launcher = & $pythonExe $tmpPy --print-launcher
-  if ($LASTEXITCODE -ne 0 -or -not $launcher) { throw 'AnY CLI 安装失败。' }
+  if ($LASTEXITCODE -ne 0 -or -not $launcher) { throw 'AnY CLI installation failed.' }
   $launcher = $launcher.Trim()
   $binDir = Split-Path -Parent $launcher
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -145,7 +145,7 @@ try {
   if (-not (($env:Path -split ';') | Where-Object { $_.TrimEnd('\') -ieq $binDir.TrimEnd('\') })) {
     $env:Path = "$binDir;$env:Path"
   }
-  Write-Host "AnY CLI 已安装。下次也可直接运行：any 或 $launcher"
+  Write-Host "AnY CLI installed. Run any or $launcher"
   if (-not $installOnly -and -not [Console]::IsInputRedirected) {
     & $launcher
   }

@@ -11,7 +11,11 @@ jobs:
   build:
     strategy:
       matrix:
-        runner: [macos-15, macos-15-intel]
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -42,7 +46,7 @@ jobs:
           test -d "$mount_dir/AnY.app"
           test "$(readlink "$mount_dir/Applications")" = /Applications
           app="$mount_dir/AnY.app"
-          expected_arch=${{ matrix.runner == 'macos-15' && 'arm64' || 'x86_64' }}
+          expected_arch=${{ matrix.arch }}
           test "$(lipo -archs "$app/Contents/MacOS/AnY")" = "$expected_arch"
           test "$(lipo -archs "$app/Contents/MacOS/AnYCore")" = "$expected_arch"
           version=$(cd "$GITHUB_WORKSPACE" && python -c 'from bridge.version import VERSION; print(VERSION)')
