@@ -6,6 +6,7 @@
 
 ### 下载安装与首次本地协作
 
+- 官网 macOS 安装指南第四步已换成新版「新建项目」截图，图注采用「添加文件夹」。源码提交 `ec4e7ce`，已核验线上页面引用及图片与原图字节一致。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45415139646)
 - [v2.8.27 正式 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.27) 已发布，构建源码为 `5d05205d02a357b8d405e7092532be3757fbd2fe`。[Windows 构建](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45403832347)、[双架构 Mac 与 Linux CLI](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45402590052) 的对应任务及[汇总发布](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45405853942)通过。Release 的 12 个附件均实际下载并核对大小及 SHA-256，Windows 3 份 ZIP 完整性通过。[完整 SHA-256](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.27/SHA256SUMS-2.8.27.txt)。
 - [官网 Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45406292697)完成，部署提交 `afe7cbc444e65fdd8e5541b93b9cfd8ca39dbc46`。官网安装包、便携版和双架构 DMG 实际下载与 Release 一致；2.8.20 更新器实测可解析 2.8.27 的 Windows 清单及兼容 macOS Python ZIP 清单。
 - 从官网下载 2.8.27 Windows 便携版，在独立临时数据目录中启动。免登录创建会话并同时发给已安装的 Codex、Claude，两者均实际回复，程序正常退出。Windows 安装版在 CI 独立 AppId 下验证安装、运行中防覆盖和防卸载、后台正常退出与卸载保留数据。Rust 8 项和 Python 557 项通过。
