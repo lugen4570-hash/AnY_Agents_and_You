@@ -2,6 +2,30 @@
 
 最近更新：2026-11-24。
 
+## AnY 2.8.27 发布与云账号测试交接（2026-11-24）
+
+### 下载安装与首次本地协作
+
+- [v2.8.27 正式 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.27) 已发布，构建源码为 `5d05205d02a357b8d405e7092532be3757fbd2fe`。[Windows 构建](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45403832347)、[双架构 Mac 与 Linux CLI](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45402590052) 的对应任务及[汇总发布](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45405853942)通过。Release 的 12 个附件均实际下载并核对大小及 SHA-256，Windows 3 份 ZIP 完整性通过。[完整 SHA-256](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.27/SHA256SUMS-2.8.27.txt)。
+- [官网 Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45406292697)完成，部署提交 `afe7cbc444e65fdd8e5541b93b9cfd8ca39dbc46`。官网安装包、便携版和双架构 DMG 实际下载与 Release 一致；2.8.20 更新器实测可解析 2.8.27 的 Windows 清单及兼容 macOS Python ZIP 清单。
+- 从官网下载 2.8.27 Windows 便携版，在独立临时数据目录中启动。免登录创建会话并同时发给已安装的 Codex、Claude，两者均实际回复，程序正常退出。Windows 安装版在 CI 独立 AppId 下验证安装、运行中防覆盖和防卸载、后台正常退出与卸载保留数据。Rust 8 项和 Python 557 项通过。
+- Windows 构建报告标记构建工作树有变化；从指定标签检出后，构建脚本会重生成图标。比对安装载荷中的 32 个跟踪前端资源，5 个图标文件与 Git 字节不同，其余一致。Windows 二进制未签名。
+- Intel Mac runner 通过 DMG 挂载、Intel 可执行文件架构、应用版本、签名、后台启动和退出及成员连接 ZIP 校验。Apple Silicon 版在 Intel runner 上用官方 universal2 Python 交叉构建，通过双可执行文件 arm64 架构、签名、应用版本、DMG 挂载和资源检查。两个官网 DMG 确认与上述构建同 SHA-256。两种实体 Mac 的 Finder 拖拽安装和门禁弹窗待验收，Apple Silicon 的原生启动及 CLI 待验收。
+- CLI 在 Windows、Intel macOS、Linux 分别验证了从空运行目录自动安装托管 Python，再运行 `any --help`。部署后复验官网 `irm … | iex`，在独立目录成功安装并通过 `any --help` 和 `any --version`。官网 CLI 源码包实际下载为 `422666` 字节，SHA-256 `70b2717ccf32a81bb2c4a391d6ce57c83a93ea6987c9b1e70732fc409676e900`，源码来自同一发布标签。
+
+| 官网文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Windows 安装版 | 13370698 | `860e8deef9b80958c7ffe248bba90866320e48744e1b9f809f7f58f62e24eade` |
+| Windows 便携版 | 13345251 | `7de7915b5f0b9a0f1393003080f52255b6bb481cd097ed45639db43a08b621c4` |
+| macOS Apple 芯片 DMG | 31365268 | `dd1b98ceedf470d01f2c044c51e65325e802a1c2df2d5631b767e918281d9fcc` |
+| macOS Intel DMG | 25911397 | `87c8a5138307f557434a9140af310aef1a436efbb8f3a01fad8501b212fa8660` |
+| 兼容 macOS 源码 ZIP | 787045 | `d424d0f913b315c954b65a34acb076e544b139d6321d2d35190a054dfbda1e04` |
+
+### 云账号测试状态
+
+- 可选账号、随机安装 ID、设备命名、服务端设备上限和会话撤销、偏好白名单及版本冲突处理已提交 `60c0b6f`。本地 Edge Function、PostgreSQL 迁移和多客户端浏览器测试通过换机恢复、断网编辑与冲突处理、账号隔离、超限、下线后的重连校验、协议提示和短信倒计时。
+- 正式版可直接使用本地协作，云账号入口默认关闭。扫码事件、短信和 Realtime 网关使用测试夹具。本地确认了撤销会生成通知，客户端重连会拒绝撤销后的会话。还需真实 Supabase 项目及 Realtime、微信测试号与 cloudflared 回调、正式微信资质和短信通道、正式协议及隐私政策。部署方式和测试边界见 [CLOUD_ACCOUNT.md](CLOUD_ACCOUNT.md)。
+
 ## AnY 2.8.20 正式发布（2026-11-24）
 
 - **本版改动**：
