@@ -1,4 +1,4 @@
-"""Install Cojam CLI into an isolated Python environment and open the client."""
+"""Install AnY CLI into an isolated Python environment and open the client."""
 from __future__ import annotations
 
 import argparse
@@ -22,10 +22,10 @@ BASE = "https://lugen4570-hash.github.io/AnY_Agents_and_You/"
 
 def install_root():
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CojamCLI"
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "AnYCLI"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "CojamCLI"
-    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "cojam-cli"
+        return Path.home() / "Library" / "Application Support" / "AnYCLI"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "any-cli"
 
 
 def download(path, limit):
@@ -56,7 +56,7 @@ def extract_source(data, destination):
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         for entry in archive:
             path = PurePosixPath(entry.name)
-            if (not path.parts or path.parts[0] != "Cojam-CLI" or ".." in path.parts
+            if (not path.parts or path.parts[0] != "AnY-CLI" or ".." in path.parts
                     or "\\" in entry.name or ":" in entry.name or not (entry.isdir() or entry.isfile())):
                 raise ValueError("CLI 安装文件包含意外的路径。")
             target = destination.joinpath(*path.parts)
@@ -90,12 +90,10 @@ def write_launcher(root, interpreter):
         executable = str(interpreter.relative_to(root))
         command = f'@echo off\n"%~dp0{executable}" -I -m bridge.cli %*\n'
         atomic_text(launcher, command)
-        atomic_text(root / "cojam.cmd", command)
     else:
         launcher = root / "any"
         command = f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} -I -m bridge.cli "$@"\n'
         atomic_text(launcher, command, executable=True)
-        atomic_text(root / "cojam", command, executable=True)
     return launcher
 
 
@@ -108,7 +106,7 @@ def install(root):
             return interpreter, write_launcher(root, interpreter)
 
     print("正在下载并安装 AnY CLI…", flush=True)
-    bundle = download(f"cli/cojam-cli-{commit}.tar.gz", size)
+    bundle = download(f"cli/any-cli-{commit}.tar.gz", size)
     if len(bundle) != size or hashlib.sha256(bundle).hexdigest() != digest:
         raise ValueError("CLI 安装文件的校验未通过，请重试。")
     generation = Path(tempfile.mkdtemp(prefix=f"release-{commit[:12]}-", dir=root))
@@ -116,7 +114,7 @@ def install(root):
     interpreter = python_in(generation)
     subprocess.run([sys.executable, "-m", "venv", str(generation / "venv")], check=True)
     subprocess.run([str(interpreter), "-m", "pip", "--disable-pip-version-check", "install", "-e", ".[cli]"],
-                   cwd=generation / "Cojam-CLI", check=True)
+                   cwd=generation / "AnY-CLI", check=True)
     atomic_text(generation / ".complete", digest)
     return interpreter, write_launcher(root, interpreter)
 
@@ -129,7 +127,7 @@ def main(argv=None):
     parser.add_argument("--install-only", action="store_true", help="只安装，安装后不打开聊天界面")
     args = parser.parse_args(argv)
     try:
-        root = Path(os.environ.get("COJAM_CLI_INSTALL_DIR", install_root())).expanduser().resolve()
+        root = Path(os.environ.get("ANY_CLI_INSTALL_DIR") or os.environ.get("COJAM_CLI_INSTALL_DIR") or install_root()).expanduser().resolve()
         interpreter, launcher = install(root)
         print(f"AnY CLI 已就绪。下次也可运行：{launcher}", flush=True)
         if not args.install_only:

@@ -1,8 +1,8 @@
 {
-  "app": "Cojam",
-  "version": "2.8.18",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-2.8.18.exe",
-  "sha256": "d5bd7445947f37ae1b9bf03a9456c1d57441ba2e219e9fbf7404c4d7f938091f",
-  "size": 13366238,
-  "notes": "撤回消息时连带撤回由它触发的 Agent 回复，并用过滤后的记录重建受影响的本机会话。"
+  "app": "AnY",
+  "version": "2.8.19",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.19.exe",
+  "sha256": "83442904c17d4aba273cce1c20e192856e98d16be84c8e95feac9dd50d9e841c",
+  "size": 13452900,
+  "notes": "AnY 2.8.19：全面更名为 AnY（Agents and You），优化零残留退出、斜杠命令与安装升级体验。"
 }
