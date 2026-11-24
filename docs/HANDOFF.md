@@ -2,6 +2,22 @@
 
 最近更新：2026-11-24。
 
+## AnY 2.8.20 正式发布（2026-11-24）
+
+- **本版改动**：
+  - **项目设置与多目录 / 分支支持**：侧栏项目头（`⚙`）与「项目与会话管理 → 设置」支持项目改名与编辑多个工作目录（1–32 个）；新建会话时通过 `/api/projects/workspaces` 读取项目目录与同仓 Git Worktree 并展示各自检出分支，已有会话保留创建时目录。
+  - **教学移入设置与界面精简**：空会话不再自动弹出协作引导卡，原 3 步协作引导集成至「设置 → 使用教学」；「继续论道」按钮从底部输入栏移至最近一次论道的最后一条相关消息下方；新建会话与模型弹出层移除「默认模型 / 默认强度 / 会话默认模型」字样，未单独指定时展示「模型 / 跟随接入设置 / 由 Agent 决定」。
+  - **论道盲发轮修复**：合并并保留首轮独立表态期间暂存实时进度与外发消息、全员结束后一并公开的修复。
+- **构建与验证**：构建源码提交为 [`0f79d58`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/0f79d58457e636ecd7832c7cc38dbf997f8e19d0)。`mypy bridge`（47 个源文件）、`ruff check`、`node --check`（JS 文件）、`cargo test --locked`（8 项通过）与 `tests/run_all.py`（49 个测试模块共 552 项全部通过）均通过。在隔离发布工作树中完成构建：打包后的 `AnYCore.exe`（端口 `18765`）与 `AnY-Portable-2.8.20.exe`（端口 `18766`）完成隔离启动、`/api/server/info`（`2.8.20` / `api_revision=3`）、静态资源逐字节一致与 `/api/server/exit` 零残留退出验证；`AnY-Setup-2.8.20-test.exe` 完成静默安装、运行中核心防覆盖/防卸载保护、静默卸载、`{E49FBE28-CC82-4E08-B5CD-E48A2C894472}_is1` 清理与 `data/sentinel.txt` 保留验证；3 份发布 ZIP 完整性及零私人数据校验通过。
+- **GitHub Release**：[v2.8.20](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.20) 已上传并核对全部 7 个附件（Windows 程序未签名）：
+  - `AnY-Setup-2.8.20.exe`：`13,457,695` 字节，SHA-256 `a976702ef1743eb6d9d4b78f3d7179c0f2c1dca00db2d6bfbb3f1ac3fa27793e`
+  - `AnY-Desktop-2.8.20-win64.zip`：`16,001,384` 字节，SHA-256 `dfc91652cd759cf40536cb26de3d08ba8fe19df985eb2ce3a6addff7469dca90`
+  - `AnY-2.8.20-win64.zip`：`13,154,958` 字节，SHA-256 `b01f80d0d545b1ace664fce821d9d4548b73c538e60c55a9d901b383afad22ae`
+  - `AnY-Member-2.8.20.zip`：`267,333` 字节，SHA-256 `e5ef9f1393cc20b2da49731b7631dd0cd6802e065de6207b92824d80a6ad2ea0`
+  - `AnY-Portable-2.8.20.exe`：`13,417,523` 字节，SHA-256 `b64e127bba1d4ff7f170fbd8d4c2232d6d546b77cbd93378562bb2c1342dd25e`
+  - `SHA256SUMS-2.8.20.txt`（`452` 字节，SHA-256 `69657a36a7dfe9b349d1680d150509dd211d1f390f5db3501d1a6346dfacbc39`）与 `build-report-2.8.20.json`（`1,779` 字节，SHA-256 `ca6a85c9d411a02a97bdf32cf9ad57b2d2266cfb721913099902baf6e1fc2578`）
+- **官网与在线核对**：官网提交 [`2796661`](https://github.com/lugen4570-hash/AnY_Agents_and_You/commit/27966613a27f6c873f4b08c8cceb4f59f907e81e) 触发 [GitHub Pages 部署 45366055780](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45366055780) 成功。实测 `download.html`、`update.json`、`macos-update.json` 与 `cli/current.json` 返回 HTTP 200，并实际下载核对了线上 `AnY-Setup-2.8.20.exe`、`AnY-Portable-2.8.20.exe`、`AnY-2.8.20-macOS-Python.zip`（`773,039` 字节，SHA-256 `111adcc521f43688dd50565264be55744588270f796c73eda1cf5ce742014c4c`）、`AnY-macOS-Python.zip` 与 `cli/any-cli-27966613a27f6c873f4b08c8cceb4f59f907e81e.tar.gz`（`414,250` 字节，SHA-256 `1362f3d76a8db77388e8e948aca4f3fdbb518ebd4ec8fc839936f929b03f7c02`）。
+
 ## 项目设置与会话界面（2026-11-24）
 
 - 项目侧栏的设置按钮支持改名和编辑多个工作目录，第一行作为新会话的默认目录。创建会话时可选择项目目录或仓库中已存在的 Git worktree，并查看各自检出的分支。已有会话保留创建时的目录。
