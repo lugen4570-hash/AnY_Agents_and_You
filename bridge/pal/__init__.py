@@ -50,6 +50,10 @@ def resolve_command(
     return _impl.resolve_command(name, find_fn=find_fn)
 
 
+def kill_pid_tree(pid: int) -> None:
+    _impl.kill_pid_tree(pid)
+
+
 def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
     _impl.kill_process_tree(proc)
 

@@ -59,9 +59,9 @@ def account():
     with LOCK:
         data = read_json(_path("account.json"))
         if isinstance(data, dict) and data.get("id"):
-            return {"id": str(data["id"]), "label": str(data.get("label") or "我的 Cojam"),
+            return {"id": str(data["id"]), "label": str(data.get("label") or "我的 AnY"),
                     "created": int(data.get("created") or 0)}
-        row = {"id": "acct_" + secrets.token_hex(12), "label": "我的 Cojam", "created": int(time.time())}
+        row = {"id": "acct_" + secrets.token_hex(12), "label": "我的 AnY", "created": int(time.time())}
         _save("account.json", row)
         return dict(row)
 

@@ -27,7 +27,7 @@ def _attach_console():
 
 
 def ensure_stdio():
-    """没控制台时（双击打包好的应用）：先接父控制台，接不上就把输出写进 data/cojam.log。"""
+    """没控制台时（双击打包好的应用）：先接父控制台，接不上就把输出写进 data/any.log。"""
     if sys.stdout is not None and sys.stderr is not None:
         return
     if _attach_console():
@@ -39,7 +39,7 @@ def ensure_stdio():
     log_dir = os.environ.get("ROUNDTABLE_LOG_DIR") or os.path.join(base, "data")
     try:
         os.makedirs(log_dir, exist_ok=True)
-        stream = open(os.path.join(log_dir, "cojam.log"), "a", encoding="utf-8", buffering=1)
+        stream = open(os.path.join(log_dir, "any.log"), "a", encoding="utf-8", buffering=1)
     except OSError:
         stream = open(os.devnull, "w", encoding="utf-8")
     sys.stdout = sys.stderr = stream

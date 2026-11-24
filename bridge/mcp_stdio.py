@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-r"""stdio ↔ Cojam HTTP MCP 转发桥：给只支持 stdio MCP 的桌面软件（如 Claude Desktop）用。
+r"""stdio ↔ AnY HTTP MCP 转发桥：给只支持 stdio MCP 的桌面软件（如 Claude Desktop）用。
 
 启动方式：
     python -m bridge.mcp_stdio
     python roundtable.py mcp-stdio
-    Cojam.exe mcp-stdio
+    AnY.exe mcp-stdio
 
 环境变量：
     AI_BRIDGE_URL    默认 http://127.0.0.1:<PORT>/mcp
@@ -52,13 +52,13 @@ def forward_one(line: str, url: str | None = None, token: str | None = None) -> 
             except Exception as err:
                 logger.debug("Failed reading HTTP error body: %s", err)
             return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"),
-                               "error": {"code": -32000, "message": "Cojam HTTP %s: %s" % (e.code, detail)}},
+                               "error": {"code": -32000, "message": "AnY HTTP %s: %s" % (e.code, detail)}},
                               ensure_ascii=False)
         return None
     except Exception as e:
         if isinstance(msg, dict) and msg.get("id") is not None:
             return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"),
-                               "error": {"code": -32000, "message": "连不上 Cojam (%s): %s" % (target, e)}},
+                               "error": {"code": -32000, "message": "连不上 AnY (%s): %s" % (target, e)}},
                               ensure_ascii=False)
         return None
 

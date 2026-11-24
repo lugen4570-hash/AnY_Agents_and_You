@@ -14,8 +14,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = ['bridge', 'static', 'index.html', 'roundtable.py', 'roundtable.icns', 'LICENSE', 'pyproject.toml',
-          'desktop_launcher.py', 'desktop_shell', 'packaging/build-cojam.command', 'packaging/build_macos.sh',
-          'packaging/start-cojam.command', 'packaging/macos-python-readme.txt',
+          'desktop_launcher.py', 'desktop_shell', 'packaging/build-any.command', 'packaging/build_macos.sh',
+          'packaging/start-any.command', 'packaging/macos-python-readme.txt',
           'packaging/member-readme.md', 'packaging/start-member.command', 'packaging/start-member.bat']
 
 
@@ -25,7 +25,7 @@ def build(source_ref='HEAD', output_dir=None):
     archive = subprocess.check_output(['git', 'archive', '--format=tar', commit, '--', *INPUTS], cwd=ROOT)
     output = Path(output_dir) if output_dir is not None else ROOT / 'dist' / 'macOS'
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='cojam-macos-build-') as scratch:
+    with tempfile.TemporaryDirectory(prefix='any-macos-build-') as scratch:
         clean = Path(scratch)
         with tarfile.open(fileobj=io.BytesIO(archive)) as source:
             for member in source:
@@ -44,12 +44,12 @@ def build(source_ref='HEAD', output_dir=None):
         for command in (clean / 'packaging').iterdir():
             if command.suffix in ('.command', '.sh'):
                 command.write_bytes(command.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n'))
-        spec = importlib.util.spec_from_file_location('cojam_clean_member_bundle', clean / 'bridge/member_package.py')
+        spec = importlib.util.spec_from_file_location('any_clean_member_bundle', clean / 'bridge/member_package.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.build(clean)
-        files = {'启动合拍.command': (clean / 'packaging/start-cojam.command').read_bytes(),
-                 '构建合拍桌面版.command': (clean / 'packaging/build-cojam.command').read_bytes(),
+        files = {'启动 AnY.command': (clean / 'packaging/start-any.command').read_bytes(),
+                 '构建 AnY 桌面版.command': (clean / 'packaging/build-any.command').read_bytes(),
                  'README.txt': (clean / 'packaging/macos-python-readme.txt').read_bytes(),
                  **{name: (clean / name).read_bytes() for name in
                     ('index.html', 'roundtable.py', 'roundtable.icns', 'LICENSE', 'pyproject.toml', 'desktop_launcher.py',
@@ -65,10 +65,10 @@ def build(source_ref='HEAD', output_dir=None):
         files['SOURCE.json'] = (json.dumps(provenance, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
         hashes = {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())}
         files['CHECKSUMS.json'] = (json.dumps(hashes, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
-        target = output / f'Cojam-{version}-macOS-Python.zip'
+        target = output / f'AnY-{version}-macOS-Python.zip'
         with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
             for name, data in sorted(files.items()):
-                info = zipfile.ZipInfo('Cojam/' + name)
+                info = zipfile.ZipInfo('AnY/' + name)
                 info.create_system = 3
                 info.external_attr = (0o100755 if name.endswith(('.command', '.sh')) else 0o100644) << 16
                 bundle.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)

@@ -7,7 +7,7 @@
 3. 增量在拿到锁之后才取快照，所以排着队的那段时间里新来的消息也会带上。
 
 本文件后半段是会议目录的增删（新建、列表、归档、回收站）和 Rooms（已经读进内存的会议）。"""
-import copy, json, os, queue, re, secrets, shutil, stat, threading, time
+import copy, json, os, queue, re, secrets, shutil, stat, subprocess, threading, time
 from contextlib import ExitStack
 from datetime import datetime
 from typing import Any, Sequence
@@ -219,6 +219,9 @@ class Room:
         self.recalled = set(self.recall_order)
         if self.recalled:
             self._apply_recalls()
+        self.turn_failures = {}
+        for message in self.messages:
+            self._update_turn_failure(message)
         self.pending: list[tuple[str, str, int | None]] = []  # Agent、队列代数、触发消息
         self.turn_sources: dict[str, int | None] = {}
         self.interrupting: set[str] = set()
@@ -231,6 +234,7 @@ class Room:
             "stopped": set(),                   # 被"停"打断、还没收尾的 AI
         }
         self.live = {}        # ai -> {"text": 这一轮最近说的一句中途的话, "time": 时:分:秒, "since": 开跑的时间戳}
+        self.turn_approvals = {}
         self.last_ctx = {}    # call_ai 填，process_job 成功后搬进 meta["ctx"]
         self.procs = {}       # ai -> 正在跑的子进程（claude -p），"停"的时候连同子孙进程一起杀
         self.ai_locks = {}           # 按需创建：会开完之后才装上的 agent 也得能叫
@@ -337,12 +341,25 @@ class Room:
         if release_guard:
             guard.release_room(self.id)
 
-    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None, source=None):
+    def _update_turn_failure(self, message):
+        failure = message.get("failure")
+        if failure:
+            self.turn_failures[failure["ai"]] = message
+        elif message.get("origin") != "external":
+            self.turn_failures.pop(message.get("retry_ai", message["speaker"]), None)
+
+    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None, source=None, failure=None, retry_ai=None, approval=None):
         now = datetime.now()
         with self.lock:
             m = {"id": len(self.messages), "speaker": speaker, "text": text, "time": now.strftime("%H:%M:%S")}
             if source is not None:
                 m["source_message"] = source
+            if failure:
+                m["failure"] = failure
+            if retry_ai:
+                m["retry_ai"] = retry_ai
+            if approval:
+                m["approval"] = approval
             if origin:
                 m["origin"] = origin   # 不显示；external = 会议室外的同名 AI 经 /api/post 发的
             if progress:
@@ -362,6 +379,7 @@ class Room:
                     reply_to = {"id": reply_to["id"], "speaker": reply_to["speaker"], "text": "消息已撤回"}
                 m["reply_to"] = reply_to
             self.messages.append(m)
+            self._update_turn_failure(m)
             self.touched = time.time()
             if not self.closed:
                 with open(os.path.join(self.dir, "log.md"), "a", encoding="utf-8") as f:
@@ -681,6 +699,14 @@ class Room:
         fresh=True：会话刚失效、要按第一次叫重来，即使旧会话还在也带前言并递整份记录。"""
         with self.lock:
             spec = registry.get(ai) or {}
+            if spec.get("http_protocol"):
+                messages = [m for m in self.messages if m.get("text") and m["speaker"] != "系统"
+                            and not m.get("recalled") and not m.get("quiet") and not _hidden_from(m, ai)][-MAX_CONTEXT:]
+                body = "\n\n".join("[%s] %s" % (m["speaker"], m["text"]) for m in messages)
+                prompt = "你是 @%s。请作为房间成员回答下面的对话，仅输出文字。" % ai
+                if self.goal():
+                    prompt += "\n\n房间目标：\n" + self.goal_text()
+                return prompt + "\n\n" + body, len(self.messages) - 1, self.meta["ann_ver"], []
             full = spec.get("context") == "full"
             cp = (self.meta.get("compact_checkpoints") or {}).get(ai)
             cp = cp if isinstance(cp, dict) and cp.get("summary") else None
@@ -704,12 +730,12 @@ class Room:
             changed = self.meta.get("instruction_seen", {}).get(ai) != self.instruction_signature(ai, mode)
             if not native and (first or changed):
                 allowed = [label for key, label in {"read":"读消息", "post":"发言", "trigger":"唤起成员", "board":"改看板", "files":"发文件", "work":"修改文件/执行命令"}.items() if access.permissions(self, ai)[key] and (key != "work" or mode == "work")]
-                parts.append("【合拍】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
+                parts.append("【AnY】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
                              (ai, self.execution_workdir(ai), "讨论模式，只读" if mode != "work" else "干活模式", "、".join(allowed) or "无"))
             elif native and not first and changed:
                 perms = access.permissions(self, ai)
                 allowed = [label for key, label in {"read":"读消息", "post":"发言", "trigger":"唤起成员", "board":"改看板", "files":"发文件", "work":"修改文件/执行命令"}.items() if perms[key] and (key != "work" or mode == "work")]
-                parts.append("【合拍模式与权限已更新】当前为%s；最新允许：%s（最新权限：%s）。以此为准，覆盖此前会话中的旧模式/旧权限。" %
+                parts.append("【AnY 模式与权限已更新】当前为%s；最新允许：%s（最新权限：%s）。以此为准，覆盖此前会话中的旧模式/旧权限。" %
                              ("干活模式" if mode == "work" else "讨论模式，只读", "、".join(allowed) or "无",
                               json.dumps(perms, ensure_ascii=False)))
             if first:
@@ -991,7 +1017,8 @@ class Room:
     # ---------- 干活模式：一步一步的改动记录、撤回 ----------
     def record_step(self, ai, pre_tree, edits, t0, t1):
         """AI 跑完后，按它自己的操作记录生成这一步的改动清单（只有记录里出现的文件才算）。有改动就记一步、插系统消息。"""
-        ncmd = sum(1 for e in edits or [] if e.get("op") == "command")
+        edits = [{"path": e} if isinstance(e, str) else e for e in edits or [] if isinstance(e, (str, dict))]
+        ncmd = sum(1 for e in edits if e.get("op") == "command")
         wd = self.workdir()
         try:
             top, _ = ws.git_dirs(wd)
@@ -1018,14 +1045,161 @@ class Room:
                 seq = self.meta["step_seq"]
                 ref = None
                 try:
-                    ref = ws.save_checkpoint(wd, self.ref_name(), seq, pre_tree)
+                    ref = ws.save_checkpoint(wd, self.ref_name(), seq, pre_tree, files)
                 except Exception as e:
                     self.add_message("系统", "存档点引用没存上（%s），撤回仍可用，但 git gc 后可能失效" % e)
                 self.meta["steps"][str(seq)] = {"v": 2, "ai": ai, "pre_tree": pre_tree, "ref": ref, "files": files,
-                                                "outside": outside, "undone": False, "time": now_str(), "t0": t0, "t1": t1}
+                                                "outside": outside, "commands": ncmd, "undone": False, "time": now_str(), "t0": t0, "t1": t1}
                 self.save_meta()
         self.add_message("系统", ws.files_text(ai, files, outside, clash, ncmd), step=seq, not_for=ai)
         return seq
+
+    def step_diff(self, seq, path):
+        with self.lock:
+            step = self.meta["steps"].get(str(seq), {})
+            entry = next((f for f in step.get("files", []) if f["path"] == path), None)
+            if entry is None:
+                return False, "", "没有找到这一步的文件"
+            wd = self.workdir()
+        try:
+            diff, reason = ws.file_diff(wd, entry, legacy=step.get("v") != 2)
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+            return True, "", "这一步的文件版本已不可用"
+        return True, diff, reason
+
+    def step_info(self, seq):
+        with self.lock:
+            st = self.meta["steps"].get(str(seq))
+            if st is None:
+                return None
+            return {"seq": seq, "ai": st.get("ai", "?"), "time": st.get("time", ""), "undone": bool(st.get("undone")),
+                    "files": [{"path": f.get("path", ""), "st": f.get("st", "M")} for f in st.get("files") or []]}
+
+    def add_turn_failure(self, ai, text, mode, source, step=None, retryable=True):
+        with self.lock:
+            if source in self.recalled:
+                return
+            saved = self.meta["steps"].get(str(step), {})
+            can_undo = bool(saved and not saved.get("commands") and not saved.get("outside")
+                            and not any(f.get("nb") for f in saved["files"]))
+            self.add_message("系统", text or "%s 执行失败" % ai, source=source,
+                             progress=self.live.get(ai, {}).get("details"),
+                             failure={"ai": ai, "mode": mode, "step": step, "undo_possible": can_undo,
+                                      "changes": "recorded" if step is not None else "none" if mode == "discuss" else "unknown",
+                                      "retryable": bool(retryable and source is not None)})
+
+    def _approval_active(self, ai):
+        return (not self.closed and ai in self.state["running"] and ai not in self.state["stopped"]
+                and not self.turn_recalled(ai)
+                and (self.mode() == "work" or self.live.get(ai, {}).get("forced_work"))
+                and all(access.allowed(self, ai, perm) for perm in ("read", "post", "work")))
+
+    def request_turn_approval(self, ai, title):
+        deadline = time.monotonic() + 90
+        with self.turn_ready:
+            if not self._approval_active(ai) or ai in self.turn_approvals:
+                return False
+            approval = {"id": secrets.token_urlsafe(12), "ai": ai, "title": title[:300]}
+            pending = {"request": approval, "decision": None, "deadline": deadline}
+            self.turn_approvals[ai] = pending
+            try:
+                self.add_message("系统", "%s 正在等待确认：%s" % (ai, approval["title"]),
+                                 source=self.turn_sources.get(ai), approval=approval)
+                while self._approval_active(ai):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    if pending["decision"] is not None:
+                        return pending["decision"] == "allow"
+                    self.turn_ready.wait(min(remaining, 0.5))
+                return False
+            finally:
+                self.turn_approvals.pop(ai, None)
+
+    def resolve_turn_approval(self, approval_id, decision):
+        with self.turn_ready:
+            for ai, pending in self.turn_approvals.items():
+                if pending["request"]["id"] != approval_id:
+                    continue
+                if (pending["decision"] is not None or decision not in ("allow", "deny")
+                        or time.monotonic() >= pending["deadline"] or not self._approval_active(ai)):
+                    break
+                pending["decision"] = decision
+                self.turn_ready.notify_all()
+                return True, ""
+            return False, "这项审批已失效"
+
+    def _retry_candidate(self, message_id):
+        if not 0 <= message_id < len(self.messages):
+            return None, None, "找不到可重试的失败消息"
+        message = self.messages[message_id]
+        failure = message.get("failure") or {}
+        ai = str(failure.get("ai") or "")
+        source = message.get("source_message")
+        if (not failure.get("retryable") or source in self.recalled or message_id in self.recalled
+                or self.turn_failures.get(ai, {}).get("id") != message_id or not ai or ai not in self.ais):
+            return None, None, "这条失败消息已失效"
+        if (self.closed or is_archived(self.meta["status"]) or self.state.get("debate_active")
+                or self.busy_for(ai) or self.meta["handed_off"].get(ai)
+                or execution.binding(self, ai)["phase"] != "ready"
+                or not access.allowed(self, ai, "read") or not access.allowed(self, ai, "post")):
+            return None, None, "该成员现在无法重试"
+        if self.member_mode(ai) != failure["mode"]:
+            return None, None, "成员的工作模式已变化，请确认后重新发消息"
+        return failure, source, ""
+
+    def _retry_undo_plan(self, failure):
+        if not failure.get("undo_possible"):
+            return False, "这一步的改动无法完整撤回", None
+        ok, error, plan = self.undo_plan(failure["step"])
+        if not ok:
+            return False, error, None
+        try:
+            top, _ = ws.git_dirs(self.workdir())
+            claims = guard.listing()
+            for item in plan["items"]:
+                full = ws.full_of(top, item["path"])
+                if os.path.islink(full) or any(c["key"] == guard.key_of(full) or (c["dir"] and in_dir(full, c["shown"])) for c in claims):
+                    return False, "文件现在无法安全撤回：" + item["path"], None
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+            return False, "无法安全撤回这一步", None
+        return True, "", plan
+
+    def retry_preview(self, message_id):
+        with self.lock:
+            failure, _, error = self._retry_candidate(message_id)
+            return self._retry_undo_plan(failure) if failure else (False, error, None)
+
+    def retry_turn(self, message_id, action):
+        with self.lock:
+            failure, source, error = self._retry_candidate(message_id)
+            if not failure:
+                return False, error
+            if action not in ("continue", "undo"):
+                return False, "未知的重试方式"
+            ai = failure["ai"]
+            if action == "undo":
+                ok, error, plan = self._retry_undo_plan(failure)
+                if not ok:
+                    return False, error
+                owner = (self.id, "retry:%s" % message_id)
+                try:
+                    top, _ = ws.git_dirs(self.workdir())
+                    for item in plan["items"]:
+                        full = ws.full_of(top, item["path"])
+                        if os.path.islink(full) or not guard.touch(owner, full, self.title())[0]:
+                            return False, "文件现在无法安全撤回：" + item["path"]
+                    ok, error = self.undo_step(failure["step"])
+                    if not ok:
+                        return False, error
+                except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+                    return False, "无法安全撤回这一步"
+                finally:
+                    guard.release_turn(owner)
+            self.add_message("系统", "你让 %s 重试" % ai, source=source, retry_ai=ai)
+            self.state["chain"] = 0
+            self.enqueue(ai, user=True, source=source)
+            return True, ""
 
     def undo_plan(self, seq):
         """算出撤回这一步要动哪些文件（不动磁盘）。调用方持有 lock。返回 (ok, 错误, 计划)。
@@ -1302,8 +1476,18 @@ class Room:
     def push_live(self, ai, res):
         """Keep user-visible commentary for the current turn and its final reply."""
         t = res.pop("live", None)
+        tool = res.pop("tool", None)
         entry = self.live.get(ai)
-        if not t or entry is None or self.turn_recalled(ai) or not (t := t.strip()):
+        if entry is None or self.turn_recalled(ai):
+            return
+        if tool and (title := tool.strip()[:300]) and title != entry.get("last_tool"):
+            entry["last_tool"] = title
+            details = entry.get("details", "")
+            entry["details"] = (details + ("\n\n" if details else "") + title)[-12000:]
+            entry["latest"] = ""
+            entry["text"] = title
+            entry["time"] = datetime.now().strftime("%H:%M:%S")
+        if not t or not (t := t.strip()):
             return
         previous, latest = entry.get("details", ""), entry.get("latest", "")
         if t != latest:
@@ -1329,7 +1513,7 @@ class Room:
                 return
             self.run_job(item, False)
 
-    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False, job=None, source=None):
+    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False, debate_defer=False, job=None, source=None):
         """叫一次 AI。整个过程持有这个 AI 自己的锁（同一个 AI 永远串行）；增量在拿到锁之后才取快照。"""
         with self.ai_lock(ai):
             with self.turn_ready:
@@ -1354,6 +1538,8 @@ class Room:
                 self.live[ai] = {"text": "", "time": "", "since": time.time()}
             try:
                 mode = self.member_mode(ai, "discuss" if debate_prompt else "work" if forced else self.mode())
+                if forced and mode == "work":
+                    self.live[ai]["forced_work"] = True
                 wd = self.workdir()
                 remote = execution.remote(self, ai)
                 pre = None
@@ -1369,7 +1555,7 @@ class Room:
                     try:
                         pre = ws.snapshot_tree(wd)   # 只用来取"改前"原文件；改了哪些文件以 AI 自己的操作记录为准
                     except Exception as e:
-                        self.add_message("系统", "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai))
+                        self.add_turn_failure(ai, "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai), mode, source)
                         return
                 with self.lock:
                     if self.turn_recalled(ai):
@@ -1394,7 +1580,7 @@ class Room:
                         is_cancelled=lambda: ai in self.state["stopped"] or self.turn_recalled(ai),
                     )
                     if jstate == "detached":
-                        # Cojam is shutting down; leave the detached CLI worker running to be collected on reopen.
+                        # AnY is shutting down while optional detached persistence is enabled.
                         return
                     if jstate == "done" and isinstance(jdata, dict):
                         with self.lock:
@@ -1408,16 +1594,16 @@ class Room:
                         if not self.turn_recalled(ai):
                             self.add_message("系统", "%s 被你打断了" % ai)
                         return
-                    self.add_message("系统", "%s 后台任务意外退出，未返回结果。" % ai)
+                    self.add_turn_failure(ai, "%s 后台任务意外退出，未返回结果。" % ai, mode, source)
                     return
                 try:
                     if self.turn_recalled(ai):
                         return
                     res = ai_caller(ai, prompt, sid, imgs, mode, self)   # 明着传：落盘那一轮是强制干活模式，跟会议的模式不一样
-                except BaseException:
-                    if pre is not None:
-                        self.add_message("系统", "%s 调用中途崩了，这一步改了什么没能记录" % ai)
-                    raise
+                except Exception as error:
+                    logger.exception("Agent %s failed in %s", ai, self.id)
+                    self.add_turn_failure(ai, "内部错误：%s" % error, mode, source)
+                    return
                 ok, out, new_sid = res[0], res[1], res[2]
                 edits = res[3] if len(res) > 3 else []
                 if self.turn_recalled(ai):
@@ -1444,13 +1630,18 @@ class Room:
                         if not debate_prompt:
                             self.state["chain"] += 1
                     if debate_prompt:
-                        if was_stopped or self.state.get("debate_cancelled"):
+                        if was_stopped or self.state.get("debate_cancelled") or not out.strip():
                             return
-                        text = out if debate_summary else out.rstrip().removesuffix(debate.READY).rstrip()
-                        if not text.strip():
-                            return
-                        self.add_message(ai, text, to_user=debate_summary, origin="debate-summary" if debate_summary else "debate",
-                                         progress=self.live.get(ai, {}).get("details"))
+                        progress = self.live.get(ai, {}).get("details")
+                        if debate_summary:
+                            self.add_message(ai, out, to_user=True, origin="debate-summary", progress=progress)
+                            return out
+                        text, is_ready, is_skipped = debate.parse_turn(out)
+                        if debate_defer:
+                            return {"raw": out, "text": text, "ready": is_ready, "skipped": is_skipped, "progress": progress}
+                        if is_skipped:
+                            return out
+                        self.add_message(ai, text, to_user=False, origin="debate", progress=progress)
                         return out
                     elif was_stopped and remote:
                         self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai), source=source)
@@ -1468,7 +1659,12 @@ class Room:
                         with self.lock:
                             self.meta[ai + "_session"] = new_sid
                             self.save_meta()
-                    self.add_message("系统", out)
+                    step = self.record_step(ai, pre, edits, t0, time.time()) if pre is not None else None
+                    if was_stopped or debate_prompt:
+                        self.add_message("系统", out)
+                    else:
+                        self.add_turn_failure(ai, out, mode, source, step)
+                    return
                 if pre is not None:
                     self.record_step(ai, pre, edits, t0, time.time())
             finally:
@@ -1510,7 +1706,7 @@ class Room:
         allowed = [label for key, label in {"read": "读消息", "post": "发言", "trigger": "唤起成员", "board": "改看板",
                                             "files": "发文件", "work": "修改文件/执行命令"}.items()
                    if access.permissions(self, ai)[key] and (key != "work" or mode == "work")]
-        return ("【合拍】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
+        return ("【AnY】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
                 (ai, self.execution_workdir(ai), "讨论模式，只读" if mode != "work" else "干活模式", "、".join(allowed) or "无"))
 
     def request_compact(self, targets=None):
@@ -1824,7 +2020,12 @@ class Room:
             for a in self.ais:
                 cp = cps.get(a) if isinstance(cps, dict) else None
                 cp_at = cp.get("time", "") if isinstance(cp, dict) and cp.get("summary") else ""
+                failure = self.turn_failures.get(a)
+                failure_id = failure["id"] if failure and failure["id"] not in self.recalled else None
+                pending = self.turn_approvals.get(a)
                 ais[a] = {"session": bool(self.meta.get(a + "_session")), "handed_off": self.meta["handed_off"][a],
+                          "failure": failure_id,
+                          "approval": pending["request"] if pending and pending["decision"] is None else None,
                           "busy": self.busy_for(a), "compacting": a in self.state["compacting"],
                           "can_compact": self._can_compact_locked(a)[0] and a not in self.state["compacting"],
                           "compact_at": cp_at, "cmd": self.handoff_cmd(a),
@@ -1842,9 +2043,7 @@ class Room:
                     "mode": self.mode(),
                     "debate": debate.snapshot(self),
                     "steps_undone": [int(k) for k, v in self.meta["steps"].items() if v.get("undone")],
-                    "steps": [{"seq": int(k), "ai": v.get("ai", "?"), "time": v.get("time", ""), "undone": bool(v.get("undone")),
-                               "files": [{"path": f.get("path", ""), "st": f.get("st", "M")} for f in v.get("files") or []]}
-                              for k, v in sorted(self.meta["steps"].items(), key=lambda kv: int(kv[0]))[-40:]],
+                    "steps": [self.step_info(seq) for seq in sorted(map(int, self.meta["steps"]))[-40:]],
                     "git": gi,
                     "running": list(self.state["running"]), "queued": self.queued_count(),
                     "claims": [c for c in guard.listing() if c["room"] == self.id or in_dir(c["shown"], self.workdir())],

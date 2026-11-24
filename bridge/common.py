@@ -48,7 +48,7 @@ def setup_logging(
     backup_count: int = LOG_BACKUP_COUNT,
     force: bool = False,
 ) -> logging.Logger:
-    """Configure rotating structured logging to <log_dir>/bridge.log without colliding with cojam.log."""
+    """Configure rotating structured logging to <log_dir>/bridge.log without colliding with any.log."""
     global _LOG_CONFIGURED
     with _LOG_LOCK:
         logger = logging.getLogger("bridge")
@@ -221,7 +221,7 @@ def preamble(mode: str, wd: str, ais: Sequence[str] | None = None, current: str 
 
 
 def timeout_for(mode: str, pid: str | None = None) -> tuple[int, int]:
-    """返回 (多久没动静就停, 一轮总上限)，单位秒。总上限可在 Cojam 的「连接与心跳」里按联系人设置。"""
+    """返回 (多久没动静就停, 一轮总上限)，单位秒。总上限可在 AnY 的「连接与心跳」里按联系人设置。"""
     m = mode if mode in IDLE_LIMIT else "discuss"
     total = TOTAL_LIMIT[m]
     try:

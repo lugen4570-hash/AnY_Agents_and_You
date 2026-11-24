@@ -1,4 +1,4 @@
-"""Orchestrate the optional native window around the Cojam backend."""
+"""Orchestrate the optional native window around the AnY backend."""
 import ctypes
 import inspect
 import os
@@ -9,7 +9,7 @@ import webbrowser
 from . import backend
 
 TITLE = "AnY"
-BUSY_TEXT = "还有任务正在运行或排队。现在关闭窗口，如果这是最后一个合拍页面，任务会中断。确定关闭吗？"
+BUSY_TEXT = "还有任务正在运行或排队。现在关闭窗口，如果这是最后一个 AnY 页面，任务会中断。确定关闭吗？"
 BUSY_UNKNOWN_TEXT = "无法确认后台是否仍有任务正在运行或排队。现在关闭窗口可能导致进行中的任务中断。确定关闭吗？"
 
 
@@ -170,32 +170,32 @@ def main():
     base = base_url()
     core = backend.find_core()
     if core is None:
-        detail = ("请重新构建或解压完整的 Cojam.app。" if sys.platform == "darwin"
-                  else "请确认应用包完整；Windows 版需要把 Cojam.exe 和 CojamCore.exe 放在同一个文件夹里。")
-        show_error("找不到合拍后台。" + detail)
+        detail = ("请重新构建或解压完整的 AnY.app。" if sys.platform == "darwin"
+                  else "请确认应用包完整；Windows 版需要把 AnY.exe 和 AnYCore.exe 放在同一个文件夹里。")
+        show_error("找不到 AnY 后台。" + detail)
         return 2
     state, info = backend.probe(base)
     if state in ("foreign", "timeout"):
-        show_error("端口 %s 被其他程序占用，合拍无法启动。" % os.environ.get("ROUNDTABLE_PORT", "8765"))
+        show_error("端口 %s 被其他程序占用，AnY 无法启动。" % os.environ.get("ROUNDTABLE_PORT", "8765"))
         return 2
     proc = None
-    if state != "cojam":
+    if state != "any":
         command, cwd = core
         try:
             proc = backend.spawn_core(command, cwd)
         except OSError as error:
-            show_error("合拍后台没有启动成功。\n%s" % error)
+            show_error("AnY 后台没有启动成功。\n%s" % error)
             return 2
         info = backend.wait_ready(base, proc)
         if info is None:
             backend.stop_process(proc)
-            show_error("合拍后台没有启动成功。日志：%s" % backend.log_path(cwd))
+            show_error("AnY 后台没有启动成功。日志：%s" % backend.log_path(cwd))
             return 2
     try:
         token = backend.fetch_token(base)
     except Exception:
         backend.stop_process(proc)
-        show_error("已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。")
+        show_error("已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。")
         return 2
     tab = backend.new_tab_id()
     heartbeat = backend.TabHeartbeat(base, token, tab)
@@ -220,7 +220,7 @@ def main():
             show_error("没能打开桌面窗口，也没能打开浏览器。")
             return 2
         heartbeat.handoff_to_browser()
-        show_error("没能打开桌面窗口。已改用浏览器打开合拍。")
+        show_error("没能打开桌面窗口。已改用浏览器打开 AnY。")
         return 0
     heartbeat.stop()
     return 0

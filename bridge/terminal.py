@@ -1,4 +1,4 @@
-"""Interactive terminal interface for the shared Cojam backend."""
+"""Interactive terminal interface for the shared AnY backend."""
 import asyncio
 import os
 import re
@@ -52,7 +52,7 @@ class WelcomeMark(Static):
     )
 
     def on_mount(self):
-        animate = motion_enabled(self.app) and self.app.room is None
+        animate = motion_enabled(self.app) and getattr(self.app, "room", None) is None
         self.frame = 0 if animate else len(self.FRAMES) - 1
         self.draw_mark()
         if animate:
@@ -93,7 +93,7 @@ def agent_colors(state):
 
 
 def _message_body_items(message, *, markdown=False):
-    items = []
+    items: list[Any] = []
     if reply := message.get("reply_to"):
         items.append(Text(f"↳ {plain(reply.get('speaker', ''))}：{plain(reply.get('text', ''))}", style=f"dim {MUTED_TEXT}"))
     if message.get("recalled"):
@@ -168,7 +168,7 @@ def _wrap_cells(text, first_width, rest_width):
     lines = []
     for raw_line in plain(text).splitlines() or [""]:
         limit = max(8, first_width)
-        buf = []
+        buf: list[str] = []
         width = 0
         for ch in raw_line:
             cw = max(0, get_character_cell_size(ch))
@@ -366,29 +366,37 @@ class CreateForm(ModalScreen):
 class DebateForm(ModalScreen):
     BINDINGS = [("escape", "cancel")]
 
-    def __init__(self, members, topic):
+    def __init__(self, members, topic, previous=None):
         super().__init__()
         self.members = members
         self.topic = topic
+        self.previous = previous
 
     def compose(self):
         with VerticalScroll(id="debate-form"):
-            yield Label("开始论道", classes="heading")
-            yield Input(self.topic, placeholder="议题", id="debate-topic")
+            resume = self.previous is not None
+            yield Label("继续论道" if resume else "开始论道", classes="heading")
+            if resume:
+                yield Label("原议题  " + plain(self.previous["topic"]), markup=False)
+            yield Input(self.topic, placeholder="补充意见" if resume else "议题", id="debate-topic")
             with Horizontal(id="debate-rounds"):
                 with Vertical():
                     yield Label("最少轮数")
-                    yield Input("0", type="integer", id="debate-min")
+                    yield Input("1" if resume else "0", type="integer", id="debate-min")
                 with Vertical():
                     yield Label("最多轮数 · 留空不限")
                     yield Input("3", type="integer", id="debate-max")
             yield Label("参辩成员 · 空格切换")
-            yield SelectionList(*((plain(label), pid, True) for pid, label in self.members.items()), id="debate-members")
+            included = set(self.previous["participants"] if resume else self.members)
+            moderator = (self.previous or {}).get("moderator")
+            selected = [pid for pid in self.members if pid in included]
+            yield SelectionList(*((plain(label), pid, pid in included) for pid, label in self.members.items()), id="debate-members")
             yield Label("负责总结")
-            yield Select([(plain(label), pid) for pid, label in self.members.items()],
-                         value=next(iter(self.members)), id="debate-moderator")
+            yield Select([(plain(self.members[pid]), pid) for pid in selected],
+                         value=moderator if moderator in selected else next(iter(selected), Select.BLANK),
+                         id="debate-moderator")
             with Horizontal(id="debate-actions"):
-                yield Button("开始论道", id="debate-start", variant="primary")
+                yield Button("继续论道" if resume else "开始论道", id="debate-start", variant="primary")
                 yield Button("取消", id="debate-cancel")
 
     @on(SelectionList.SelectedChanged)
@@ -417,7 +425,8 @@ class DebateForm(ModalScreen):
         if not topic or len(selected) < (1 if maximum == 0 else 2) or moderator not in selected:
             self.notify("请填写议题，选择参辩成员和总结人。论道至少需要两位，直接总结时需要一位。", severity="warning")
             return
-        self.dismiss({"topic": topic, "min_rounds": minimum, "max_rounds": maximum,
+        self.dismiss({"feedback" if self.previous is not None else "topic": topic,
+                      "min_rounds": minimum, "max_rounds": maximum,
                       "moderator": moderator, "participants": selected})
 
     @on(Button.Pressed, "#debate-cancel")
@@ -428,7 +437,7 @@ class DebateForm(ModalScreen):
         self.dismiss()
 
 
-class CojamTerminal(App):
+class AnYTerminal(App):
     TITLE = "AnY"
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
@@ -581,7 +590,8 @@ class CojamTerminal(App):
     def action_switch_to_rooms(self):
         if self.room is None:
             return
-        if self.focused is self.composer.prompt and (self.composer.prompt.text or self.composer.menu.display):
+        prompt = self.composer.prompt
+        if self.focused is prompt and (bool(getattr(prompt, "text", "")) or self.composer.menu.display):
             return
         self.action_show_projects()
 
@@ -1111,8 +1121,8 @@ class CojamTerminal(App):
         if not self.room:
             self.notify("请先选择或创建会话。", severity="warning")
             return
-        if command == "debate":
-            self.open_debate(argument)
+        if command in ("debate", "debate-continue"):
+            self.open_debate(argument, resume=command == "debate-continue")
             return
         if command == "model" and len(argument.split()) < 2:
             self.composer.set_text("/model " + (argument + " " if argument else ""))
@@ -1131,7 +1141,11 @@ class CojamTerminal(App):
         if self.room:
             self.set_details(True)
 
-    def open_debate(self, topic):
+    def open_debate(self, topic, *, resume=False):
+        previous = self.state.get("debate") if resume else None
+        if resume and (not previous or previous.get("status") in ("running", "summarizing")):
+            self.notify("当前没有可继续的论道。", severity="warning")
+            return
         permissions = self.state.get("permissions", {})
         participants = self.state.get("participants", [])
         agents = self.state.get("agents", [])
@@ -1144,12 +1158,13 @@ class CojamTerminal(App):
             return
         room = self.room
         draft = self.composer.prompt.text
+        action = "debate/continue" if resume else "debate/start"
 
         def start_debate(data):
             if data is not None:
-                self.submit(room_path(room, "debate/start"), data, draft=draft)
+                self.submit(room_path(room, action), data, draft=draft)
 
-        self.push_screen(DebateForm(members, topic), start_debate)
+        self.push_screen(DebateForm(members, topic, previous), start_debate)
 
     def message_action(self, command, argument, value):
         if command == "debate-finish":

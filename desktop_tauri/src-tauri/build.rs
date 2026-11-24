@@ -31,13 +31,13 @@ fn main() {
             }
         }
     }
-    println!("cargo:rustc-env=COJAM_EXPECTED_VERSION={version}");
-    println!("cargo:rustc-env=COJAM_EXPECTED_API_REVISION={api_revision}");
+    println!("cargo:rustc-env=ANY_EXPECTED_VERSION={version}");
+    println!("cargo:rustc-env=ANY_EXPECTED_API_REVISION={api_revision}");
 
     tauri_build::try_build(
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new()
-                .commands(&["cojam_choose_workdir", "cojam_choose_agent_file"]),
+                .commands(&["any_choose_workdir", "any_choose_agent_file"]),
         ),
     )
     .expect("failed to run tauri-build");

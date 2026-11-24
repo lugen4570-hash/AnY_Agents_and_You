@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "cojam-main-local",
-  "description": "Allow Cojam controlled file/folder pickers only for the local main window.",
+  "identifier": "any-main-local",
+  "description": "Allow AnY controlled file/folder pickers only for the local main window.",
   "windows": [
     "main"
   ],
@@ -10,7 +10,7 @@
     "urls": []
   },
   "permissions": [
-    "allow-cojam-choose-workdir",
-    "allow-cojam-choose-agent-file"
+    "allow-any-choose-workdir",
+    "allow-any-choose-agent-file"
   ]
 }

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """干活模式：存档点、改动清单、撤回要用到的 git 小工具。都按传进来的工作文件夹干活，不认"当前会议"。"""
-import hashlib, os, re, shutil, subprocess, threading, time
+import difflib, hashlib, os, re, shutil, subprocess, threading, time
 
 from .common import LOG_DIR, NO_WINDOW, get_logger, in_dir, norm
 
@@ -14,15 +14,18 @@ GIT_IDENT = {"GIT_AUTHOR_NAME": "roundtable", "GIT_AUTHOR_EMAIL": "roundtable@lo
 ZERO_SHA = "0" * 40
 STATUS_CN = {"M": "改", "A": "增", "D": "删", "T": "改"}
 MAX_LIST = 40
+DIFF_MAX_BYTES = 256 * 1024
+DIFF_MAX_LINES = 2000
 # 会议室自己天天在写的东西（在会议记录目录里），不进快照
 OWN_NAMES = ("meetings", "trash", "current.txt", "claims.json", "bridge_token.txt")
 
 
-def git(args, cwd, env_extra=None, check=True):
+def git(args, cwd, env_extra=None, check=True, input_data=None):
     env = dict(os.environ, **GIT_IDENT)
     if env_extra:
         env.update(env_extra)
-    r = subprocess.run(["git"] + GIT_C + list(args), cwd=cwd, env=env, capture_output=True, timeout=600, **NO_WINDOW)
+    r = subprocess.run(["git"] + GIT_C + list(args), cwd=cwd, env=env, input=input_data,
+                       capture_output=True, timeout=600, **NO_WINDOW)
     if check and r.returncode != 0:
         raise RuntimeError("git %s 失败：%s" % (args[0], r.stderr.decode("utf-8", "replace").strip()[:300]))
     return r.stdout if check else r
@@ -109,12 +112,20 @@ def snapshot_tree(cwd):
         return git(["write-tree"], cwd, env).decode().strip()
 
 
-def save_checkpoint(cwd, ref_name, seq, pre_tree):
+def save_checkpoint(cwd, ref_name, seq, pre_tree, files=()):
     """把"改前"的树包成一个提交，挂在 refs/roundtable/<会议>/<序号> 上，防止被 gc（撤回要从这里取原文件）。"""
     head = git(["rev-parse", "--verify", "-q", "HEAD"], cwd, check=False)
     parent = head.stdout.decode().strip() if head.returncode == 0 else None
     base = "refs/roundtable/%s/%d" % (ref_name, seq)
-    c0 = git(["commit-tree", pre_tree] + (["-p", parent] if parent else []) + ["-m", "roundtable checkpoint"], cwd).decode().strip()
+    parents = ["-p", parent] if parent else []
+    # 只保留可预览文件的改后 blob，不把整份工作区再做一份快照。
+    blobs = sorted({f["post_blob"] for f in files if f.get("post_blob")})
+    if blobs:
+        entries = "".join("100644 blob %s\t%s\n" % (oid, oid) for oid in blobs)
+        post_tree = git(["mktree"], cwd, input_data=entries.encode("ascii")).decode().strip()
+        post_commit = git(["commit-tree", post_tree, "-m", "roundtable recorded changes"], cwd).decode().strip()
+        parents += ["-p", post_commit]
+    c0 = git(["commit-tree", pre_tree] + parents + ["-m", "roundtable checkpoint"], cwd).decode().strip()
     git(["update-ref", base, c0], cwd)
     return base
 
@@ -204,9 +215,53 @@ def build_files(cwd, pre_tree, inside):
         nb = False
         if pre is None:   # 改前快照里没有它：新建的，或者是被 git 忽略 / 会议室自己目录里的 -> 还原不了
             nb = snap_excluded(full) or is_ignored(cwd, full)
-        files.append({"path": rel, "st": "A" if pre is None else ("D" if data is None else "M"), "pre": pre,
-                      "post": None if data is None else sha256_of(data), "nb": nb})
+        record = {"path": rel, "st": "A" if pre is None else ("D" if data is None else "M"), "pre": pre,
+                  "post": None if data is None else sha256_of(data), "nb": nb}
+        if not nb and data is not None and len(data) <= DIFF_MAX_BYTES and b"\0" not in data:
+            try:
+                record["post_blob"] = git(["hash-object", "-w", "--stdin"], cwd, input_data=data).decode().strip()
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+                logger.warning("Could not preserve the recorded version of %s: %s", rel, error)
+        files.append(record)
     return files
+
+
+def file_diff(cwd, entry, legacy=False):
+    """Preview one recorded change. Older records can use a worktree file only if its hash matches."""
+    path = entry["path"]
+    if entry.get("nb"):
+        return "", "这份文件不在快照范围内"
+    versions = []
+    for oid, expected in ((entry.get("pre"), entry.get("pre")), (entry.get("post_blob"), entry.get("post"))):
+        if expected is None:
+            versions.append("")
+            continue
+        if oid:
+            if int(git(["cat-file", "-s", oid], cwd)) > DIFF_MAX_BYTES:
+                return "", "文件太大，无法预览"
+            content = git(["cat-file", "blob", oid], cwd)
+        else:
+            top, _ = git_dirs(cwd)
+            full = full_of(top, path)
+            if not os.path.isfile(full) or os.path.islink(full):
+                return "", "这一步的改后内容已不可用"
+            with open(full, "rb") as fh:
+                content = fh.read(DIFF_MAX_BYTES + 1)
+            if len(content) > DIFF_MAX_BYTES:
+                return "", "文件太大，无法预览"
+            if (blob_sha(content) if legacy else sha256_of(content)) != expected:
+                return "", "文件后来已变更，这一步的改后内容已不可用"
+        if b"\0" in content:
+            return "", "二进制文件无法显示文本差异"
+        try:
+            versions.append(content.decode("utf-8"))
+        except UnicodeDecodeError:
+            return "", "该文件的编码无法显示文本差异"
+    before, after = (content.splitlines(keepends=True) for content in versions)
+    if max(len(before), len(after)) > DIFF_MAX_LINES:
+        return "", "文件行数太多，无法预览"
+    lines = difflib.unified_diff(before, after, "a/" + path, "b/" + path)
+    return "".join(line if line.endswith("\n") else line + "\n\\ No newline at end of file\n" for line in lines), ""
 
 
 def files_text(ai, files, outside=(), clash=None, ncmd=0):

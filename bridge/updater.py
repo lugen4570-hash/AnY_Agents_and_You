@@ -38,14 +38,14 @@ _INSTALL_HELPER = r'''
 $ErrorActionPreference = 'Stop'
 function ReportFailure($message) {
   Add-Type -AssemblyName System.Windows.Forms
-  [System.Windows.Forms.MessageBox]::Show($message, '合拍更新') | Out-Null
+  [System.Windows.Forms.MessageBox]::Show($message, 'AnY 更新') | Out-Null
 }
 try {
   Add-Type -TypeDefinition @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-public static class CojamUpdateWindows {
+public static class AnYUpdateWindows {
   delegate bool EnumWindowsProc(IntPtr h, IntPtr p);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc f, IntPtr p);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -56,31 +56,31 @@ public static class CojamUpdateWindows {
       uint pid; GetWindowThreadProcessId(h, out pid);
       if (pid == (uint)id) {
         StringBuilder title = new StringBuilder(256); GetWindowText(h, title, title.Capacity);
-        if (title.ToString() == "合拍 Cojam") PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero);
+        if (title.ToString() == "AnY" || title.ToString() == "合拍 Cojam") PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero);
       }
       return true;
     }, IntPtr.Zero);
   }
 }
 '@
-  $target = [int]$env:COJAM_UPDATE_CORE_PID
+  $target = [int]$env:ANY_UPDATE_CORE_PID
   $deadline = (Get-Date).AddSeconds(45)
-  $shellPath = Join-Path $env:COJAM_UPDATE_DIRECTORY 'Cojam.exe'
+  $shellPath = Join-Path $env:ANY_UPDATE_DIRECTORY 'AnY.exe'
   while ($true) {
-    $shells = @(Get-Process -Name 'Cojam' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $shellPath })
-    $cores = @(Get-Process -Name 'CojamCore' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $env:COJAM_UPDATE_CORE_EXECUTABLE })
+    $shells = @(Get-Process -Name 'AnY' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $shellPath })
+    $cores = @(Get-Process -Name 'AnYCore' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $env:ANY_UPDATE_CORE_EXECUTABLE })
     $core = Get-Process -Id $target -ErrorAction SilentlyContinue
     if (-not $core -and $cores.Count -eq 0 -and $shells.Count -eq 0) { break }
-    foreach ($shell in $shells) { [CojamUpdateWindows]::Close($shell.Id) }
-    if ((Get-Date) -ge $deadline) { throw '合拍未能安全退出，请关闭合拍后手动运行已下载的安装程序。' }
+    foreach ($shell in $shells) { [AnYUpdateWindows]::Close($shell.Id) }
+    if ((Get-Date) -ge $deadline) { throw 'AnY 未能安全退出，请关闭 AnY 后手动运行已下载的安装程序。' }
     Start-Sleep -Milliseconds 250
   }
   $arguments = @('/SP-', '/SILENT', '/NORESTART', '/CLOSEAPPLICATIONS',
     '/NOFORCECLOSEAPPLICATIONS', '/NORESTARTAPPLICATIONS',
-    ('/DIR="' + $env:COJAM_UPDATE_DIRECTORY + '"'))
-  $setup = Start-Process -FilePath $env:COJAM_UPDATE_INSTALLER -ArgumentList $arguments -Wait -PassThru
+    ('/DIR="' + $env:ANY_UPDATE_DIRECTORY + '"'))
+  $setup = Start-Process -FilePath $env:ANY_UPDATE_INSTALLER -ArgumentList $arguments -Wait -PassThru
   if ($setup.ExitCode -ne 0) { throw '更新安装未完成，请手动运行已下载的安装程序。' }
-  Start-Process -FilePath $shellPath -WorkingDirectory $env:COJAM_UPDATE_DIRECTORY | Out-Null
+  Start-Process -FilePath $shellPath -WorkingDirectory $env:ANY_UPDATE_DIRECTORY | Out-Null
 } catch { ReportFailure $_.Exception.Message; exit 1 }
 '''
 
@@ -111,12 +111,12 @@ def can_install():
 
 
 def parse_manifest(data, *, macos=False):
-    if not isinstance(data, dict) or data.get('app') != 'Cojam':
+    if not isinstance(data, dict) or data.get('app') != 'AnY':
         raise ValueError('更新信息不完整')
     v = str(data.get('version') or '')
     version(v)
     url = str(data.get('url') or '')
-    filename = f'Cojam-{v}-macOS-Python.zip' if macos else f'Cojam-Setup-{v}.exe'
+    filename = f'AnY-{v}-macOS-Python.zip' if macos else f'AnY-Setup-{v}.exe'
     if url != DOWNLOAD_ROOT + filename:
         raise ValueError('安装包地址无效')
     sha = str(data.get('sha256') or '').lower()
@@ -193,8 +193,8 @@ def start_install(stop_backend=None):
                     digest.update(chunk)
             if digest.hexdigest() != release['sha256']:
                 raise ValueError('安装包校验失败，请重新下载。')
-            environment = dict(os.environ, COJAM_UPDATE_CORE_PID=str(os.getpid()), COJAM_UPDATE_CORE_EXECUTABLE=str(core),
-                               COJAM_UPDATE_INSTALLER=str(installer), COJAM_UPDATE_DIRECTORY=str(core.parent))
+            environment = dict(os.environ, ANY_UPDATE_CORE_PID=str(os.getpid()), ANY_UPDATE_CORE_EXECUTABLE=str(core),
+                               ANY_UPDATE_INSTALLER=str(installer), ANY_UPDATE_DIRECTORY=str(core.parent))
             encoded = base64.b64encode(_INSTALL_HELPER.encode('utf-16le')).decode('ascii')
             proc = pal.launch_hidden_powershell(encoded, environment, popen=subprocess.Popen)
         except OSError as error:
@@ -386,16 +386,16 @@ def _download(release, directory=None, auto_install=False, busy=None, stop_backe
     try:
         folder = Path(directory) if directory else Path.home() / 'Downloads'
         folder.mkdir(parents=True, exist_ok=True)
-        fd, temp_file = tempfile.mkstemp(prefix='.cojam-update-', suffix='.tmp', dir=folder)
+        fd, temp_file = tempfile.mkstemp(prefix='.any-update-', suffix='.tmp', dir=folder)
         temp = temp_file
         _download_to_temp(release['url'], release['size'], fd)
         total, digest_hex = _hash_file(temp_file)
         if total != release['size'] or digest_hex != release['sha256']:
             raise ValueError('安装包校验失败')
         if release.get('macos'):
-            name, extension = f"Cojam-{release['version']}-macOS-Python", '.zip'
+            name, extension = f"AnY-{release['version']}-macOS-Python", '.zip'
         else:
-            name, extension = 'Cojam-Setup-' + release['version'], '.exe'
+            name, extension = 'AnY-Setup-' + release['version'], '.exe'
         for i in range(1000):
             path = folder / (name + (('-%d' % i) if i else '') + extension)
             try:

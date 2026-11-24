@@ -1,4 +1,4 @@
-"""Terminal entry point and local Cojam HTTP client."""
+"""Terminal entry point and local AnY HTTP client."""
 import argparse
 import http.client
 import json
@@ -55,9 +55,9 @@ class LocalClient:
                 try:
                     cookie.load(headers.get("Set-Cookie", ""))
                 except CookieError as error:
-                    raise CliError("无法读取 Cojam 本机会话。") from error
+                    raise CliError("无法读取 AnY 本机会话。") from error
                 if status != 200 or "rt_owner" not in cookie:
-                    raise CliError("这个端口没有可用的 Cojam 本机会话。")
+                    raise CliError("这个端口没有可用的 AnY 本机会话。")
                 self._token = cookie["rt_owner"].value
             token = self._token
         status, _, body = self._request(path, data, token)
@@ -71,9 +71,9 @@ class LocalClient:
             payload = None
         if not 200 <= status < 300:
             detail = (payload.get("error") or payload.get("msg")) if isinstance(payload, dict) else None
-            raise CliError(detail or f"Cojam 请求失败（HTTP {status}）。", status)
+            raise CliError(detail or f"AnY 请求失败（HTTP {status}）。", status)
         if not isinstance(payload, dict):
-            raise CliError("Cojam 返回了无法识别的响应。")
+            raise CliError("AnY 返回了无法识别的响应。")
         return payload
 
 
@@ -130,14 +130,14 @@ def main(argv=None):
             result = client.call(room_path(args.room, "send"), {"text": message})
         else:
             try:
-                from .terminal import CojamTerminal
+                from .terminal import AnYTerminal
             except ModuleNotFoundError as error:
                 if error.name not in ("textual", "rich"):
                     raise
                 raise CliError('请先在源码目录运行 python -m pip install -e ".[cli]"。') from error
             from .cli_autostart import ensure_backend
             ensure_backend(args.port)
-            CojamTerminal(client, getattr(args, "room", None)).run()
+            AnYTerminal(client, getattr(args, "room", None)).run()
             return 0
         print(json.dumps(result))
         return 0

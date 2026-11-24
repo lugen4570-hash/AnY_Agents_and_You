@@ -40,14 +40,14 @@ class TestStandbyAndPrompts(unittest.TestCase):
         self.assertEqual(code, 200)
         prompts = resp["result"]["prompts"]
         self.assertEqual(len(prompts), 1)
-        self.assertEqual(prompts[0]["name"], "cojam_standby")
+        self.assertEqual(prompts[0]["name"], "any_standby")
 
         code2, resp2 = mcp.handle_http(
-            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "prompts/get", "params": {"name": "cojam_standby"}}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "prompts/get", "params": {"name": "any_standby"}}),
             self.key,
         )
         self.assertEqual(code2, 200)
-        self.assertIn("cojam_standby", resp2["result"]["messages"][0]["content"]["text"])
+        self.assertIn("any_standby", resp2["result"]["messages"][0]["content"]["text"])
 
     def test_standby_task_roundtrip_and_stop(self):
         # 1. Idle poll with timeout=0 registers standby status
@@ -56,7 +56,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 10,
                 "method": "tools/call",
-                "params": {"name": "cojam_standby", "arguments": {"timeout": 0}},
+                "params": {"name": "any_standby", "arguments": {"timeout": 0}},
             }),
             self.key,
         )
@@ -67,7 +67,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
         self.assertTrue(st["standby"])
         self.assertEqual(st["label"], "MCP 待命中")
 
-        # 2. Cojam dispatches a task while standby is polling
+        # 2. AnY dispatches a task while standby is polling
         result_box = {}
 
         def caller():
@@ -83,7 +83,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 11,
                 "method": "tools/call",
-                "params": {"name": "cojam_standby", "arguments": {"timeout": 5}},
+                "params": {"name": "any_standby", "arguments": {"timeout": 5}},
             }),
             self.key,
         )
@@ -115,7 +115,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
         self.assertTrue(result_box.get("ok"))
         self.assertEqual(result_box.get("text"), "@用户 README 已检查完毕")
 
-        # 3. Stop standby from Cojam side wakes up next/current standby call
+        # 3. Stop standby from AnY side wakes up next/current standby call
         members.broker.stop_standby("ide-agent")
         self.assertFalse(members.broker.status("ide-agent")["automatic"])
         _, stop_resp = mcp.handle_http(
@@ -123,7 +123,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": 13,
                 "method": "tools/call",
-                "params": {"name": "cojam_standby", "arguments": {"timeout": 5}},
+                "params": {"name": "any_standby", "arguments": {"timeout": 5}},
             }),
             self.key,
         )
@@ -140,7 +140,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
                 "jsonrpc": "2.0",
                 "id": int(time.time() * 1000) % 100000,
                 "method": "tools/call",
-                "params": {"name": "cojam_standby", "arguments": args},
+                "params": {"name": "any_standby", "arguments": args},
             }),
             key,
         )
@@ -224,7 +224,7 @@ class TestStandbyAndPrompts(unittest.TestCase):
         self.assertTrue(box2["task"]["allow_work"])
 
     def test_stop_standby_cooldown_is_sticky(self):
-        """点了停止待命后，循环里的 cojam_standby 不能马上把它复活。"""
+        """点了停止待命后，循环里的 any_standby 不能马上把它复活。"""
         members.broker.stop_standby("ide-agent")
         self.assertIn("ide-agent", members.broker.standby_stopped)
         for _ in range(2):

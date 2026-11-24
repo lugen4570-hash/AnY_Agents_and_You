@@ -42,7 +42,7 @@ document.addEventListener('keydown',e=>{
 // —— 标注 ——
 const TOOL_HINT={pen:'按住拖动画线',arrow:'从起点拖到箭头指的地方',rect:'拖出一个框',text:'点一下要写字的位置',crop:'拖出要留下的区域，松手就裁',erase:'拖动擦除标注',mosaic:'框选需要打码的区域'};
 const THICK=[['细',.6],['中',1],['粗',1.8]];
-function imageEditKey(it){return 'cojam.image-edit.'+RID+'.'+it.url}
+function imageEditKey(it){return 'any.image-edit.'+RID+'.'+it.url}
 function restoreImageEdit(key,it){
   let cached=savedImageEdits.get(key);
   if(!cached)try{cached=JSON.parse(sessionStorage.getItem(key))}catch(e){}

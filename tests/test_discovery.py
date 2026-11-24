@@ -151,7 +151,7 @@ class TestDiscovery(unittest.TestCase):
                 ok, res = discovery.connect("windsurf", via="mcp")
             self.assertTrue(ok, res)
             self.assertEqual(res["via"], "mcp")
-            self.assertEqual(res["standby_prompt"], "/cojam_standby")
+            self.assertEqual(res["standby_prompt"], "/any_standby")
             written = json.loads(Path(mcp_path).read_text(encoding="utf-8"))
             self.assertIn("ai-bridge", written["mcpServers"])
             self.assertIn("serverUrl", written["mcpServers"]["ai-bridge"])

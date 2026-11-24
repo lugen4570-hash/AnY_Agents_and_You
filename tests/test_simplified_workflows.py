@@ -136,9 +136,9 @@ class SimplifiedWorkflows(unittest.TestCase):
         room.meta['short-cli_session'] = 'native-session'
         room.meta['instruction_seen'] = {'short-cli':room.instruction_signature('short-cli')}
         prompt = room.build_prompt('short-cli')[0]
-        self.assertNotIn('【合拍】', prompt)
+        self.assertNotIn('【AnY】', prompt)
         room.meta['permissions'] = {'short-cli':{'post':False}}
-        self.assertIn('【合拍】', room.build_prompt('short-cli')[0])
+        self.assertIn('【AnY】', room.build_prompt('short-cli')[0])
 
 
 if __name__ == '__main__':

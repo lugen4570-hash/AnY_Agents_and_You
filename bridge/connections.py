@@ -13,7 +13,7 @@ from . import access, registry
 from .common import LOG_DIR, NO_WINDOW, read_json, write_json
 
 LOCK = threading.RLock()
-FRESH_SECONDS = 90   # 默认值；实际 = 1.5 × Cojam「连接与心跳」里的掉线时间
+FRESH_SECONDS = 90   # 默认值；实际 = 1.5 × AnY「连接与心跳」里的掉线时间
 
 
 def fresh_seconds(pid=None):
@@ -30,6 +30,9 @@ def _path():
 
 def _signature(spec):
     fields = {k: spec.get(k) for k in ("driver", "bin", "args", "endpoint", "token", "headers", "enabled", "prompt", "context")}
+    if spec.get("http_protocol"):
+        fields["http_protocol"] = spec["http_protocol"]
+        fields["default"] = spec["default"]
     return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
 
 
@@ -81,7 +84,7 @@ def status(pid):
     valid = evidence.get("signature") == _signature(spec)
     ready = valid and evidence.get("ok") is True
     return {"state": "ready" if ready else "failed" if valid else "unchecked", "has_key": bool(digest),
-            "label": "回调已验证" if ready and spec["driver"] == "http" else "程序可启动" if ready else "验证失败" if valid else "未验证",
+            "label": ("模型可回复" if spec.get("http_protocol") else "回调已验证" if spec["driver"] == "http" else "程序可启动") if ready else "验证失败" if valid else "未验证",
             "checked_at": evidence.get("checked_at") if valid else None, "detail": evidence.get("detail", "") if valid else ""}
 
 
@@ -154,7 +157,12 @@ def check(pid):
     ok = False
     try:
         if spec["driver"] == "http":
-            detail = _http_check(spec)
+            if spec.get("http_protocol"):
+                from . import direct_model
+                direct_model.reply(spec, "请只回复一句简短的话，确认模型可以正常回复。", timeout=15)
+                detail = "已收到模型回复。可以加入房间参与文字讨论。"
+            else:
+                detail = _http_check(spec)
         elif spec["driver"] == "acp":
             # ACP 不能只看 --version：要真握手 + 开一个会话，才算「能连」
             from . import acp

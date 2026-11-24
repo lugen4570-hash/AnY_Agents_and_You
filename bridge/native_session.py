@@ -115,9 +115,9 @@ def prove(pid, sid, challenge, cwd):
             if name in ("exec", "functions.exec") and isinstance(args, str):
                 # Codex's tool orchestration can log the JS invocation rather than a direct MCP item.
                 pattern = r"[\"']?binding_challenge[\"']?\s*:\s*([\"'])" + re.escape(challenge) + r"\1"
-                if re.search(r"cojam_standby[^\w]{0,5}\(", args) and re.search(pattern, args):
+                if re.search(r"(?:any_standby|cojam_standby)[^\w]{0,5}\(", args) and re.search(pattern, args):
                     return observed(pid, sid)
-            if "cojam_standby" not in name:
+            if "any_standby" not in name and "cojam_standby" not in name:
                 continue
             if isinstance(args, str):
                 try:

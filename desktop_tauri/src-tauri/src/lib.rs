@@ -1,4 +1,4 @@
-//! Cojam Tauri 2 desktop shell entrypoint, controlled native IPC, and lifecycle wiring.
+//! AnY Tauri 2 desktop shell entrypoint, controlled native IPC, and lifecycle wiring.
 
 pub mod backend;
 pub mod platform;
@@ -31,7 +31,7 @@ fn ensure_trusted_main_caller(
 }
 
 #[tauri::command]
-fn cojam_choose_workdir(
+fn any_choose_workdir(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, String> {
@@ -41,7 +41,7 @@ fn cojam_choose_workdir(
 }
 
 #[tauri::command]
-fn cojam_choose_agent_file(
+fn any_choose_agent_file(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<String>, String> {
@@ -67,11 +67,11 @@ fn apply_window_theme(window: &tauri::WebviewWindow) {
     let _ = window;
 }
 
-/// Start or attach to the verified Cojam backend and launch the Tauri 2 main window.
+/// Start or attach to the verified AnY backend and launch the Tauri 2 main window.
 pub fn run() -> i32 {
     let (base, port) = backend::base_url_and_port();
     let Some(core) = backend::find_core(None) else {
-        platform::show_error("找不到合拍后台。请确认应用包完整；Windows 版需要把 Cojam.exe 和 CojamCore.exe 放在同一个文件夹里。");
+        platform::show_error("找不到 AnY 后台。请确认应用包完整；Windows 版需要把 AnY.exe 和 AnYCore.exe 放在同一个文件夹里。");
         return 2;
     };
 
@@ -95,7 +95,7 @@ pub fn run() -> i32 {
         Ok(u) => u,
         Err(_) => {
             heartbeat.stop();
-            platform::show_error("合拍本地地址无效，无法打开窗口。");
+            platform::show_error("AnY 本地地址无效，无法打开窗口。");
             return 2;
         }
     };
@@ -103,7 +103,9 @@ pub fn run() -> i32 {
     let init_script = format!("\
 (function(){{\
   if(window===window.top && location.origin==='http://127.0.0.1:{port}' && location.pathname==='/'){{\
+    window.__ANY_NATIVE_HEARTBEAT__=true;\
     window.__COJAM_NATIVE_HEARTBEAT__=true;\
+    window.dispatchEvent(new Event('anydesktopready'));\
     window.dispatchEvent(new Event('cojamdesktopready'));\
   }}\
 }})();");
@@ -120,18 +122,18 @@ pub fn run() -> i32 {
     let app = tauri::Builder::default()
         .manage(AppState { port })
         .invoke_handler(tauri::generate_handler![
-            cojam_choose_workdir,
-            cojam_choose_agent_file
+            any_choose_workdir,
+            any_choose_agent_file
         ])
         .setup(move |app| {
             // Grant IPC to this launch's exact backend origin, never every local port.
             app.add_capability(
-                tauri::ipc::CapabilityBuilder::new("cojam-main-runtime")
+                tauri::ipc::CapabilityBuilder::new("any-main-runtime")
                     .local(false)
                     .window("main")
                     .remote(format!("http://127.0.0.1:{port}/"))
-                    .permission("allow-cojam-choose-workdir")
-                    .permission("allow-cojam-choose-agent-file"),
+                    .permission("allow-any-choose-workdir")
+                    .permission("allow-any-choose-agent-file"),
             )?;
             let dl_dir = downloads_dir(app.handle());
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
@@ -210,7 +212,7 @@ pub fn run() -> i32 {
                 if platform::open_external_url(&parsed) {
                     heartbeat.handoff_to_browser();
                     platform::show_error(&format!(
-                        "没能打开桌面窗口（可能缺少 WebView2 运行时），已改用浏览器打开合拍。\n{err}"
+                        "没能打开桌面窗口（可能缺少 WebView2 运行时），已改用浏览器打开 AnY。\n{err}"
                     ));
                     return 0;
                 }

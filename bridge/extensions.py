@@ -210,7 +210,7 @@ def list_extensions(
 
 def _open_os_folder(path: str) -> None:
     if sys.platform == "win32":
-        os.startfile(path)  # type: ignore[attr-defined]
+        getattr(os, "startfile")(path)
     elif sys.platform == "darwin":
         subprocess.Popen(["open", path])
     else:
@@ -225,7 +225,7 @@ def open_folder(
     opener: Any = None,
 ) -> dict[str, Any]:
     if not local_host:
-        raise ExtensionError(403, "只能在运行合拍的本机上打开目录。")
+        raise ExtensionError(403, "只能在运行 AnY 的本机上打开目录。")
     rid = str(root_id or "").strip()
     if not rid:
         raise ExtensionError(400, "缺少 root_id。")
@@ -256,7 +256,7 @@ def import_skill(
     conversations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not local_host:
-        raise ExtensionError(403, "只能在运行合拍的本机上导入本地技能。")
+        raise ExtensionError(403, "只能在运行 AnY 的本机上导入本地技能。")
     aid = str(agent_id or "").strip()
     sc = str(scope or "").strip()
     src_raw = str(source_path or "").strip().strip('"')

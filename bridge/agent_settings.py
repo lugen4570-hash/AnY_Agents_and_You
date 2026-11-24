@@ -145,6 +145,8 @@ def save(pid, changes, revision):
             if revision != _revision(spec):
                 raise ValueError("配置已在其他窗口更新，请重新打开设置")
             patch = validate(changes)
+            if spec.get("http_protocol") and "endpoint" in patch and patch["endpoint"] != spec["endpoint"]:
+                raise ValueError("修改模型服务地址时请在接入向导中重新填写 API Key")
             saved = patches()
             previous = saved.get(pid, {})
             merged = dict(previous, **patch)
@@ -215,4 +217,4 @@ def install_mcp(pid, replace_key, revision):
                 elif path and os.path.isfile(path):
                     os.remove(path)
                 raise
-        return message + "。请重启桌面软件，并在要接入的会话中开启 /cojam_standby。"
+        return message + "。请重启桌面软件，并在要接入的会话中开启 /any_standby。"

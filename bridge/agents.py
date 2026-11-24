@@ -1142,6 +1142,8 @@ class CodexServer:
             self.cmd, self.env = cmd, env
         self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                   cwd=PROJECT, env=codex_env(self.env), **NO_WINDOW)
+        with _codex_lock:
+            _active_codex.add(self)
         self.q = queue.Queue()
         self.err = []
         p, q = self.p, self.q
@@ -1164,11 +1166,13 @@ class CodexServer:
 
         threading.Thread(target=rd_out, daemon=True).start()
         threading.Thread(target=rd_err, daemon=True).start()
-        self.request("initialize", {"clientInfo": {"name": "roundtable", "title": "AI Bridge", "version": "2"},
+        self.request("initialize", {"clientInfo": {"name": "roundtable", "title": "AnY", "version": "2"},
                                     "capabilities": None}, timeout=120)
         self.notify("initialized", None)
 
     def stop(self):
+        with _codex_lock:
+            _active_codex.discard(self)
         if self.p is not None:
             if self.p.stdin is not None:
                 try:
@@ -1443,6 +1447,7 @@ class CodexServer:
 
 
 _codex_lock = threading.Lock()
+_active_codex: set[CodexServer] = set()
 
 
 def codex_for(room, mode):
@@ -1469,6 +1474,18 @@ def stop_codex(room):
         srv, room.codex = room.codex, None
     if srv is not None:
         srv.stop()
+
+
+def stop_all_codex():
+    """Shut down every active Codex app-server started by AnY (rooms and temporary probes)."""
+    with _codex_lock:
+        active = list(_active_codex)
+        _active_codex.clear()
+    for srv in active:
+        try:
+            srv.stop()
+        except Exception as error:
+            logger.debug("CodexServer stop_all failed: %s", error)
 
 
 def start_reaper():

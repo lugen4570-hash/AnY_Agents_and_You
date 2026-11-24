@@ -96,10 +96,26 @@ bText.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preve
 const titleEl=document.getElementById('title');
 const meetingToolsButton=document.getElementById('sideToggleBtn');
 const meetingSide=document.getElementById('side'),meetingSideBg=document.getElementById('sideBg');
+const meetingSidePin=document.getElementById('sidePin');
+const wideMeetingSide=typeof matchMedia==='function'?matchMedia('(min-width:1200px)'):null;
+let meetingSidePinned=false;
+function syncMeetingSideLayout(){
+  const open=meetingSide.classList.contains('on'),docked=open&&meetingSidePinned&&wideMeetingSide?.matches;
+  document.body.classList.toggle('meeting-side-docked',!!docked);
+  meetingSideBg.classList.toggle('on',open&&!docked);
+  meetingSide.setAttribute('role',docked?'complementary':'dialog');
+  if(docked)meetingSide.removeAttribute('aria-modal');else meetingSide.setAttribute('aria-modal','true');
+  if(meetingSidePin){
+    meetingSidePin.setAttribute('aria-pressed',String(meetingSidePinned));
+    meetingSidePin.textContent=meetingSidePinned?'取消固定':'固定';
+  }
+}
+wideMeetingSide?.addEventListener?.('change',syncMeetingSideLayout);
+if(meetingSidePin)meetingSidePin.onclick=()=>{meetingSidePinned=!meetingSidePinned;syncMeetingSideLayout()};
 function setMeetingSide(open){
   const wasOpen=meetingSide.classList.contains('on');
   if(open)document.body.classList.remove('nav-open');
-  meetingSide.classList.toggle('on',open);meetingSideBg.classList.toggle('on',open);
+  meetingSide.classList.toggle('on',open);syncMeetingSideLayout();
   meetingSide.inert=!open;meetingToolsButton.setAttribute('aria-expanded',String(open));
   if(open){drawMeetingDetails();document.getElementById('sideX').focus();}
   else if(wasOpen)meetingToolsButton.focus();
@@ -116,6 +132,7 @@ meetingSide.querySelectorAll('.card').forEach(card=>{
 });
 meetingSide.addEventListener('click',e=>{const button=e.target.closest('[data-detail-agent]');if(button){const id=button.dataset.detailAgent;setMeetingSide(false);openAi(id)}});
 document.addEventListener('keydown',e=>{
+  if(document.body.classList.contains('meeting-side-docked'))return;
   if(e.key==='Escape'){
     if(meetingSide.classList.contains('on')){e.preventDefault();setMeetingSide(false)}
   }
@@ -209,12 +226,19 @@ function openRename(rid,title,after=loadState){
 document.getElementById('bRename').onclick=()=>{if(S&&S.meeting===RID)openRename(RID,S.title)};
 
 const debateBtn=document.getElementById('debateBtn');
+const debateContinueBtn=document.getElementById('debateContinueBtn');
 function drawDebate(){
   const d=S&&S.debate,active=d&&['running','summarizing'].includes(d.status);
   debateBtn.disabled=!(S&&S.meeting)||!!(active&&(d.finish_requested||d.status==='summarizing'));
   debateBtn.textContent=!active?'论道':d.status==='summarizing'?'正在总结':d.finish_requested?'等待总结':'结束并总结';
-  debateBtn.title=active?d.topic+' · 已完成 '+d.completed_rounds+' 轮':'设定议题，让 Agent 轮流发言并总结';
+  debateBtn.title=active?d.topic+' · 已完成 '+d.completed_rounds+' 轮':'设定议题，让 Agent 独立表态、交叉反驳并总结';
   debateBtn.classList.toggle('is-debating',!!active);
+  if(debateContinueBtn){
+    const canContinue=!!(S&&S.meeting&&d&&!active&&['completed','cancelled','failed','interrupted'].includes(d.status));
+    debateContinueBtn.hidden=!canContinue;
+    debateContinueBtn.disabled=!canContinue;
+    debateContinueBtn.title=canContinue?'对「'+d.topic+'」补充反馈或新回答后继续论道':'';
+  }
 }
 debateBtn.onclick=async()=>{
   const rid=RID;if(!S||S.meeting!==rid)return;
@@ -229,7 +253,7 @@ debateBtn.onclick=async()=>{
   const ids=(S.participants||[]).filter(id=>(agentMeta(id)||{}).kind!=='user'&&S.permissions?.[id]?.read&&S.permissions?.[id]?.post&&!S.ais?.[id]?.handed_off);
   const label=id=>(agentMeta(id)||{}).label||id;
   if(!ids.length)return alert('请先邀请能读消息和发言的 Agent。');
-  showModal('<h3>开始论道</h3><form id="debateForm"><label>议题<textarea name="topic" required placeholder="要讨论什么？"></textarea></label><div class="debate-rounds"><label>最少轮数<input name="minimum" type="number" min="0" step="1" value="0" required></label><label>最多轮数<input name="maximum" type="number" min="0" step="1" value="3" placeholder="留空不限"></label></div><p class="hint">每位参辩 Agent 发言一次算一轮。最多填 0 时直接总结，留空则不限轮数。</p><fieldset class="debate-agents"><legend>参辩成员</legend>'+ids.map(id=>'<label class="contact-pick"><input type="checkbox" name="participant" value="'+esc(id)+'" checked>'+esc(label(id))+'</label>').join('')+'</fieldset><label>总结由谁负责<select name="moderator" required></select></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="debateCancel">取消</button><button class="pri" type="submit">开始论道</button></div></form>');
+  showModal('<h3>开始论道</h3><form id="debateForm"><label>议题<textarea name="topic" required placeholder="要讨论什么？"></textarea></label><div class="debate-rounds"><label>最少轮数<input name="minimum" type="number" min="0" step="1" value="0" required></label><label>最多轮数<input name="maximum" type="number" min="0" step="1" value="3" placeholder="留空不限"></label></div><p class="hint">第 1 轮各参辩 Agent 并行独立表态（互不可见，避免先入为主）；第 2 轮起互相可见并交叉反驳。无异议的 Agent 可跳过发言（仍计轮数）。最多填 0 时直接总结，留空则不限轮数。</p><fieldset class="debate-agents"><legend>参辩成员</legend>'+ids.map(id=>'<label class="contact-pick"><input type="checkbox" name="participant" value="'+esc(id)+'" checked>'+esc(label(id))+'</label>').join('')+'</fieldset><label>总结由谁负责<select name="moderator" required></select></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="debateCancel">取消</button><button class="pri" type="submit">开始论道</button></div></form>');
   const form=document.getElementById('debateForm'),moderator=form.elements.namedItem('moderator'),submit=form.querySelector('[type=submit]');
   const selected=()=>[...form.querySelectorAll('input[name=participant]:checked')].map(i=>i.value);
   const sync=()=>{
@@ -247,6 +271,35 @@ debateBtn.onclick=async()=>{
     submit.disabled=false;
     if(!ok){form.querySelector('.form-error').textContent=j.error||'启动失败';return}
     if(document.getElementById('debateForm')===form)hideModal();
+    if(rid===RID){S.debate=j.debate;drawDebate();poll()}
+  };
+};
+if(debateContinueBtn)debateContinueBtn.onclick=()=>{
+  const rid=RID;if(!S||S.meeting!==rid||!S.debate)return;
+  const d=S.debate;
+  const ids=(S.participants||[]).filter(id=>(agentMeta(id)||{}).kind!=='user'&&S.permissions?.[id]?.read&&S.permissions?.[id]?.post&&!S.ais?.[id]?.handed_off);
+  const label=id=>(agentMeta(id)||{}).label||id;
+  if(!ids.length)return alert('请先邀请能读消息和发言的 Agent。');
+  const prevSet=new Set((d.participants||[]).filter(id=>ids.includes(id)));
+  const checked=id=>prevSet.size?prevSet.has(id):true;
+  showModal('<h3>继续论道</h3><p class="hint">原议题：'+esc(d.topic)+'（已辩 '+esc(d.completed_rounds)+' 轮）</p><form id="debateContinueForm"><label>你的反馈或新回答<textarea name="feedback" required placeholder="对刚才的结论哪里不满意？写下你的新回答、补充条件或追问方向…"></textarea></label><div class="debate-rounds"><label>再辩最少轮数<input name="minimum" type="number" min="0" step="1" value="1" required></label><label>再辩最多轮数<input name="maximum" type="number" min="0" step="1" value="3" placeholder="留空不限"></label></div><p class="hint">再辩首轮各 Agent 会结合你的反馈独立表态，之后再交叉反驳；无异议可跳过发言（仍计轮数）。</p><fieldset class="debate-agents"><legend>参辩成员</legend>'+ids.map(id=>'<label class="contact-pick"><input type="checkbox" name="participant" value="'+esc(id)+'"'+(checked(id)?' checked':'')+'>'+esc(label(id))+'</label>').join('')+'</fieldset><label>总结由谁负责<select name="moderator" required></select></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="debateContinueCancel">取消</button><button class="pri" type="submit">继续论道</button></div></form>');
+  const form=document.getElementById('debateContinueForm'),moderator=form.elements.namedItem('moderator'),submit=form.querySelector('[type=submit]');
+  const selected=()=>[...form.querySelectorAll('input[name=participant]:checked')].map(i=>i.value);
+  const sync=(prefer='')=>{
+    const prev=prefer||moderator.value,participants=selected();
+    moderator.innerHTML=participants.map(id=>'<option value="'+esc(id)+'">'+esc(label(id))+'</option>').join('');
+    if(participants.includes(prev))moderator.value=prev;
+  };
+  form.onchange=()=>sync();sync(d.moderator||'');
+  document.getElementById('debateContinueCancel').onclick=hideModal;
+  form.elements.namedItem('feedback').focus();
+  form.onsubmit=async e=>{
+    e.preventDefault();if(rid!==RID||submit.disabled)return;
+    const f=new FormData(form),max=f.get('maximum');submit.disabled=true;
+    const [ok,j]=await post(api('debate/continue'),{feedback:f.get('feedback'),participants:selected(),min_rounds:Number(f.get('minimum')),max_rounds:max===''?null:Number(max),moderator:moderator.value});
+    submit.disabled=false;
+    if(!ok){form.querySelector('.form-error').textContent=j.error||'继续论道失败';return}
+    if(document.getElementById('debateContinueForm')===form)hideModal();
     if(rid===RID){S.debate=j.debate;drawDebate();poll()}
   };
 };
@@ -484,8 +537,8 @@ async function loadTools(a,x){
     const [ok,j]=await post(url,{ai:a,tools:{mcp,plugins,skills_off}});
     if(!current())return;
     if(!ok){alert(j.error||'失败');return}
-    if(typeof window!=='undefined'&&window.CojamHarness&&typeof window.CojamHarness.invalidateRoomTools==='function'){
-      window.CojamHarness.invalidateRoomTools(rid,a);
+    if(typeof window!=='undefined'&&(window.AnYHarness||window.CojamHarness)&&typeof (window.AnYHarness||window.CojamHarness).invalidateRoomTools==='function'){
+      (window.AnYHarness||window.CojamHarness).invalidateRoomTools(rid,a);
     }
     await loadState();
     if(typeof onSaved==='function')await onSaved();

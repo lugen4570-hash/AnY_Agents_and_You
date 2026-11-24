@@ -1,6 +1,8 @@
-"""Windows implementation for the Cojam Platform Abstraction Layer."""
+"""Windows implementation for the AnY Platform Abstraction Layer."""
 from __future__ import annotations
 
+import ctypes
+import ctypes.wintypes as wintypes
 import logging
 import os
 import re
@@ -274,12 +276,102 @@ def resolve_command(
     return [p]
 
 
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", wintypes.LONG),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", wintypes.WCHAR * 260),
+    ]
+
+
+def _win32_process_create_time(kernel32: Any, pid: int) -> int | None:
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        ctime = wintypes.FILETIME()
+        etime = wintypes.FILETIME()
+        ktime = wintypes.FILETIME()
+        utime = wintypes.FILETIME()
+        if not kernel32.GetProcessTimes(
+            handle, ctypes.byref(ctime), ctypes.byref(etime), ctypes.byref(ktime), ctypes.byref(utime)
+        ):
+            return None
+        return (int(ctime.dwHighDateTime) << 32) | int(ctime.dwLowDateTime)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def kill_pid_tree(pid: int) -> None:
+    """Terminate a Windows process and all of its live descendants without spawning taskkill."""
+    if not isinstance(pid, int) or pid <= 0:
+        return
+    windll = getattr(ctypes, "WinDLL", None)
+    if windll is None:
+        return
+    try:
+        kernel32 = windll("kernel32", use_last_error=True)
+    except OSError as error:
+        logger.debug("kill_pid_tree: kernel32 unavailable for pid=%s: %s", pid, error)
+        return
+    root_ctime = _win32_process_create_time(kernel32, pid)
+    if root_ctime is None:
+        return
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x00000002, 0)  # TH32CS_SNAPPROCESS
+    children: dict[int, list[int]] = {}
+    if snapshot != wintypes.HANDLE(-1).value:
+        try:
+            entry = _PROCESSENTRY32W()
+            entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+            ok = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+            while ok:
+                children.setdefault(int(entry.th32ParentProcessID), []).append(int(entry.th32ProcessID))
+                ok = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+        finally:
+            kernel32.CloseHandle(snapshot)
+    order: list[int] = [pid]
+    queue: list[tuple[int, int]] = [(pid, root_ctime)]
+    seen: set[int] = {pid}
+    while queue:
+        parent_pid, parent_ctime = queue.pop(0)
+        for child_pid in children.get(parent_pid, ()):
+            if child_pid in seen:
+                continue
+            child_ctime = _win32_process_create_time(kernel32, child_pid)
+            if child_ctime is not None and child_ctime >= parent_ctime:
+                seen.add(child_pid)
+                order.append(child_pid)
+                queue.append((child_pid, child_ctime))
+    for target in reversed(order):
+        handle = kernel32.OpenProcess(0x0001, False, target)  # PROCESS_TERMINATE
+        if handle:
+            try:
+                kernel32.TerminateProcess(handle, 1)
+            finally:
+                kernel32.CloseHandle(handle)
+
+
 def kill_process_tree(proc: subprocess.Popen[Any]) -> None:
+    if isinstance(proc, subprocess.Popen):
+        kill_pid_tree(int(proc.pid))
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError as kill_error:
+                logger.debug("proc.kill failed for pid=%s: %s", getattr(proc, "pid", None), kill_error)
+        return
     try:
         result = subprocess.run(
             ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
             capture_output=True,
-            timeout=30,
+            timeout=2,
             check=False,
             **subprocess_kwargs(),
         )
@@ -375,7 +467,7 @@ def can_install_desktop_update(
     if plat != "win32" or not is_frozen:
         return False
     core = Path(sys.executable if executable is None else executable).resolve()
-    return core.name.lower() == "cojamcore.exe" and (core.parent / "Cojam.exe").is_file()
+    return core.name.lower() == "anycore.exe" and (core.parent / "AnY.exe").is_file()
 
 
 def launch_hidden_powershell(

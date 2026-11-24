@@ -1,26 +1,26 @@
 ﻿#define MyAppName "AnY"
-#define MyAppVersion "2.8.18"
+#define MyAppVersion "2.8.19"
 #ifdef TEST_BUILD
 #define MyAppId "{{E49FBE28-CC82-4E08-B5CD-E48A2C894472}"
-#define OutputName "Cojam-Setup-2.8.18-test"
+#define OutputName "AnY-Setup-2.8.19-test"
 #else
 #define MyAppId "{{856A26B5-6DDE-40EC-A6B0-2CDE2C62A58E}"
-#define OutputName "Cojam-Setup-2.8.18"
+#define OutputName "AnY-Setup-2.8.19"
 #endif
 [Setup]
 AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher=Cojam
-DefaultDirName={localappdata}\Programs\Cojam
-DefaultGroupName=合拍 Cojam
+AppPublisher=AnY
+DefaultDirName={localappdata}\Programs\AnY
+DefaultGroupName=AnY
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename={#OutputName}
 SetupIconFile=..\roundtable.ico
-UninstallDisplayIcon={app}\Cojam.exe
+UninstallDisplayIcon={app}\AnY.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -46,10 +46,10 @@ ButtonNo=否(&N)
 ButtonFinish=完成(&F)
 ClickNext=点击“下一步”继续，或点击“取消”退出安装。
 WelcomeLabel1=欢迎使用 [name] 安装向导
-WelcomeLabel2=此程序将在电脑上安装 [name/ver]。%n%n继续前，请先关闭正在运行的合拍。
+WelcomeLabel2=此程序将在电脑上安装 [name/ver]。%n%n继续前，请先关闭正在运行的 AnY。
 WizardSelectDir=选择安装位置
 SelectDirDesc=要将 [name] 安装在哪里？
-SelectDirLabel3=合拍将安装到以下文件夹。
+SelectDirLabel3=AnY 将安装到以下文件夹。
 SelectDirBrowseLabel=点击“下一步”继续，或点击“浏览”选择其他位置。
 DiskSpaceGBLabel=至少需要 [gb] GB 可用空间。
 DiskSpaceMBLabel=至少需要 [mb] MB 可用空间。
@@ -84,19 +84,21 @@ CreateDesktopIcon=创建桌面快捷方式(&D)
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{app}\Cojam.exe"
+Type: files; Name: "{app}\CojamCore.exe"
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_internal"
 [Files]
-Source: "..\dist\CojamDesktop.exe"; DestDir: "{app}"; DestName: "Cojam.exe"; Flags: ignoreversion
-Source: "..\dist\CojamCore\CojamCore.exe"; DestDir: "{app}"; DestName: "CojamCore.exe"; Flags: ignoreversion
-Source: "..\dist\CojamCore\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\dist\AnYDesktop.exe"; DestDir: "{app}"; DestName: "AnY.exe"; Flags: ignoreversion
+Source: "..\dist\AnYCore\AnYCore.exe"; DestDir: "{app}"; DestName: "AnYCore.exe"; Flags: ignoreversion
+Source: "..\dist\AnYCore\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "connect-member.bat"; DestDir: "{app}"; DestName: "连接其他会议室.bat"; Flags: ignoreversion
 Source: "desktop-readme.txt"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 [Icons]
-Name: "{autoprograms}\合拍 Cojam"; Filename: "{app}\Cojam.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\合拍 Cojam"; Filename: "{app}\Cojam.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\AnY"; Filename: "{app}\AnY.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\AnY"; Filename: "{app}\AnY.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 [Run]
-Filename: "{app}\Cojam.exe"; Description: "打开合拍 Cojam"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\AnY.exe"; Description: "打开 AnY"; Flags: nowait postinstall skipifsilent
 [Code]
 function CreateFileForProbe(FileName: string; DesiredAccess, ShareMode: LongWord;
   SecurityAttributes: THandle; CreationDisposition, FlagsAndAttributes: LongWord;
@@ -126,7 +128,7 @@ var
   FindRec: TFindRec;
 begin
   Result := False;
-  if IsFileLocked(ExpandConstant('{app}\Cojam.exe')) or IsFileLocked(ExpandConstant('{app}\CojamCore.exe')) then
+  if IsFileLocked(ExpandConstant('{app}\AnY.exe')) or IsFileLocked(ExpandConstant('{app}\AnYCore.exe')) or IsFileLocked(ExpandConstant('{app}\Cojam.exe')) or IsFileLocked(ExpandConstant('{app}\CojamCore.exe')) then
   begin
     Result := True;
     Exit;
@@ -152,7 +154,7 @@ function InitializeUninstall: Boolean;
 begin
   Result := not AnyAppProcessLocked;
   if not Result and not UninstallSilent then
-    MsgBox('合拍 Cojam 或后台服务仍在运行。请先完全退出后再卸载，会话数据将保留。', mbError, MB_OK);
+    MsgBox('AnY 或后台服务仍在运行。请先完全退出后再卸载，会话数据将保留。', mbError, MB_OK);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -167,7 +169,7 @@ begin
     Sleep(250);
   end;
   if AnyAppProcessLocked then
-    Result := '检测到合拍 Cojam 或后台服务（CojamCore.exe）仍在运行。请先完全退出后再运行安装程序，会话数据将保留。';
+    Result := '检测到 AnY 或后台服务（AnYCore.exe）仍在运行。请先完全退出后再运行安装程序，会话数据将保留。';
 end;
 
 function HasWebView2Version(const RootKey: Integer; const SubKey: string): Boolean;

@@ -65,7 +65,7 @@ class CojamCliTest(unittest.TestCase):
                 "ROUNDTABLE_LAN_PORT": "0", "ROUNDTABLE_TAILSCALE_PORT": "0",
             }
             with (patch.dict(os.environ, environment),
-                  patch("bridge.terminal.CojamTerminal") as terminal):
+                  patch("bridge.terminal.AnYTerminal") as terminal):
                 self.assertFalse(server_ready(port))
                 try:
                     terminal.return_value.run.side_effect = lambda: self.assertTrue(server_ready(port))
@@ -84,10 +84,10 @@ class CojamCliTest(unittest.TestCase):
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_brand_motion_respects_settings(self):
-        from bridge.terminal import CojamTerminal, ReplyActivity, WelcomeMark
+        from bridge.terminal import AnYTerminal, ReplyActivity, WelcomeMark
 
         async def run(*, no_color, animation_level):
-            app = CojamTerminal(LocalClient(self.port))
+            app = AnYTerminal(LocalClient(self.port))
             app.no_color = no_color
             app.animation_level = animation_level
             async with app.run_test(size=(70, 20)) as pilot:
@@ -106,10 +106,10 @@ class CojamCliTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_home_hides_archived_rooms_and_archived_only_projects(self):
         from textual.widgets import OptionList
-        from bridge.terminal import CojamTerminal, SessionPicker
+        from bridge.terminal import AnYTerminal, SessionPicker
 
         async def run():
-            app = CojamTerminal(LocalClient(self.port))
+            app = AnYTerminal(LocalClient(self.port))
             groups = [{"id": "archive", "name": "旧项目"}, {"id": "mixed", "name": "混合项目"},
                       {"id": "empty", "name": "新项目"}]
             rows = [{"id": "archived", "project": "archive", "title": "旧会话", "archived": True},
@@ -147,7 +147,7 @@ class CojamCliTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_create_send_and_receive(self):
         from textual.widgets import Footer, Input, OptionList, RichLog, Static
-        from bridge.terminal import CojamTerminal, WelcomeMark
+        from bridge.terminal import AnYTerminal, WelcomeMark
 
         async def wait_for(pilot, check):
             for _ in range(40):
@@ -160,7 +160,7 @@ class CojamCliTest(unittest.TestCase):
             client = LocalClient(self.port)
             existing = room.rooms.create("启动页会话", wd=DATA.name, participants=[])
             room.set_last(existing.id)
-            app = CojamTerminal(client)
+            app = AnYTerminal(client)
             app.no_color = False
             app.animation_level = "full"
             async with app.run_test(size=(120, 36)) as pilot:
@@ -320,6 +320,16 @@ class CojamCliTest(unittest.TestCase):
                     finally:
                         release.set()
                     await wait_for(pilot, lambda: meeting.meta.get("debate", {}).get("status") == "completed")
+                    await wait_for(pilot, lambda: app.state.get("debate", {}).get("status") == "completed")
+                    app.composer.set_text("/debate-continue 补充终端意见")
+                    await pilot.press("enter")
+                    await wait_for(pilot, lambda: bool(app.screen.query("#debate-topic")))
+                    self.assertEqual(app.screen.query_one("#debate-topic", Input).value, "补充终端意见")
+                    app.screen.query_one("#debate-max", Input).value = "1"
+                    await pilot.click("#debate-start")
+                    await wait_for(pilot, lambda: any(m.get("origin") == "debate-feedback" for m in meeting.messages))
+                    await wait_for(pilot, lambda: meeting.meta["debate"]["status"] == "completed")
+                    self.assertEqual(meeting.meta["debate"]["completed_rounds"], 2)
                 await pilot.resize_terminal(80, 24)
                 self.assertFalse(app.query_one("#details-pane").display)
                 await pilot.press("f3")
@@ -357,7 +367,7 @@ class CojamCliTest(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_left_right_arrows_switch_between_home_and_chat(self):
         from textual.widgets import OptionList
-        from bridge.terminal import CojamTerminal
+        from bridge.terminal import AnYTerminal
 
         async def wait_for(pilot, check):
             for _ in range(40):
@@ -370,7 +380,7 @@ class CojamCliTest(unittest.TestCase):
             client = LocalClient(self.port)
             meeting = room.rooms.create("左右切换会话", wd=DATA.name, participants=[])
             room.set_last(meeting.id)
-            app = CojamTerminal(client)
+            app = AnYTerminal(client)
             async with app.run_test(size=(100, 28)) as pilot:
                 await wait_for(pilot, lambda: app.connected and app.rooms)
                 self.assertIsNone(app.room)

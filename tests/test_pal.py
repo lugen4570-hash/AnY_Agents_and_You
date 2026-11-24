@@ -238,13 +238,13 @@ class PalTests(unittest.TestCase):
     def test_can_install_and_launch_hidden_powershell(self):
         from bridge.pal import _posix, _win32
 
-        self.assertFalse(_posix.can_install_desktop_update(True, "/tmp/CojamCore"))
+        self.assertFalse(_posix.can_install_desktop_update(True, "/tmp/AnYCore"))
         with self.assertRaises(OSError):
             _posix.launch_hidden_powershell("abc", {})
 
         with tempfile.TemporaryDirectory() as tmp:
-            core = Path(tmp) / "CojamCore.exe"
-            gui = Path(tmp) / "Cojam.exe"
+            core = Path(tmp) / "AnYCore.exe"
+            gui = Path(tmp) / "AnY.exe"
             core.write_bytes(b"")
             self.assertFalse(_win32.can_install_desktop_update(True, str(core)))
             gui.write_bytes(b"")

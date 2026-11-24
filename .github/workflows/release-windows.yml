@@ -1,4 +1,4 @@
-name: Release Cojam (Windows)
+name: Release AnY (Windows)
 
 on:
   workflow_dispatch:
@@ -65,31 +65,31 @@ jobs:
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup 6 missing" }
-          & $iscc /Q /DTEST_BUILD packaging/cojam-desktop.iss
+          & $iscc /Q /DTEST_BUILD packaging/any-desktop.iss
           if ($LASTEXITCODE -ne 0) { throw "TEST_BUILD ISCC failed" }
-          & $iscc /Q packaging/cojam-desktop.iss
+          & $iscc /Q packaging/any-desktop.iss
           if ($LASTEXITCODE -ne 0) { throw "Production ISCC failed" }
           $ver = "${{ steps.meta.outputs.version }}"
-          .\sign_exe.ps1 -ExePath "dist/Cojam-Setup-$ver.exe"
+          .\sign_exe.ps1 -ExePath "dist/AnY-Setup-$ver.exe"
 
       - name: Verify TEST_BUILD install, _internal cleanup, and data retention
         run: |
           $ver = "${{ steps.meta.outputs.version }}"
-          $testDir = Join-Path $env:RUNNER_TEMP "cojam-ci-test"
+          $testDir = Join-Path $env:RUNNER_TEMP "any-ci-test"
           New-Item -ItemType Directory -Force -Path (Join-Path $testDir "data") | Out-Null
           Set-Content -LiteralPath (Join-Path $testDir "data/sentinel.txt") -Value "keep" -Encoding utf8
-          $setup = (Resolve-Path "dist/Cojam-Setup-$ver-test.exe").Path
+          $setup = (Resolve-Path "dist/AnY-Setup-$ver-test.exe").Path
           $p = Start-Process -FilePath $setup -ArgumentList @("/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$testDir") -Wait -PassThru -WindowStyle Hidden
           if ($p.ExitCode -ne 0) { throw "TEST_BUILD install failed: $($p.ExitCode)" }
-          if ((Get-FileHash "$testDir/Cojam.exe").Hash -ne (Get-FileHash "dist/CojamDesktop.exe").Hash) { throw "Desktop shell mismatch" }
-          if ((Get-FileHash "$testDir/CojamCore.exe").Hash -ne (Get-FileHash "dist/CojamCore/CojamCore.exe").Hash) { throw "Core mismatch" }
+          if ((Get-FileHash "$testDir/AnY.exe").Hash -ne (Get-FileHash "dist/AnYDesktop.exe").Hash) { throw "Desktop shell mismatch" }
+          if ((Get-FileHash "$testDir/AnYCore.exe").Hash -ne (Get-FileHash "dist/AnYCore/AnYCore.exe").Hash) { throw "Core mismatch" }
           if (-not (Test-Path "$testDir/_internal/index.html")) { throw "Missing _internal payload" }
           if (-not (Test-Path "$testDir/data/sentinel.txt")) { throw "Data lost on install" }
           # A running image may be renamed on Windows. Guard against deleting its runtime.
           $env:ROUNDTABLE_PORT = "19565"
           $env:ROUNDTABLE_NO_BROWSER = "1"
           $env:ROUNDTABLE_OWNER_LIFECYCLE = "0"
-          $core = Start-Process -FilePath "$testDir/CojamCore.exe" -WorkingDirectory $testDir -WindowStyle Hidden -PassThru
+          $core = Start-Process -FilePath "$testDir/AnYCore.exe" -WorkingDirectory $testDir -WindowStyle Hidden -PassThru
           try {
             $ready = $false
             for ($i = 0; $i -lt 60; $i++) {
@@ -112,18 +112,18 @@ jobs:
 
       - name: Generate final report and hashes after signing and validation
         run: |
-          '{"rust_tests":true,"python_regression":true,"static_checks":true,"installer_data_retention":true,"running_core_install_protection":true,"native_interaction_smoke":"requires desktop verification"}' | Set-Content -LiteralPath "$env:RUNNER_TEMP/cojam-validation.json" -Encoding utf8NoBOM
-          python packaging/build_report.py --validation "$env:RUNNER_TEMP/cojam-validation.json"
+          '{"rust_tests":true,"python_regression":true,"static_checks":true,"installer_data_retention":true,"running_core_install_protection":true,"native_interaction_smoke":"requires desktop verification"}' | Set-Content -LiteralPath "$env:RUNNER_TEMP/any-validation.json" -Encoding utf8NoBOM
+          python packaging/build_report.py --validation "$env:RUNNER_TEMP/any-validation.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cojam-${{ steps.meta.outputs.version }}-windows
+          name: any-${{ steps.meta.outputs.version }}-windows
           path: |
-            dist/Cojam-Setup-${{ steps.meta.outputs.version }}.exe
-            dist/Cojam-Desktop-${{ steps.meta.outputs.version }}-win64.zip
-            dist/Cojam-${{ steps.meta.outputs.version }}-win64.zip
-            dist/Cojam-Member-${{ steps.meta.outputs.version }}.zip
-            dist/Cojam-Portable-${{ steps.meta.outputs.version }}.exe
+            dist/AnY-Setup-${{ steps.meta.outputs.version }}.exe
+            dist/AnY-Desktop-${{ steps.meta.outputs.version }}-win64.zip
+            dist/AnY-${{ steps.meta.outputs.version }}-win64.zip
+            dist/AnY-Member-${{ steps.meta.outputs.version }}.zip
+            dist/AnY-Portable-${{ steps.meta.outputs.version }}.exe
             dist/SHA256SUMS-${{ steps.meta.outputs.version }}.txt
             dist/build-report-${{ steps.meta.outputs.version }}.json
           if-no-files-found: error

@@ -58,7 +58,7 @@ class Execution(unittest.TestCase):
         room, sid, log = room or self.r, sid or self.sid, log or self.log
         args = self.prepare(room)
         with log.open('a',encoding='utf-8') as stream:
-            stream.write(json.dumps({'message':{'role':'assistant','content':[{'type':'tool_use','name':'mcp__ai-bridge__cojam_standby','input':args}]}})+'\n')
+            stream.write(json.dumps({'message':{'role':'assistant','content':[{'type':'tool_use','name':'mcp__ai-bridge__any_standby','input':args}]}})+'\n')
         reply = members.handle('claude',self.key,'standby',dict(args,timeout=0))
         return dict(room=room.id,native_session=sid,worker=reply['worker'],binding_token=reply['binding_token'],timeout=0)
 
@@ -96,7 +96,7 @@ class Execution(unittest.TestCase):
         args = self.prepare()
         with self.log.open('a',encoding='utf-8') as stream:
             stream.write(json.dumps({'message':{'role':'user','text':args}})+'\n')
-            stream.write(json.dumps({'message':{'role':'user','content':[{'type':'tool_use','name':'cojam_standby','input':args}]}})+'\n')
+            stream.write(json.dumps({'message':{'role':'user','content':[{'type':'tool_use','name':'any_standby','input':args}]}})+'\n')
         with self.assertRaisesRegex(members.MemberError,'工具记录'):
             members.handle('claude',self.key,'standby',dict(args,timeout=0))
         self.assertEqual(execution.binding(self.r,'claude')['phase'],'preparing')
@@ -117,7 +117,7 @@ class Execution(unittest.TestCase):
             mcp.call_room_tool(self.r.id,'claude','room_info',{})
         path='/api/external/messages?room='+support.quote(self.r.id)
         self.assertEqual(support.call(path,key=self.key)[0],403)
-        headers={'X-Cojam-Worker':data['worker'],'X-Cojam-Execution':data['binding_token']}
+        headers={'X-AnY-Worker':data['worker'],'X-AnY-Execution':data['binding_token']}
         self.assertEqual(support.call(path,key=self.key,headers=headers)[0],200)
 
     def test_two_rooms_have_independent_workers_and_task_leases(self):
@@ -204,7 +204,7 @@ class Execution(unittest.TestCase):
         log=folder/('rollout-'+sid+'.jsonl')
         rows=[{'type':'session_meta','payload':{'id':sid,'cwd':self.r.workdir()}},
               {'type':'turn_context','payload':{'model':'test-model','effort':'high'}},
-              {'type':'response_item','payload':{'type':'function_call','name':'mcp__ai_bridge__cojam_standby','arguments':json.dumps({'binding_challenge':challenge})}}]
+              {'type':'response_item','payload':{'type':'function_call','name':'mcp__ai_bridge__any_standby','arguments':json.dumps({'binding_challenge':challenge})}}]
         log.write_text('\n'.join(json.dumps(row) for row in rows)+'\n',encoding='utf-8')
         with patch.object(agents,'CODEX_HOME',str(self.home)):
             observed=native_session.prove('codex',sid,challenge,self.r.workdir())

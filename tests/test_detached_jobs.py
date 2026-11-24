@@ -30,7 +30,7 @@ from pathlib import Path
 from bridge import detached_jobs, registry, room as R
 from bridge.common import read_json
 
-with tempfile.TemporaryDirectory() as wd:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as wd:
     # Register a fast local CLI agent that sleeps 1.2s then prints a reply
     worker_py = Path(wd) / 'fake_cli.py'
     worker_py.write_text(
@@ -164,7 +164,7 @@ from pathlib import Path
 from bridge import detached_jobs, model_catalog, registry, room as R
 from bridge.common import read_json
 
-with tempfile.TemporaryDirectory() as wd:
+with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as wd:
     worker_py = Path(wd) / 'hex_rev_cli.py'
     worker_py.write_text('print("HEX_REVISION_REPLY_OK")\n', encoding='utf-8')
     registry.save_agent({

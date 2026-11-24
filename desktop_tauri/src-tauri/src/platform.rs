@@ -82,7 +82,7 @@ pub fn is_safe_external_url(url: &Url) -> bool {
         && url.password().is_none()
 }
 
-/// Apply Windows 11 dark/light DWM title bar, text and border attributes matching Cojam's CSS.
+/// Apply Windows 11 dark/light DWM title bar, text and border attributes matching AnY's CSS.
 #[cfg(windows)]
 pub fn tint_title_bar_hwnd(hwnd_val: isize) {
     use windows_sys::Win32::Foundation::HWND;

@@ -1,4 +1,4 @@
-"""Find, start and keep the Cojam backend alive for the desktop shell."""
+"""Find, start and keep the AnY backend alive for the desktop shell."""
 import json
 import os
 from pathlib import Path
@@ -15,7 +15,7 @@ import urllib.request
 
 APP_NAME = "AI Bridge"
 TAB_RE = re.compile(r"^[A-Za-z0-9_-]{16,80}$")
-CORE_NAMES = ("CojamCore.exe", "Cojam.exe") if os.name == "nt" else ("CojamCore", "Cojam")
+CORE_NAMES = ("AnYCore.exe", "AnY.exe", "CojamCore.exe", "Cojam.exe") if os.name == "nt" else ("AnYCore", "AnY", "CojamCore", "Cojam")
 
 
 def find_core(frozen=None, executable=None):
@@ -74,14 +74,17 @@ def probe(base, timeout=.5):
     except (OSError, ValueError):
         return "foreign", None
     if isinstance(info, dict) and info.get("app") == APP_NAME:
-        return "cojam", info
+        return "any", info
     return "foreign", None
 
 
 def spawn_core(command, cwd):
     env = dict(os.environ)
     if sys.platform == "darwin":
-        env.setdefault("ROUNDTABLE_LOG_DIR", str(Path.home() / "Library" / "Application Support" / "Cojam"))
+        primary = Path.home() / "Library" / "Application Support" / "AnY"
+        legacy = Path.home() / "Library" / "Application Support" / "Cojam"
+        support = primary if (primary.exists() or not legacy.exists()) else legacy
+        env.setdefault("ROUNDTABLE_LOG_DIR", str(support))
         paths = [str(Path.home() / ".local" / "bin"), str(Path.home() / ".npm-global" / "bin"),
                  "/opt/homebrew/bin", "/usr/local/bin"]
         env["PATH"] = os.pathsep.join(paths + [env.get("PATH", os.defpath)])
@@ -95,12 +98,12 @@ def wait_ready(base, proc=None, timeout=30, interval=.2):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         state, info = probe(base)
-        if state == "cojam":
+        if state == "any":
             return info
         if proc is not None and proc.poll() is not None:
             for _ in range(5):
                 state, info = probe(base)
-                if state == "cojam":
+                if state == "any":
                     return info
                 time.sleep(interval)
             return None
@@ -113,7 +116,7 @@ def fetch_token(base, timeout=3):
         html = response.read().decode("utf-8")
     match = re.search(r'name="rt-token" content="([^"]+)"', html)
     if not match:
-        raise RuntimeError("已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。")
+        raise RuntimeError("已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。")
     return match.group(1)
 
 
@@ -165,9 +168,14 @@ def stop_process(proc):
 
 
 def log_path(core_dir):
-    default = str(Path.home() / "Library" / "Application Support" / "Cojam") if sys.platform == "darwin" else os.path.join(core_dir, "data")
+    if sys.platform == "darwin":
+        primary = Path.home() / "Library" / "Application Support" / "AnY"
+        legacy = Path.home() / "Library" / "Application Support" / "Cojam"
+        default = str(primary if (primary.exists() or not legacy.exists()) else legacy)
+    else:
+        default = os.path.join(core_dir, "data")
     directory = os.environ.get("ROUNDTABLE_LOG_DIR") or default
-    return os.path.join(directory, "cojam.log")
+    return os.path.join(directory, "any.log")
 
 
 class TabHeartbeat:
@@ -196,7 +204,7 @@ class TabHeartbeat:
 
     def start(self):
         self._send("open")
-        self._thread = threading.Thread(target=self._run, daemon=True, name="cojam-desktop-heartbeat")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="any-desktop-heartbeat")
         self._thread.start()
 
     def _run(self):

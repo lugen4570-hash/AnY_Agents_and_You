@@ -22,7 +22,7 @@ echo '正在准备桌面构建环境，首次构建需要联网下载 Python 依
 python="$PWD/.venv-macos-build/bin/python"
 "$python" -m pip install 'pywebview>=5.3' 'pyinstaller>=6'
 "$python" -m bridge.member_package
-"$python" -m PyInstaller --noconfirm --clean --onefile --name CojamCore \
+"$python" -m PyInstaller --noconfirm --clean --onefile --name AnYCore \
   --add-data 'index.html:.' --add-data 'static:static' --add-data 'bridge/presets:bridge/presets' \
   --add-data 'bridge/catalog:bridge/catalog' \
   --hidden-import bridge.web --hidden-import bridge.acp --hidden-import bridge.discovery \
@@ -31,10 +31,10 @@ icon_args=()
 if [[ -f roundtable.icns ]]; then
   icon_args=(--icon roundtable.icns)
 fi
-"$python" -m PyInstaller --noconfirm --clean --windowed --onedir --name Cojam \
+"$python" -m PyInstaller --noconfirm --clean --windowed --onedir --name AnY \
   "${icon_args[@]}" \
-  --osx-bundle-identifier com.cojam.desktop --collect-all webview desktop_launcher.py
-cp dist/CojamCore dist/Cojam.app/Contents/MacOS/CojamCore
+  --osx-bundle-identifier com.any.desktop --collect-all webview desktop_launcher.py
+cp dist/AnYCore dist/AnY.app/Contents/MacOS/AnYCore
 version=$("$python" -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
 arch=$("$python" -c 'import platform; print(platform.machine())')
 "$python" - "$version" <<'PY'
@@ -42,13 +42,13 @@ import plistlib
 from pathlib import Path
 import sys
 
-path = Path("dist/Cojam.app/Contents/Info.plist")
+path = Path("dist/AnY.app/Contents/Info.plist")
 info = plistlib.loads(path.read_bytes())
 info.update(CFBundleShortVersionString=sys.argv[1], CFBundleVersion=sys.argv[1], CFBundleDisplayName="AnY")
 path.write_bytes(plistlib.dumps(info))
 PY
-codesign --force --deep --sign - dist/Cojam.app
-codesign --verify --deep --strict dist/Cojam.app
-ditto -c -k --sequesterRsrc --keepParent dist/Cojam.app "dist/Cojam-${version}-macOS-${arch}.zip"
-echo "构建完成：$PWD/dist/Cojam.app"
-echo "应用压缩包：$PWD/dist/Cojam-${version}-macOS-${arch}.zip"
+codesign --force --deep --sign - dist/AnY.app
+codesign --verify --deep --strict dist/AnY.app
+ditto -c -k --sequesterRsrc --keepParent dist/AnY.app "dist/AnY-${version}-macOS-${arch}.zip"
+echo "构建完成：$PWD/dist/AnY.app"
+echo "应用压缩包：$PWD/dist/AnY-${version}-macOS-${arch}.zip"

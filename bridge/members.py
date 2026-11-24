@@ -92,7 +92,7 @@ class Broker:
         registration: dict[str, Any] = {}
         if scope:
             if data.get("transport") != "standby":
-                raise MemberError("会话独占接入需要使用 cojam_standby", 400)
+                raise MemberError("会话独占接入需要使用 any_standby", 400)
             from . import execution, room as R
             room = R.rooms.get(scope)
             if not room or not access.allowed(room, pid):
@@ -172,7 +172,7 @@ class Broker:
         scope = room.id if bound["endpoint"] == "desktop" else ""
         status = self.status(pid, scope or None)
         if not status["automatic"]:
-            return False, "%s 尚未开启自动响应；请在该软件里输入 /cojam_standby（或调用 ai-bridge 的 cojam_standby 工具）开启待命，或运行成员连接端。" % pid, session, []
+            return False, "%s 尚未开启自动响应；请在该软件里输入 /any_standby（或调用 ai-bridge 的 any_standby 工具）开启待命，或运行成员连接端。" % pid, session, []
         mode = room.member_mode(pid, mode)
         # 待命端默认只读：会话是干活模式，也要这个联系人自己允许改文件才真的进 work。
         if mode == "work" and not status.get("allow_work"):
@@ -387,7 +387,7 @@ class Broker:
                     self.workers.pop(slot, None)
             for task in self.tasks.values():
                 if task["member"] == pid and task["state"] in ("queued", "claimed"):
-                    self._state(task, "cancelled", "Cojam 端已停止此成员的待命状态")
+                    self._state(task, "cancelled", "AnY 端已停止此成员的待命状态")
             self.condition.notify_all()
         return {"ok": True, "member": pid, "stopped": True, "resume_after": STANDBY_STOP_COOLDOWN}
 
@@ -401,7 +401,7 @@ class Broker:
                 if left > 0:
                     self.workers.pop(pid, None)
                     return {"status": "stopped", "member": pid, "worker": worker, "resume_after": left,
-                            "next_step": "Cojam 端已停止待命（%d 分钟内不会恢复）。请停止循环调用 cojam_standby 并告知用户待命已结束。" % max(1, left // 60)}
+                            "next_step": "AnY 端已停止待命（%d 分钟内不会恢复）。请停止循环调用 any_standby 并告知用户待命已结束。" % max(1, left // 60)}
                 self.standby_stopped.pop(pid, None)
         reg_data = {
             "worker": worker,
@@ -429,7 +429,7 @@ class Broker:
             if w and time.time() - w.get("started", time.time()) > max_sec:
                 self.workers.pop((pid, scope) if scope else pid, None)
                 return {"status": "expired", "member": pid, "worker": worker,
-                        "next_step": "已达到 Cojam 设定的最长待命时长（%d 分钟），请结束待命并告知用户。" % conn_settings.get("standby_max", pid)}
+                        "next_step": "已达到 AnY 设定的最长待命时长（%d 分钟），请结束待命并告知用户。" % conn_settings.get("standby_max", pid)}
         poll = data.get("timeout", conn_settings.get("standby_poll", pid))
         res = self.receive(pid, key, {"worker": worker, "timeout": poll, "room": scope,
                                     "binding_token": registration.get("binding_token") or data.get("binding_token")})
@@ -441,7 +441,7 @@ class Broker:
                 self.workers.pop((pid, scope) if scope else pid, None)
             left = int(STANDBY_STOP_COOLDOWN - (time.time() - self.standby_stopped.get(pid, 0)))
             return {"status": "stopped", "member": pid, "worker": worker, "resume_after": max(0, left),
-                    "next_step": "Cojam 端已停止待命，请停止循环调用 cojam_standby 并告知用户待命已结束。"}
+                    "next_step": "AnY 端已停止待命，请停止循环调用 any_standby 并告知用户待命已结束。"}
         task = res.get("task")
         if task:
             return {
@@ -451,9 +451,9 @@ class Broker:
                 "task": task,
                 "room": scope, **scoped_fields,
                 "settings_rev": res.get("settings_rev"),
-                "next_step": ("收到 Cojam 会话「%s」的任务！请按 prompt 要求处理，完成后调用 "
+                "next_step": ("收到 AnY 会话「%s」的任务！请按 prompt 要求处理，完成后调用 "
                               "reply_task(worker=%r, task=%r, lease=%r, ok=true, text='你的回复')，"
-                              "提交后再调用 cojam_standby 继续待命。") % (task.get("title") or task.get("room"), worker, task["id"], task["lease"]),
+                              "提交后再调用 any_standby 继续待命。") % (task.get("title") or task.get("room"), worker, task["id"], task["lease"]),
             }
         return {
             "status": "idle",
@@ -461,7 +461,7 @@ class Broker:
             "worker": worker,
             "room": scope, **scoped_fields,
             "settings_rev": res.get("settings_rev"),
-            "next_step": "暂无数新任务；请不要输出多余文字，立即再次调用 cojam_standby 继续待命。",
+            "next_step": "暂无数新任务；请不要输出多余文字，立即再次调用 any_standby 继续待命。",
         }
 
     def board(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:

@@ -1,26 +1,26 @@
 ﻿#define MyAppName "AnY"
-#define MyAppVersion "2.8.18"
+#define MyAppVersion "2.8.19"
 #ifdef TEST_BUILD
 #define MyAppId "{{E49FBE28-CC82-4E08-B5CD-E48A2C894472}"
-#define OutputName "Cojam-Setup-2.8.18-test"
+#define OutputName "AnY-Setup-2.8.19-test"
 #else
 #define MyAppId "{{856A26B5-6DDE-40EC-A6B0-2CDE2C62A58E}"
-#define OutputName "Cojam-Setup-2.8.18"
+#define OutputName "AnY-Setup-2.8.19"
 #endif
 [Setup]
 AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher=Cojam
-DefaultDirName={localappdata}\Programs\Cojam
-DefaultGroupName=合拍 Cojam
+AppPublisher=AnY
+DefaultDirName={localappdata}\Programs\AnY
+DefaultGroupName=AnY
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist
 OutputBaseFilename={#OutputName}
 SetupIconFile=..\roundtable.ico
-UninstallDisplayIcon={app}\Cojam.exe
+UninstallDisplayIcon={app}\AnY.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -45,10 +45,10 @@ ButtonNo=否(&N)
 ButtonFinish=完成(&F)
 ClickNext=点击“下一步”继续，或点击“取消”退出安装。
 WelcomeLabel1=欢迎使用 [name] 安装向导
-WelcomeLabel2=此程序将在电脑上安装 [name/ver]。%n%n继续前，请先关闭正在运行的合拍。
+WelcomeLabel2=此程序将在电脑上安装 [name/ver]。%n%n继续前，请先关闭正在运行的 AnY。
 WizardSelectDir=选择安装位置
 SelectDirDesc=要将 [name] 安装在哪里？
-SelectDirLabel3=合拍将安装到以下文件夹。
+SelectDirLabel3=AnY 将安装到以下文件夹。
 SelectDirBrowseLabel=点击“下一步”继续，或点击“浏览”选择其他位置。
 DiskSpaceGBLabel=至少需要 [gb] GB 可用空间。
 DiskSpaceMBLabel=至少需要 [mb] MB 可用空间。
@@ -82,10 +82,10 @@ CreateDesktopIcon=创建桌面快捷方式(&D)
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 [Files]
-Source: "..\dist\Cojam.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\AnY.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
-Name: "{autoprograms}\合拍 Cojam"; Filename: "{app}\Cojam.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\合拍 Cojam"; Filename: "{app}\Cojam.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\AnY"; Filename: "{app}\AnY.exe"; WorkingDir: "{app}"
+Name: "{autodesktop}\AnY"; Filename: "{app}\AnY.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 [Run]
-Filename: "{app}\Cojam.exe"; Description: "打开合拍 Cojam"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\AnY.exe"; Description: "打开 AnY"; Flags: nowait postinstall skipifsilent

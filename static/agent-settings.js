@@ -46,7 +46,7 @@ function agentSettingsMarkup(config) {
     +Object.entries(AGENT_ARG_LABELS).filter(([key])=>!builtin || key==='base').map(([key,label])=>'<h4>'+label+'</h4>'+agentListEditor('arg-'+key,(v.args || {})[key] || [])).join('')+'</details>'
     +(!builtin?'<label for="agentPrompt">提示词传递</label><select id="agentPrompt"><option value="arg"'+(v.prompt==='arg'?' selected':'')+'>命令行参数</option><option value="stdin"'+(v.prompt==='stdin'?' selected':'')+'>标准输入</option></select><label for="agentContext">聊天记录传递</label><select id="agentContext"><option value="delta"'+(v.context==='delta'?' selected':'')+'>只传新增内容</option><option value="full"'+(v.context==='full'?' selected':'')+'>传递会话记录</option></select>':'')
     :'<p class="hint">此联系人当前通过 '+esc(AG_DRV[config.driver] || config.driver)+' 接入，没有本机 CLI 启动项。</p>')+'</section>';
-  html += '<section data-agent-panel="desktop" hidden><p class="hint">设置桌面程序的位置和 MCP 保存位置，应用会自动写入接入配置。写入后重启桌面软件，并开启 /cojam_standby；收到待命心跳后才显示在线。</p>'
+  html += '<section data-agent-panel="desktop" hidden><p class="hint">设置桌面程序的位置和 MCP 保存位置，应用会自动写入接入配置。写入后重启桌面软件，并开启 /any_standby；收到待命心跳后才显示在线。</p>'
     +agentInput('agentDesktopPath','桌面程序位置',desktop.path,'placeholder="程序完整路径"')+'<button type="button" data-agent-file="desktop" hidden>选择桌面程序…</button>'
     +'<label for="agentDesktopHost">桌面软件 / MCP 格式</label><select id="agentDesktopHost"><option value="">请选择软件</option>'+(config.hosts || []).map(h=>'<option value="'+esc(h.id)+'"'+(desktop.host===h.id?' selected':'')+'>'+esc(h.label)+'</option>').join('')+'</select>'
     +agentInput('agentMcpPath','MCP 保存位置',desktop.mcp_path,'placeholder="可使用自动填入的位置，也可手动选择"')+'<button type="button" data-agent-file="mcp" hidden>选择已有 MCP 文件…</button>'
@@ -193,7 +193,7 @@ function bindAgentSettings(config) {
   const hostChanged=()=>{const host=config.hosts.find(h=>h.id===get('agentDesktopHost').value);get('agentMcpPath').disabled=!!host && host.kind==='claude';get('agentMcpPathHint').textContent=host && host.kind==='claude'?'此宿主通过 Claude 命令管理 MCP，无需指定保存位置。':'应用会保留其他 MCP 项目，并备份原文件。';};
   get('agentDesktopHost').onchange=()=>{const host=config.hosts.find(h=>h.id===get('agentDesktopHost').value);get('agentMcpPath').value=host?host.path:'';hostChanged();};hostChanged();
   const fileButtons=[...root.querySelectorAll('[data-agent-file]')];
-  const bridge=window.cojamDesktop||null;
+  const bridge=window.anyDesktop||window.cojamDesktop||null;
   const legacyFileApi=()=>window.pywebview&&window.pywebview.api&&typeof window.pywebview.api.choose_agent_file==='function'?window.pywebview.api:null;
   const exposePicker=()=>{if(!current())return;const ok=bridge?bridge.canChooseAgentFile():!!legacyFileApi();fileButtons.forEach(b=>b.hidden=!ok);};
   exposePicker();

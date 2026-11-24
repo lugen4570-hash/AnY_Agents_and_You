@@ -1,10 +1,11 @@
-"""POSIX (macOS / Linux) implementation for the Cojam Platform Abstraction Layer."""
+"""POSIX (macOS / Linux) implementation for the AnY Platform Abstraction Layer."""
 from __future__ import annotations
 
 import logging
 import os
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -54,6 +55,23 @@ def resolve_command(
     finder = find_command_path if find_fn is None else find_fn
     path = finder(name)
     return [path] if path else None
+
+
+def kill_pid_tree(pid: int) -> None:
+    if not isinstance(pid, int) or pid <= 0:
+        return
+    killpg = getattr(os, "killpg", None)
+    sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+    if killpg is not None:
+        try:
+            killpg(pid, sigkill)
+            return
+        except OSError as error:
+            logger.debug("kill_pid_tree: killpg failed for pid=%s: %s", pid, error)
+    try:
+        os.kill(pid, sigkill)
+    except OSError as error:
+        logger.debug("kill_pid_tree: kill failed for pid=%s: %s", pid, error)
 
 
 def kill_process_tree(proc: subprocess.Popen[Any]) -> None:

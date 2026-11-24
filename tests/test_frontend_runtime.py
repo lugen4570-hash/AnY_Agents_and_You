@@ -22,7 +22,7 @@ function windowContext(sessionStorage){
   vm.runInContext(source+'\nlet quote=null;',context);return context;
 }
 const session=storage();
-session.setItem('cojam.draft.first',JSON.stringify({text:'旧草稿',attachments:[],quote:null}));
+session.setItem('any.draft.first',JSON.stringify({text:'旧草稿',attachments:[],quote:null}));
 let context=windowContext(session);context.restoreDraft();assert.equal(context.ta.value,'旧草稿');
 vm.runInContext("ta.value='会话一';pend.push({name:'粘贴.png',path:'one.png'});quote={id:4};saveDraft()",context);
 context.RID='second';context.restoreDraft();assert.equal(context.ta.value,'');
@@ -30,7 +30,7 @@ context.ta.value='会话二';context.saveDraft();
 context=windowContext(storage());context.restoreDraft();assert.equal(context.ta.value,'会话一');
 assert.equal(vm.runInContext('pend[0].name',context),'粘贴.png');assert.equal(vm.runInContext('quote.id',context),4);
 vm.runInContext("ta.value='';pend=[];quote=null;saveDraft()",context);
-assert.equal(localStorage.getItem('cojam.draft.first'),null);
+assert.equal(localStorage.getItem('any.draft.first'),null);
 context.RID='second';context.restoreDraft();assert.equal(context.ta.value,'会话二');
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -68,7 +68,7 @@ function openWindow(fetch){
   assert.equal(reopened.ta.value,'');assert.equal(files.size,1);
   reopened.RID='room-one';reopened.restoreDraft();await reopened.resumeDraftUploads('room-one');
   assert.equal(reopened.ta.value,'保留的文字');assert.equal(files.size,0);
-  assert.equal(JSON.parse(localStorage.getItem('cojam.draft.room-one')).attachments[0].name,picture.name);
+  assert.equal(JSON.parse(localStorage.getItem('any.draft.room-one')).attachments[0].name,picture.name);
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -143,7 +143,7 @@ vm.runInContext(draft+'\nlet quote=null;\n'+send,context);
   value='正在输入第二条';
   vm.runInContext("pend.push({path:'next.png',kind:'image'});",context);
   finish();await sending;
-  const saved=JSON.parse(storage.getItem('cojam.draft.first'));
+  const saved=JSON.parse(storage.getItem('any.draft.first'));
   assert.equal(saved.text,value);assert.deepEqual(saved.attachments,[{path:'next.png',kind:'image'}]);
   assert.equal(writes,0);
 })().catch(e=>{console.error(e);process.exitCode=1});
@@ -190,7 +190,7 @@ vm.runInContext(draft+'\nlet quote=null;\n'+recallPart,ctx);
   assert.deepEqual(ctx.ta.selection,[5,5]);
   assert.equal(synced,1);
   assert.equal(polled,1);
-  const saved=JSON.parse(localStorage.getItem('cojam.draft.room-a'));
+  const saved=JSON.parse(localStorage.getItem('any.draft.room-a'));
   assert.equal(saved.text,'撤回这句话');
   assert.equal(saved.attachments[0].path,img.path);
 
@@ -204,7 +204,7 @@ vm.runInContext(draft+'\nlet quote=null;\n'+recallPart,ctx);
   await p2;
   assert.equal(ctx.ta.value,'','room-b composer must stay clean');
   assert.equal(vm.runInContext('pend',ctx).length,0);
-  const savedA=JSON.parse(localStorage.getItem('cojam.draft.room-a'));
+  const savedA=JSON.parse(localStorage.getItem('any.draft.room-a'));
   assert.equal(savedA.text,'另一条撤回\n草稿尾部');
   assert.equal(savedA.attachments.length,2);
 })().catch(e=>{console.error(e);process.exitCode=1});
@@ -332,12 +332,12 @@ vm.runInContext(helper,context);context.attachWorkspaceFolderPicker('pWd');
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test the desktop bridge')
-    def test_cojam_desktop_adapter_supports_tauri_without_faking_pywebview(self):
+    def test_any_desktop_adapter_supports_tauri_without_faking_pywebview(self):
         root = Path(__file__).resolve().parents[1]
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const ws=fs.readFileSync('static/workspace.js','utf8');
-const bridgeCode=ws.slice(ws.indexOf('function createCojamDesktop'),ws.indexOf('// Contacts belong to the application'));
+const bridgeCode=ws.slice(ws.indexOf('function createAnYDesktop'),ws.indexOf('// Contacts belong to the application'));
 const pickerHelper=ws.match(/function attachWorkspaceFolderPicker\(inputId\)\{[\s\S]*?\n\}/)[0];
 const invocations=[];
 let button;
@@ -348,22 +348,22 @@ const ctx=vm.createContext({
   alert:()=>{throw Error('unexpected alert')},
   addEventListener(){},
   removeEventListener(){},
-  __TAURI_INTERNALS__:{invoke:async(cmd)=>{invocations.push(cmd);return cmd==='cojam_choose_workdir'?'D:\\TauriProject':'D:\\Agent\\bin.exe'}},
-  __COJAM_NATIVE_HEARTBEAT__:true,
+  __TAURI_INTERNALS__:{invoke:async(cmd)=>{invocations.push(cmd);return cmd==='any_choose_workdir'?'D:\\TauriProject':'D:\\Agent\\bin.exe'}},
+  __ANY_NATIVE_HEARTBEAT__:true,
 });
 ctx.window=ctx;
 vm.runInContext(bridgeCode+'\n'+pickerHelper,ctx);
-assert.equal(ctx.cojamDesktop.kind,'tauri');
-assert.equal(ctx.cojamDesktop.nativeHeartbeat,true);
+assert.equal(ctx.anyDesktop.kind,'tauri');
+assert.equal(ctx.anyDesktop.nativeHeartbeat,true);
 assert.equal(ctx.pywebview,undefined);
 ctx.attachWorkspaceFolderPicker('pWd');
 assert.equal(button.hidden,false);
 (async()=>{
   await button.onclick();
   assert.equal(input.value,'D:\\TauriProject');
-  const agentPath=await ctx.cojamDesktop.chooseAgentFile();
+  const agentPath=await ctx.anyDesktop.chooseAgentFile();
   assert.equal(agentPath,'D:\\Agent\\bin.exe');
-  assert.deepEqual(invocations,['cojam_choose_workdir','cojam_choose_agent_file']);
+  assert.deepEqual(invocations,['any_choose_workdir','any_choose_agent_file']);
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
         result = subprocess.run(['node','-e',script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -477,7 +477,7 @@ class GuestIdentity(unittest.TestCase):
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/join.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
-const storage={cojam_guest_token:'guest-token',cojam_guest_last_room:'room-2'},elements={},timers=[];
+const storage={any_guest_token:'guest-token',any_guest_last_room:'room-2'},elements={},timers=[];
 const node=id=>elements[id]||(elements[id]={value:'',textContent:'',disabled:false,hidden:false,
  children:[],replaceChildren(){this.children=[]},append(v){this.children.push(v)},
  classList:{toggle(){}},scrollTop:0,scrollHeight:0});
@@ -490,8 +490,8 @@ const ctx=vm.createContext({URL,URLSearchParams,document:{getElementById:node,cr
  if(url.startsWith('/api/external/messages'))return {ok:true,json:async()=>({messages:[],next:0,permissions:{post:true}})};
  throw Error('unexpected '+url)}});
 vm.runInContext(source,ctx);
-setTimeout(()=>{try{assert.equal(storage.cojam_guest_token,'guest-token');assert.match(node('error').textContent,/无法验证/);
- available=true;timers[1]();setTimeout(()=>{try{assert.equal(node('title').textContent,'会话');assert.equal(storage.cojam_guest_token,'guest-token')}
+setTimeout(()=>{try{assert.equal(storage.any_guest_token,'guest-token');assert.match(node('error').textContent,/无法验证/);
+ available=true;timers[1]();setTimeout(()=>{try{assert.equal(node('title').textContent,'会话');assert.equal(storage.any_guest_token,'guest-token')}
  catch(e){console.error(e);process.exitCode=1}},30)}catch(e){console.error(e);process.exitCode=1}},30);
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -503,7 +503,7 @@ setTimeout(()=>{try{assert.equal(storage.cojam_guest_token,'guest-token');assert
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/join.html','utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
-const storage={cojam_guest_token:'guest-token',cojam_guest_last_room:'room-2'},elements={};
+const storage={any_guest_token:'guest-token',any_guest_last_room:'room-2'},elements={};
 const node=id=>elements[id]||(elements[id]={value:'',textContent:'',disabled:false,hidden:false,
  children:[],replaceChildren(){this.children=[]},append(v){this.children.push(v)},
  classList:{toggle(){}},scrollTop:0,scrollHeight:0});
@@ -517,7 +517,7 @@ const ctx=vm.createContext({URL,URLSearchParams,document:{getElementById:node,cr
  throw Error('unexpected '+url)}});
 vm.runInContext(source,ctx);
 setTimeout(()=>{try{assert.equal(node('title').textContent,'二');assert.ok(calls.some(x=>x.includes('room=room-2')));
- assert.equal(storage.cojam_guest_token,'guest-token');assert.equal(storage.cojam_guest_last_room,'room-2');
+ assert.equal(storage.any_guest_token,'guest-token');assert.equal(storage.any_guest_last_room,'room-2');
  }catch(e){console.error(e);process.exitCode=1}},30);
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -587,7 +587,7 @@ setTimeout(() => {
         const redeem = calls.find(c => c.url === '/api/guest/redeem');
         assert.equal(redeem.body.invite, 'inv_abc.def');
         assert.match(redeem.body.device_key, /^[0-9a-f]{64}$/);
-        assert.equal(saved.cojam_guest_token, 'guest-secret');
+        assert.equal(saved.any_guest_token, 'guest-secret');
         assert.equal(historyCalls[0], '/join');
         assert.ok(calls.some(c => c.url === '/api/external/rooms'));
         assert.equal(node('title').textContent, '测试会话');
@@ -667,7 +667,7 @@ const ctx=vm.createContext({URLSearchParams,navigator:{userAgent:'iPhone'},docum
  fetch:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return {ok:true,status:200}}});
 vm.runInContext(source,ctx);
 setTimeout(()=>{try{assert.equal(clean,'/enroll');assert.equal(calls[0].url,'/api/devices/restore');
- assert.equal(calls[0].body.token,'dev_test');assert.equal(saved.cojam_owner_device_token,'dev_test');assert.equal(redirect,'/');
+ assert.equal(calls[0].body.token,'dev_test');assert.equal(saved.any_owner_device_token,'dev_test');assert.equal(redirect,'/');
  }catch(e){console.error(e);process.exitCode=1}},20);
 '''
         result = subprocess.run(['node','-e',script], cwd=root, capture_output=True, text=True, timeout=15)
@@ -821,7 +821,7 @@ assert.equal(result.listeners.some(item => item.type === 'pagehide'), true);
 result = runOwner('', true, 'stored-tab-value');
 assert.equal(result.calls[0].body.tab, 'stored-tab-value');
 assert.equal(result.calls[0].body.instance, '11111111222233334444555555555555');
-assert.deepEqual(result.storedWrites, [['cojam_owner_tab', 'stored-tab-value']]);
+assert.deepEqual(result.storedWrites, [['any_owner_tab', 'stored-tab-value']]);
 assert.equal(result.listeners.some(item => item.type === 'beforeunload'), true);
 
 result = runOwner('?owner_tab=short');
@@ -843,8 +843,8 @@ const nativeCtx = vm.createContext({
   addEventListener: (type) => nativeListeners.push(type),
   document: {getElementById: () => ({onclick: null})},
   location: {search: '?owner_tab=' + valid},
-  window: {cojamDesktop: {nativeHeartbeat: true}, __COJAM_NATIVE_HEARTBEAT__: true},
-  __COJAM_NATIVE_HEARTBEAT__: true,
+  window: {anyDesktop: {nativeHeartbeat: true}, __ANY_NATIVE_HEARTBEAT__: true},
+  __ANY_NATIVE_HEARTBEAT__: true,
   confirm: () => false, alert: () => {}
 });
 vm.runInContext(idMatch[0], nativeCtx);
@@ -922,7 +922,7 @@ assert.equal(calls.length, 1);
 const id = calls[0].body.instance;
 assert.match(id, /^[A-Za-z0-9_-]{16,80}$/);
 assert.equal(calls[0].body.tab, id);
-assert.deepEqual(storedWrites, [['cojam_owner_tab', id]]);
+assert.deepEqual(storedWrites, [['any_owner_tab', id]]);
 '''
         result = subprocess.run(['node', '-e', script], cwd=root, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -1061,7 +1061,7 @@ vm.runInContext(js, context);
   await context.openDiscoveryModal();
   assert.match(modalHtml, /发现 1 个 Agent/);
   assert.match(modalHtml, /MCP 待命中/);
-  assert.match(modalHtml, /\/cojam_standby/);
+  assert.match(modalHtml, /\/any_standby/);
   await context.openConnectionSettingsModal('antigravity');
   assert.match(modalHtml, /联系人心跳与超时设置（@antigravity）/);
   await node('hbSave').onclick({currentTarget: node('hbSave')});

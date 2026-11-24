@@ -1,1 +1,1 @@
-"""Optional native desktop shell for Cojam."""
+"""Optional native desktop shell for AnY."""

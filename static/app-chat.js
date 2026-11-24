@@ -85,6 +85,7 @@ function add(m,existing){
   const md=cls==='ai';
   d.innerHTML=who+q+(m.text?'<div class="body'+(md?' md':'')+'">'+render(m.text,md)+'</div>':'')+attHtml(m.attachments)+(m.step!=null?'<button type="button" class="undo" data-step="'+m.step+'">撤回这一步</button>':'');
   if(typeof attachAgentProgress==='function')attachAgentProgress(m,d);
+  if(typeof attachRoomFeedback==='function')attachRoomFeedback(m,d);
   if(!existing)feed.appendChild(d);
   const ub=d.querySelector('.undo');if(ub)ub.onclick=()=>undoStep(m.step);
   d.querySelectorAll('.message-actions button').forEach(b=>b.onmousedown=e=>e.preventDefault());
@@ -146,7 +147,7 @@ async function recallMessage(id){
   if(!rid)return;
   const key=rid+':'+id;
   const cached=msgById[id];
-  if(cached?.recalled||recallingMessages.has(key)||!confirm('撤回这条消息并放回输入框？合拍会取消它触发的任务，并撤回能关联到它的 Agent 回复。读过撤回内容的本机 Agent 会在下次运行时重建会话。'))return;
+  if(cached?.recalled||recallingMessages.has(key)||!confirm('撤回这条消息并放回输入框？AnY 会取消它触发的任务，并撤回能关联到它的 Agent 回复。读过撤回内容的本机 Agent 会在下次运行时重建会话。'))return;
   const orig=cached?{text:cached.text||'',attachments:Array.isArray(cached.attachments)?cached.attachments:[],reply_to:cached.reply_to||null}:null;
   recallingMessages.add(key);
   try{
@@ -231,12 +232,12 @@ feed.addEventListener('click',e=>{
 // 附件
 let pend=[];
 const drafts=new Map(), uploads=new Map(), sendingRooms=new Set();
-const draftKey=rid=>'cojam.draft.'+rid;
+const draftKey=rid=>'any.draft.'+rid;
 let uploadStore;
 const activeUploads=new Set(), uploadTransfers=new Map();
 function draftUploadStore(){
   if(!uploadStore)uploadStore=new Promise((resolve,reject)=>{
-    const request=indexedDB.open('cojam-draft-uploads',1);
+    const request=indexedDB.open('any-draft-uploads',1);
     request.onupgradeneeded=()=>request.result.createObjectStore('uploads',{keyPath:'id'}).createIndex('room','rid');
     request.onsuccess=()=>resolve(request.result);
     request.onerror=()=>reject(request.error);
@@ -497,8 +498,8 @@ async function send(){
   if(uploads.get(rid)){alert('附件还在上传，稍等一下');return}
   if(!text&&!pend.length)return;
   const atts=pend.slice(),qm=quote;
-  if(!atts.length&&typeof window!=='undefined'&&window.CojamHarness&&typeof window.CojamHarness.handleComposerSlashCommand==='function'){
-    const slashResult=await window.CojamHarness.handleComposerSlashCommand(text);
+  if(!atts.length&&typeof window!=='undefined'&&(window.AnYHarness||window.CojamHarness)&&typeof (window.AnYHarness||window.CojamHarness).handleComposerSlashCommand==='function'){
+    const slashResult=await (window.AnYHarness||window.CojamHarness).handleComposerSlashCommand(text);
     if(slashResult&&slashResult.handled){
       if(slashResult.clear){
         const draft=getDraft(rid);

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """ACP（Agent Client Protocol）直连驱动：stdio 上的 JSON-RPC 2.0。
 
-由 Cojam 直接拉起支持 ACP 的本机 Agent（如 gemini --experimental-acp、opencode acp、qwen --experimental-acp、
+由 AnY 直接拉起支持 ACP 的本机 Agent（如 gemini --experimental-acp、opencode acp、qwen --experimental-acp、
 goose acp、kimi acp 等），保持常驻会话、流式接收回复、按会议室讨论/干活模式控制工具权限，
-并在写文件前走 Cojam 的文件护栏（guard）。
+并在写文件前走 AnY 的文件护栏（guard）。
 """
 import base64
 import json
@@ -51,7 +51,7 @@ class AcpProcess:
         self.config_options: list[dict[str, Any]] = []   # 当前会话 agent 声明的 configOptions
         self.active_room = None
         self.active_mode = "discuss"
-        self.active_edits: list[str] = []
+        self.active_edits: list[str | dict[str, str]] = []
 
         full_env = dict(os.environ, PYTHONIOENCODING="utf-8")
         full_env.update(env or {})
@@ -157,7 +157,22 @@ class AcpProcess:
         options = params.get("options") if isinstance(params.get("options"), list) else []
         tool_call = params.get("toolCall") if isinstance(params.get("toolCall"), dict) else {}
         kind = str(tool_call.get("kind") or params.get("kind") or "").lower()
-        allow = self.active_mode == "work" or kind in ("read", "search", "think", "fetch")
+        read_only = kind in ("read", "search", "think", "fetch")
+        request_approval = getattr(self.active_room, "request_turn_approval", None)
+        allow = self.active_mode == "work" or read_only
+        if allow and not read_only and request_approval is not None:
+            once = next((opt.get("optionId") or opt.get("id") for opt in options
+                         if isinstance(opt, dict) and opt.get("kind") == "allow_once"), None)
+            title = str(tool_call.get("title") or "ACP 请求执行操作")
+            if once and request_approval(self.pid, title):
+                if kind not in ("edit", "write"):
+                    self.active_edits.append({"op": "command"})
+                return {"outcome": {"outcome": "selected", "optionId": once}}
+            reject = next((opt.get("optionId") or opt.get("id") for opt in options
+                           if isinstance(opt, dict) and opt.get("kind") == "reject_once"), None)
+            if reject:
+                return {"outcome": {"outcome": "selected", "optionId": reject}}
+            return {"outcome": {"outcome": "cancelled"}}
         if allow:
             for opt in options:
                 if isinstance(opt, dict) and str(opt.get("kind") or "").startswith("allow"):
@@ -237,7 +252,7 @@ class AcpProcess:
     def _initialize(self):
         self.request("initialize", {
             "protocolVersion": 1,
-            "clientInfo": {"name": "Cojam", "version": VERSION},
+            "clientInfo": {"name": "AnY", "version": VERSION},
             "clientCapabilities": {"fs": {"readTextFile": True, "writeTextFile": True}, "terminal": False},
         }, timeout=self.init_timeout)
 
@@ -476,7 +491,7 @@ def call(pid, spec, prompt, session_id=None, images=(), mode="discuss", room=Non
         reply, sid, edits = proc.prompt(prompt, images, mode, room, wanted_sid=session_id)
     except TimeoutError:
         stop(room, pid)
-        return False, timeout_text(pid, "total", mode), session_id, []
+        return False, timeout_text(pid, "total", mode), session_id, list(proc.active_edits)
     except AcpSessionLost as e:
         proc.session_id = None
         proc.applied = None
@@ -490,7 +505,7 @@ def call(pid, spec, prompt, session_id=None, images=(), mode="discuss", room=Non
                 if _pool.get(key) is proc:
                     _pool.pop(key, None)
             proc.close()
-        return False, "%s (ACP) 调用出错：%s" % (pid, e), proc.session_id or session_id, []
+        return False, "%s (ACP) 调用出错：%s" % (pid, e), proc.session_id or session_id, list(proc.active_edits)
     finally:
         proc.active_room = None
     if not reply:

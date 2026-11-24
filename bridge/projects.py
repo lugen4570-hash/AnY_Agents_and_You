@@ -10,7 +10,7 @@ from .common import LOG_DIR, PROJECT, read_json, write_json
 LOCK = threading.RLock()
 
 MACOS_FOLDER_PROMPT = '''try
-    return POSIX path of (choose folder with prompt "选择合拍项目的工作文件夹")
+    return POSIX path of (choose folder with prompt "选择 AnY 项目的工作文件夹")
 on error messageText number errorNumber
     if errorNumber is -128 then return ""
     error messageText number errorNumber

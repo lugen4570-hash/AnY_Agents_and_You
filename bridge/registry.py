@@ -19,8 +19,10 @@ r"""参与者注册表：会议室里能有哪些 AI、每一个怎么叫。
 import glob, json, os, re, shutil, threading
 from typing import Any
 
-from . import pal
+from . import common, direct_model, pal
 from .common import LOG_DIR, find_executable, get_logger, read_json, resolve_cmd, write_json
+
+_DEFAULT_FIND_EXECUTABLE = find_executable
 
 logger = get_logger(__name__)
 
@@ -240,6 +242,7 @@ def _norm(raw, idx=0):
         "caps": caps,
         "handoff": str(raw.get("handoff") or ""),
         "endpoint": str(raw.get("endpoint") or "").strip(),
+        "http_protocol": str(raw.get("http_protocol") or "").strip(),
         "token": str(raw.get("token") or ""),
         "headers": {str(k): str(v) for k, v in (raw.get("headers") or {}).items()} if isinstance(raw.get("headers"), dict) else {},
         "builtin": bool(raw.get("builtin")),
@@ -259,6 +262,18 @@ def _norm(raw, idx=0):
         spec["context"] = "delta"
     if driver == "http" and not spec["endpoint"]:
         raise ValueError("driver=http 得写 endpoint")
+    if spec["http_protocol"]:
+        if driver != "http" or spec["http_protocol"] != direct_model.PROTOCOL:
+            raise ValueError("不支持的模型直连协议")
+        spec["endpoint"] = direct_model.endpoint(spec["endpoint"])
+        spec["token"] = direct_model.key_from_config(raw)
+        model = spec["default"][0].strip()
+        if not model or len(model) > 200 or any(ord(ch) < 32 for ch in model):
+            raise ValueError("请填写服务商提供的模型名称")
+        spec["default"] = [model, ""]
+        spec["models"] = [model]
+        spec["caps"] = dict(DRIVER_CAPS["http"])
+        spec["context"] = "full"
     if driver in ("cli", "acp") and not spec["bin"]:
         raise ValueError("driver=%s 得写 bin" % driver)
     for k in ("id", "label"):
@@ -411,6 +426,7 @@ def public(spec):
     if not spec:
         return None
     return {"id": spec["id"], "label": spec["label"], "letter": spec["letter"], "color": spec["color"], "driver": spec["driver"],
+            "http_protocol": spec.get("http_protocol", ""),
             "kind": spec["kind"],
             "enabled": spec["enabled"], "caps": dict(spec["caps"]), "models": list(spec["models"]),
             "configured": bool(spec.get("settings_fields")),
@@ -459,6 +475,8 @@ def save_agent(raw):
     """把界面上填的一份配置存成 data/agents.d/<id>.json 并立刻生效。返回 (ok, 错误)。"""
     try:
         spec = _norm(raw, len(SPECS))
+        if spec.get("http_protocol") == direct_model.PROTOCOL:
+            raw = direct_model.stored_config(raw, spec["token"])
     except Exception as e:
         return False, str(e)
     cur = SPECS.get(spec["id"])
@@ -510,8 +528,14 @@ def remove_agent(pid):
 
 def exe_of(spec):
     """这个 agent 的命令行真身（参数列表开头）；找不到返回 None。"""
+    # Respect patches on either common.find_executable (driver tests) or registry.find_executable (catalog tests).
+    use_local_finder = (
+        resolve_cmd is common.resolve_cmd
+        and common.find_executable is _DEFAULT_FIND_EXECUTABLE
+        and find_executable is not _DEFAULT_FIND_EXECUTABLE
+    )
     for b in spec.get("bin") or []:
-        got = resolve_cmd(b)
+        got = pal.resolve_command(b, find_fn=find_executable) if use_local_finder else resolve_cmd(b)
         if got:
             return got
     return None

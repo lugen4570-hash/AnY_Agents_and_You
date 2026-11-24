@@ -89,9 +89,9 @@ class ShellTest(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
 
-    def test_probe_recognizes_cojam(self):
+    def test_probe_recognizes_any(self):
         state, info = backend.probe(self.base)
-        self.assertEqual(state, "cojam")
+        self.assertEqual(state, "any")
         self.assertEqual(info["app"], "AI Bridge")
 
     def test_probe_marks_other_app_as_foreign(self):
@@ -201,10 +201,10 @@ class ShellTest(unittest.TestCase):
     def test_log_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"ROUNDTABLE_LOG_DIR": tmp}):
-                self.assertEqual(backend.log_path("C:/core"), os.path.join(tmp, "cojam.log"))
+                self.assertEqual(backend.log_path("C:/core"), os.path.join(tmp, "any.log"))
             with patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(backend.log_path("C:/core"),
-                                 os.path.join("C:/core", "data", "cojam.log"))
+                                 os.path.join("C:/core", "data", "any.log"))
 
 
 class FakeEvent:
@@ -343,7 +343,7 @@ class WindowAndFlow(unittest.TestCase):
 
     def test_existing_backend_is_reused(self):
         with patch.object(shell_main.backend, "find_core", return_value=(["core.exe"], "C:/core")), \
-                patch.object(shell_main.backend, "probe", return_value=("cojam", {"app": "AI Bridge"})), \
+                patch.object(shell_main.backend, "probe", return_value=("any", {"app": "AI Bridge"})), \
                 patch.object(shell_main.backend, "spawn_core") as spawn, \
                 patch.object(shell_main.backend, "fetch_token", return_value="token"), \
                 patch.object(shell_main.backend, "TabHeartbeat", return_value=Mock()), \
@@ -360,11 +360,11 @@ class WindowAndFlow(unittest.TestCase):
                 patch.object(shell_main.backend, "spawn_core", return_value=proc), \
                 patch.object(shell_main.backend, "wait_ready", return_value=None), \
                 patch.object(shell_main.backend, "stop_process") as stop, \
-                patch.object(shell_main.backend, "log_path", return_value="C:/core/data/cojam.log"), \
+                patch.object(shell_main.backend, "log_path", return_value="C:/core/data/any.log"), \
                 patch.object(shell_main, "show_error") as error:
             self.assertEqual(shell_main.main(), 2)
         stop.assert_called_once_with(proc)
-        self.assertIn("C:/core/data/cojam.log", error.call_args.args[0])
+        self.assertIn("C:/core/data/any.log", error.call_args.args[0])
 
     def test_token_failure_stops_spawned_process(self):
         proc = Mock()
@@ -382,7 +382,7 @@ class WindowAndFlow(unittest.TestCase):
     def test_window_failure_falls_back_to_browser(self):
         heartbeat = Mock()
         with patch.object(shell_main.backend, "find_core", return_value=(["core.exe"], "C:/core")), \
-                patch.object(shell_main.backend, "probe", return_value=("cojam", {"app": "AI Bridge"})), \
+                patch.object(shell_main.backend, "probe", return_value=("any", {"app": "AI Bridge"})), \
                 patch.object(shell_main.backend, "fetch_token", return_value="token"), \
                 patch.object(shell_main.backend, "TabHeartbeat", return_value=heartbeat), \
                 patch.object(shell_main, "open_window", side_effect=ImportError("no webview")), \
@@ -398,7 +398,7 @@ class WindowAndFlow(unittest.TestCase):
     def test_window_and_browser_failure_unregisters_tab(self):
         heartbeat = Mock()
         with patch.object(shell_main.backend, "find_core", return_value=(["core.exe"], "C:/core")), \
-                patch.object(shell_main.backend, "probe", return_value=("cojam", {"app": "AI Bridge"})), \
+                patch.object(shell_main.backend, "probe", return_value=("any", {"app": "AI Bridge"})), \
                 patch.object(shell_main.backend, "fetch_token", return_value="token"), \
                 patch.object(shell_main.backend, "TabHeartbeat", return_value=heartbeat), \
                 patch.object(shell_main, "open_window", side_effect=RuntimeError("boom")), \
@@ -420,15 +420,15 @@ class FindCore(unittest.TestCase):
 
     def test_packaged_mode_uses_sibling_exe(self):
         with tempfile.TemporaryDirectory() as tmp:
-            core = Path(tmp) / "Cojam.exe"
+            core = Path(tmp) / "AnY.exe"
             core.write_bytes(b"core")
-            found = backend.find_core(frozen=True, executable=str(Path(tmp) / "CojamDesktop.exe"))
+            found = backend.find_core(frozen=True, executable=str(Path(tmp) / "AnYDesktop.exe"))
             self.assertEqual(found, ([str(core.resolve())], str(Path(tmp).resolve())))
 
     def test_packaged_mode_prefers_core_exe(self):
         with tempfile.TemporaryDirectory() as tmp:
-            shell = Path(tmp) / "Cojam.exe"
-            core = Path(tmp) / "CojamCore.exe"
+            shell = Path(tmp) / "AnY.exe"
+            core = Path(tmp) / "AnYCore.exe"
             shell.write_bytes(b"shell")
             core.write_bytes(b"core")
             found = backend.find_core(frozen=True, executable=str(shell))
@@ -436,12 +436,12 @@ class FindCore(unittest.TestCase):
 
     def test_packaged_mode_does_not_spawn_itself(self):
         with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "Cojam.exe").write_bytes(b"shell")
-            self.assertIsNone(backend.find_core(frozen=True, executable=str(Path(tmp) / "Cojam.exe")))
+            (Path(tmp) / "AnY.exe").write_bytes(b"shell")
+            self.assertIsNone(backend.find_core(frozen=True, executable=str(Path(tmp) / "AnY.exe")))
 
     def test_packaged_mode_without_core(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIsNone(backend.find_core(frozen=True, executable=str(Path(tmp) / "CojamDesktop.exe")))
+            self.assertIsNone(backend.find_core(frozen=True, executable=str(Path(tmp) / "AnYDesktop.exe")))
 
 
 class TitleBarTint(unittest.TestCase):

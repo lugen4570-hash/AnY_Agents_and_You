@@ -12,14 +12,29 @@ import time
 from . import cli
 
 
+def _path_exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
+
+
 def data_directory():
-    if override := os.environ.get("COJAM_CLI_INSTALL_DIR"):
+    if override := (os.environ.get("ANY_CLI_INSTALL_DIR") or os.environ.get("COJAM_CLI_INSTALL_DIR")):
         return Path(override).expanduser() / "data"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "Cojam"
+        primary = Path.home() / "Library" / "Application Support" / "AnY"
+        legacy = Path.home() / "Library" / "Application Support" / "Cojam"
+        return primary if (_path_exists(primary) or not _path_exists(legacy)) else legacy
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "CojamCLI" / "data"
-    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "cojam-cli" / "data"
+        local_app = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        primary = local_app / "AnYCLI" / "data"
+        legacy = local_app / "CojamCLI" / "data"
+        return primary if (_path_exists(primary) or not _path_exists(legacy)) else legacy
+    xdg_data = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    primary = xdg_data / "any-cli" / "data"
+    legacy = xdg_data / "cojam-cli" / "data"
+    return primary if (_path_exists(primary) or not _path_exists(legacy)) else legacy
 
 
 def server_ready(port):
@@ -48,7 +63,7 @@ def ensure_backend(port):
         except OSError as error:
             raise cli.CliError(f"无法使用端口 {port}。请稍后重试或设置 ROUNDTABLE_PORT。") from error
 
-    directory = Path(os.environ.get("ROUNDTABLE_LOG_DIR", data_directory())).resolve()
+    directory = Path(os.environ.get("ROUNDTABLE_LOG_DIR") or data_directory()).resolve()
     log = directory / "cli-server.log"
     env = dict(os.environ, ROUNDTABLE_LOG_DIR=str(directory), ROUNDTABLE_OWNER_LIFECYCLE="1")
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
@@ -74,8 +89,8 @@ def ensure_backend(port):
                 child.terminate()
                 child.wait(timeout=5)
     except (OSError, subprocess.SubprocessError) as error:
-        raise cli.CliError(f"无法启动 Cojam 后台（{error}）。启动日志：{log}") from error
-    raise cli.CliError(f"无法启动 Cojam 后台。启动日志：{log}")
+        raise cli.CliError(f"无法启动 AnY 后台（{error}）。启动日志：{log}") from error
+    raise cli.CliError(f"无法启动 AnY 后台。启动日志：{log}")
 
 
 if __name__ == "__main__":

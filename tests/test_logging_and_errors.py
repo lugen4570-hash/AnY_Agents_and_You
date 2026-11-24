@@ -35,7 +35,7 @@ class LoggingTests(unittest.TestCase):
                 backup1 = Path(tmp) / (common.LOG_FILENAME + ".1")
                 self.assertTrue(log_file.is_file())
                 self.assertTrue(backup1.is_file())
-                self.assertFalse((Path(tmp) / "cojam.log").exists())
+                self.assertFalse((Path(tmp) / "any.log").exists())
             finally:
                 if hasattr(common, "reset_logging"):
                     common.reset_logging()
@@ -153,10 +153,10 @@ class PackagingCleanupTests(unittest.TestCase):
         self.assertFalse((root / "package.json").exists(), "unused package.json should be removed")
         self.assertFalse((root / "package-lock.json").exists(), "unused package-lock.json should be removed")
 
-        iss_text = (root / "packaging" / "cojam.iss").read_text(encoding="utf-8")
+        iss_text = (root / "packaging" / "any.iss").read_text(encoding="utf-8")
         self.assertIn(f'#define MyAppVersion "{VERSION}"', iss_text)
-        self.assertIn(f'#define OutputName "Cojam-Setup-{VERSION}-test"', iss_text)
-        self.assertIn(f'#define OutputName "Cojam-Setup-{VERSION}"', iss_text)
+        self.assertIn(f'#define OutputName "AnY-Setup-{VERSION}-test"', iss_text)
+        self.assertIn(f'#define OutputName "AnY-Setup-{VERSION}"', iss_text)
 
 
 if __name__ == "__main__":

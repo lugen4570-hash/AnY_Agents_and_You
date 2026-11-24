@@ -1,15 +1,15 @@
 [package]
-name = "cojam-desktop"
-version = "2.8.18"
-description = "Cojam Tauri 2 Desktop Shell"
+name = "any-desktop"
+version = "2.8.19"
+description = "AnY Tauri 2 Desktop Shell"
 edition = "2021"
 
 [lib]
-name = "cojam_desktop_lib"
+name = "any_desktop_lib"
 crate-type = ["rlib"]
 
 [[bin]]
-name = "cojam-desktop"
+name = "any-desktop"
 path = "src/main.rs"
 
 [build-dependencies]

@@ -18,7 +18,10 @@ def permissions(room: Any, pid: str) -> dict[str, Any]:
     defaults: dict[str, Any] = dict(PERMISSIONS)
     if "permissions" not in room.meta:  # preserve existing local rooms
         defaults.update(board=True, files=True, work=True)
-    return dict(defaults, **room.meta.get("permissions", {}).get(pid, {}))
+    effective = dict(defaults, **room.meta.get("permissions", {}).get(pid, {}))
+    if (registry.get(pid) or {}).get("http_protocol"):
+        effective.update(work=False, board=False, files=False, trigger=False)
+    return effective
 
 
 def allowed(room: Any, pid: str, action: str = "read") -> bool:

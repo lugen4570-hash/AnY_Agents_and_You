@@ -1,4 +1,4 @@
-(function(){const m=document.querySelector('meta[name=rt-token]'),t=m?m.content:'';if(!t)return;if(t.startsWith('dev_')){try{localStorage.setItem('cojam_owner_device_token',t)}catch(e){}}const f=window.fetch;window.fetch=function(u,o){o=o||{};const h=new Headers(o.headers||{});h.set('X-RT-Token',t);o.headers=h;return f.call(this,u,o)}})();
+(function(){const m=document.querySelector('meta[name=rt-token]'),t=m?m.content:'';if(!t)return;if(t.startsWith('dev_')){try{localStorage.setItem('any_owner_device_token',t)}catch(e){}}const f=window.fetch;window.fetch=function(u,o){o=o||{};const h=new Headers(o.headers||{});h.set('X-RT-Token',t);o.headers=h;return f.call(this,u,o)}})();
 // Each owner tab registers separately. A short grace period permits reload and tab handoff.
 function ownerTabId(search){
   try{
@@ -18,14 +18,15 @@ function ownerInstance(){
 }
 (function(){
   const desktop=ownerTabId(location.search);
-  const nativeOwnedHeartbeat=Boolean((desktop&&new URLSearchParams(location.search).get('native_shell')==='1')||(typeof window!=='undefined'&&window.cojamDesktop&&window.cojamDesktop.nativeHeartbeat)||(typeof window!=='undefined'&&window.__COJAM_NATIVE_HEARTBEAT__===true));
+  const desktopBridge=(typeof window!=='undefined')&&(window.anyDesktop||window.cojamDesktop);
+  const nativeOwnedHeartbeat=Boolean((desktop&&new URLSearchParams(location.search).get('native_shell')==='1')||(desktopBridge&&desktopBridge.nativeHeartbeat)||(typeof window!=='undefined'&&(window.__ANY_NATIVE_HEARTBEAT__===true||window.__COJAM_NATIVE_HEARTBEAT__===true)));
   const instance=desktop||ownerInstance(), endpoint='/api/ui/session';
   let tab=desktop||instance;
   try{
     if(!desktop){
       const navigation=performance.getEntriesByType('navigation')[0];
-      if(navigation&&navigation.type==='reload')tab=sessionStorage.getItem('cojam_owner_tab')||instance;
-      sessionStorage.setItem('cojam_owner_tab',tab);
+      if(navigation&&navigation.type==='reload')tab=sessionStorage.getItem('any_owner_tab')||sessionStorage.getItem('cojam_owner_tab')||instance;
+      sessionStorage.setItem('any_owner_tab',tab);
     }
   }catch(e){}
   let exiting=false,timer=0;
@@ -39,11 +40,11 @@ function ownerInstance(){
   }
   if(!desktop&&!nativeOwnedHeartbeat)addEventListener('beforeunload',event=>{if(!exiting&&hasActiveJobs()){event.preventDefault();event.returnValue=''}});
   document.getElementById('quitApp').onclick=async()=>{
-    if(hasActiveJobs()&&!confirm('还有任务正在运行或排队，退出会中断这些任务。确定退出合拍吗？'))return;
+    if(hasActiveJobs()&&!confirm('还有任务正在运行或排队，退出会中断这些任务。确定退出 AnY 吗？'))return;
     const [ok,j]=await post('/api/server/exit',{});
     if(!ok){alert(j.error||'退出失败');return}
     exiting=true;if(timer)clearInterval(timer);
-    document.body.innerHTML='<main class="closed-screen"><img src="/static/logo.svg" width="60" height="60" alt=""><h1>合拍已退出</h1><p>本机服务已停止。需要时重新打开合拍即可。</p><button onclick="window.close()">关闭页面</button></main>';
+    document.body.innerHTML='<main class="closed-screen"><img src="/static/logo.svg" width="60" height="60" alt=""><h1>AnY 已退出</h1><p>本机服务已停止。需要时重新打开 AnY 即可。</p><button onclick="window.close()">关闭页面</button></main>';
   };
 })();
 const feed=document.getElementById('feed'),ta=document.getElementById('ta'),st=document.getElementById('status');
@@ -67,8 +68,8 @@ modal.addEventListener('pointermove',e=>{if(modalBackdropPress&&e.pointerId===mo
 modal.addEventListener('pointerup',e=>{const p=modalBackdropPress;modalBackdropClick=!!p&&e.pointerId===p.id&&e.target===modal&&!p.moved&&Math.hypot(e.clientX-p.x,e.clientY-p.y)<=5;modalBackdropPress=null});
 modal.addEventListener('pointercancel',()=>{modalBackdropPress=null;modalBackdropClick=false});
 modal.onclick=e=>{const close=modalBackdropClick&&e.target===modal;modalBackdropClick=false;if(close)hideModal()};
-function apiError(status){return status===404?'后台缺少这个功能，可能仍在运行旧版本。请退出旧后台并重新打开合拍 Cojam。':status===403?'页面的连接凭证已失效，请刷新页面后重试。':status>=500?'后台处理失败，请查看应用日志并检查数据目录是否可写。':'请求失败（HTTP '+status+'）'}
-async function post(url,obj){let r;try{r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj||{})})}catch(e){return [false,{error:'无法连接合拍 Cojam 后台，请确认应用正在运行。'}]}let j;try{j=await r.json()}catch(e){return [false,{error:apiError(r.status)}]}if(!j||typeof j!=='object')return [false,{error:apiError(r.status)}];if(!r.ok)j.error=r.status===403?apiError(403):(j.error||apiError(r.status));return [r.ok,j]}
+function apiError(status){return status===404?'后台缺少这个功能，可能仍在运行旧版本。请退出旧后台并重新打开 AnY。':status===403?'页面的连接凭证已失效，请刷新页面后重试。':status>=500?'后台处理失败，请查看应用日志并检查数据目录是否可写。':'请求失败（HTTP '+status+'）'}
+async function post(url,obj){let r;try{r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj||{})})}catch(e){return [false,{error:'无法连接 AnY 后台，请确认应用正在运行。'}]}let j;try{j=await r.json()}catch(e){return [false,{error:apiError(r.status)}]}if(!j||typeof j!=='object')return [false,{error:apiError(r.status)}];if(!r.ok)j.error=r.status===403?apiError(403):(j.error||apiError(r.status));return [r.ok,j]}
 function fallbackCopy(t){
   const active=document.activeElement,selection=getSelection();
   const ranges=selection?Array.from({length:selection.rangeCount},(_,i)=>selection.getRangeAt(i).cloneRange()):[];

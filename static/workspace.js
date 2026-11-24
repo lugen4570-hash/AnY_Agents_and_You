@@ -1,5 +1,5 @@
 // Desktop bridge abstraction shared across browser, pywebview and Tauri 2 shells.
-function createCojamDesktop(win){
+function createAnYDesktop(win){
   const target=win||(typeof window!=='undefined'?window:globalThis);
   const tauriInvoke=()=>{const t=target&&target.__TAURI_INTERNALS__;return t&&typeof t.invoke==='function'?t.invoke.bind(t):null;};
   const pyApi=()=>{const p=target&&target.pywebview;return p&&p.api?p.api:null;};
@@ -8,14 +8,14 @@ function createCojamDesktop(win){
   const canChooseAgentFile=()=>Boolean(tauriInvoke()||(pyApi()&&typeof pyApi().choose_agent_file==='function'));
   const chooseWorkdir=async()=>{
     const inv=tauriInvoke();
-    if(inv)return await inv('cojam_choose_workdir');
+    if(inv)return await inv('any_choose_workdir');
     const api=pyApi();
     if(api&&typeof api.choose_workdir==='function')return await api.choose_workdir();
     throw Error('桌面文件夹选择器不可用');
   };
   const chooseAgentFile=async()=>{
     const inv=tauriInvoke();
-    if(inv)return await inv('cojam_choose_agent_file');
+    if(inv)return await inv('any_choose_agent_file');
     const api=pyApi();
     if(api&&typeof api.choose_agent_file==='function')return await api.choose_agent_file();
     throw Error('桌面文件选择器不可用');
@@ -26,16 +26,18 @@ function createCojamDesktop(win){
     const onReady=()=>{
       if(typeof target.removeEventListener==='function'){
         target.removeEventListener('pywebviewready',onReady);
+        target.removeEventListener('anydesktopready',onReady);
         target.removeEventListener('cojamdesktopready',onReady);
       }
       cb();
     };
     target.addEventListener('pywebviewready',onReady,{once:true});
+    target.addEventListener('anydesktopready',onReady,{once:true});
     target.addEventListener('cojamdesktopready',onReady,{once:true});
   };
   return {
     get kind(){return kind();},
-    get nativeHeartbeat(){return Boolean(target&&target.__COJAM_NATIVE_HEARTBEAT__===true);},
+    get nativeHeartbeat(){return Boolean(target&&(target.__ANY_NATIVE_HEARTBEAT__===true||target.__COJAM_NATIVE_HEARTBEAT__===true));},
     canChooseWorkdir,
     canChooseAgentFile,
     chooseWorkdir,
@@ -43,7 +45,10 @@ function createCojamDesktop(win){
     ready,
   };
 }
-if(typeof window!=='undefined'){window.cojamDesktop=window.cojamDesktop||createCojamDesktop(window);}
+if(typeof window!=='undefined'){
+  window.anyDesktop=window.anyDesktop||createAnYDesktop(window);
+  window.cojamDesktop=window.cojamDesktop||window.anyDesktop;
+}
 
 // Contacts belong to the application. Membership and permissions belong to a conversation.
 let PROJECTS=[],CONTACTS=[],contactMode='global';
@@ -87,15 +92,16 @@ function drawRoomIdentity(){
 function drawRooms(){
   const live=ROOMS.filter(m=>!m.archived||m.id===RID),query=document.getElementById('navSearch').value.trim().toLocaleLowerCase();
   drawRoomIdentity();
-  const row=m=>{const b=roomBadge(m);return '<li class="'+(m.id===RID?'cur':'')+'"><a href="?r='+encodeURIComponent(m.id)+'" data-id="'+esc(m.id)+'"'+(m.id===RID?' aria-current="page"':'')+'>'+uiIcon('message')+'<span class="dot '+(b?(b[0]||'new'):'')+'"></span><span class="t">'+esc(m.title)+'</span>'+(b?'<span class="b '+b[0]+'">'+esc(b[1])+'</span>':'')+'</a></li>'};
+  const canMove=PROJECTS.length>1;
+  const row=m=>{const b=roomBadge(m);return '<li class="'+(m.id===RID?'cur':'')+'"><a href="?r='+encodeURIComponent(m.id)+'" data-id="'+esc(m.id)+'" draggable="'+canMove+'"'+(canMove?' title="拖到其他项目可移动会话"':'')+(m.id===RID?' aria-current="page"':'')+'>'+uiIcon('message')+'<span class="dot '+(b?(b[0]||'new'):'')+'"></span><span class="t">'+esc(m.title)+'</span>'+(b?'<span class="b '+b[0]+'">'+esc(b[1])+'</span>':'')+'</a></li>'};
   const html=PROJECTS.map(p=>{
     const matchesProject=p.name.toLocaleLowerCase().includes(query);
     const rooms=live.filter(m=>(m.project||legacyProject(m.workdir))===p.id&&(matchesProject||m.title.toLocaleLowerCase().includes(query)));
     if(query&&!matchesProject&&!rooms.length)return '';
     const expanded=!!query||!collapsedProjects.has(p.id);
-    return '<li class="project"><div class="project-head"><button data-project-toggle="'+esc(p.id)+'" aria-expanded="'+expanded+'">'+uiIcon('folder')+' <span>'+esc(p.name)+'</span><span class="project-count">'+rooms.length+'</span></button><button data-project-new="'+esc(p.id)+'" title="在此项目下新建会话" aria-label="新建会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+rooms.map(row).join('')+'</ul></li>';
+    return '<li class="project" data-project-drop="'+esc(p.id)+'"><div class="project-head"><button data-project-toggle="'+esc(p.id)+'" aria-expanded="'+expanded+'">'+uiIcon('folder')+' <span>'+esc(p.name)+'</span><span class="project-count">'+rooms.length+'</span></button><button data-project-new="'+esc(p.id)+'" title="在此项目下新建会话" aria-label="新建会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+rooms.map(row).join('')+'</ul></li>';
   }).join('')||'<li class="nav-empty">'+(query?'没有匹配的项目或会话':'创建项目，开始第一场会话。')+'</li>';
-  if(roomList.innerHTML!==html)roomList.innerHTML=html;
+  if(!roomList.dataset.dragging&&roomList.innerHTML!==html)roomList.innerHTML=html;
   const wait=ROOMS.filter(m=>m.id!==RID&&!m.archived&&(roomBadge(m)||[])[0]==='you').length;
   const manage=document.getElementById('bList');
   manage.innerHTML='管理'+(wait?' <span class="nav-wait">'+wait+'</span>':'');
@@ -117,7 +123,7 @@ function attachWorkspaceFolderPicker(inputId){
   const button=document.createElement('button');button.type='button';button.textContent='选择文件夹';button.hidden=true;
   button.setAttribute('aria-label','选择文件夹');
   input.parentElement.after(button);
-  const bridge=(typeof window!=='undefined'&&window.cojamDesktop)||null;
+  const bridge=(typeof window!=='undefined'&&(window.anyDesktop||window.cojamDesktop))||null;
   const legacy=()=>typeof window!=='undefined'&&window.pywebview&&window.pywebview.api&&typeof window.pywebview.api.choose_workdir==='function'?window.pywebview.api:null;
   const canPickNatively=()=>bridge?bridge.canChooseWorkdir():!!legacy();
   const enable=()=>{button.hidden=!(canPickNatively()||macBrowserPicker)};
@@ -147,13 +153,12 @@ async function openProject(){document.body.classList.remove('nav-open');
   if(!agCat){
     try{await refreshContacts()}catch(e){alert('无法读取本机项目设置，请重试。');return}
   }
-  if(agCat.local_workspace===false){showModal('<h3>新建项目</h3><p class="hint">当前是通过其他设备连接。手机网页不支持使用本地文件夹创建项目，也不能选择或指定运行合拍的电脑文件夹。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}showModal('<h3>新建项目</h3><p class="hint">项目中的会话共用工作文件夹，各自管理成员和权限。</p><label>项目名称<input id="pName" maxlength="60" placeholder="例如：我的应用"></label><label>工作文件夹<input id="pWd" placeholder="工作文件夹完整路径" value="'+esc((S&&S.workdir)||agCat.default_dir||'')+'"></label><p id="pErr" role="alert"></p><div class="btns"><button id="pCancel">取消</button><button id="pSave" class="pri">创建项目</button></div>');attachWorkspaceFolderPicker('pWd');document.getElementById('pCancel').onclick=hideModal;document.getElementById('pSave').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const name=document.getElementById('pName').value,workdir=document.getElementById('pWd').value;button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/projects/new',{name,workdir});if(!ok){const error=document.getElementById('pErr');if(error)error.textContent=j.error||'创建失败';return}await pollRooms();if(document.getElementById('pSave')===button){hideModal();openNew(false,j.project.id)}}finally{button.disabled=false;button.textContent='创建项目'}};document.getElementById('pName').focus()}
+  if(agCat.local_workspace===false){showModal('<h3>新建项目</h3><p class="hint">当前是通过其他设备连接。手机网页不支持使用本地文件夹创建项目，也不能选择或指定运行 AnY 的电脑文件夹。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}showModal('<h3>新建项目</h3><p class="hint">项目中的会话共用工作文件夹，各自管理成员和权限。</p><label>项目名称<input id="pName" maxlength="60" placeholder="例如：我的应用"></label><label>工作文件夹<input id="pWd" placeholder="工作文件夹完整路径" value="'+esc((S&&S.workdir)||agCat.default_dir||'')+'"></label><p id="pErr" role="alert"></p><div class="btns"><button id="pCancel">取消</button><button id="pSave" class="pri">创建项目</button></div>');attachWorkspaceFolderPicker('pWd');document.getElementById('pCancel').onclick=hideModal;document.getElementById('pSave').onclick=async e=>{const button=e.currentTarget;if(button.disabled)return;const name=document.getElementById('pName').value,workdir=document.getElementById('pWd').value;button.disabled=true;button.textContent='正在创建…';try{const [ok,j]=await post('/api/projects/new',{name,workdir});if(!ok){const error=document.getElementById('pErr');if(error)error.textContent=j.error||'创建失败';return}await pollRooms();if(document.getElementById('pSave')===button){hideModal();openNew(false,j.project.id)}}finally{button.disabled=false;button.textContent='创建项目'}};document.getElementById('pName').focus()}
 async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
   await pollRooms();await refreshContacts();if(!PROJECTS.length)return openProject();
   const selected=projectId||(S&&(S.project||legacyProject(S.workdir)))||PROJECTS[0].id;
-  const defaults=agCat.default_participants||[];
-  const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,defaults.includes(a.id),a.default_permissions||{})).join('');
+  const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,false,a.default_permissions||{})).join('');
   showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
   const rows=[...document.getElementById('nContacts').querySelectorAll('[data-member]')];
   rows.forEach(row=>{
@@ -247,7 +252,8 @@ document.getElementById('contactsAdd').onclick=()=>startConnectionWizard();
 if(document.getElementById('agentSettingsBtn'))document.getElementById('agentSettingsBtn').onclick=()=>openAgentManager();
 document.getElementById('contactList').onclick=async e=>{const del=e.target.closest('[data-contact-delete]');if(del){const id=del.dataset.contactDelete,contact=CONTACTS.find(a=>a.id===id);if(!confirm('删除联系人 '+(contact?contact.label:id)+'？将自动从所有会话移除，接入密钥失效，历史消息保留。'))return;del.disabled=true;const [ok,j]=await post('/api/agents/remove',{id});if(!ok){del.disabled=false;return alert(j.error||'删除失败')}await refreshContacts();if(RID)await loadState();return}if(e.target.closest('[data-owner-devices]'))return startConnectionWizard('','mydevice');const b=e.target.closest('[data-contact-open]');if(b)openConnection(b.dataset.contactOpen)};
 document.getElementById('projectAdd').onclick=openProject;
-const NAV_COLLAPSE_KEY='cojam_nav_collapsed';
+const NAV_COLLAPSE_KEY='any_nav_collapsed';
+const LEGACY_NAV_COLLAPSE_KEY='cojam_nav_collapsed';
 const isDesktopNav=()=>typeof matchMedia==='function'&&matchMedia('(min-width:850px)').matches;
 function setNavCollapsed(collapsed){
   const on=!!collapsed;
@@ -258,14 +264,188 @@ function setNavCollapsed(collapsed){
   if(c)c.setAttribute('aria-expanded',String(!on));
   if(r&&'inert' in r)r.inert=isDesktopNav()&&on;
 }
-try{if(localStorage.getItem(NAV_COLLAPSE_KEY)==='1')setNavCollapsed(true)}catch(e){}
+try{if((localStorage.getItem(NAV_COLLAPSE_KEY)||localStorage.getItem(LEGACY_NAV_COLLAPSE_KEY))==='1')setNavCollapsed(true)}catch(e){}
 document.getElementById('navToggle').onclick=()=>isDesktopNav()?setNavCollapsed(false):document.body.classList.toggle('nav-open');
 document.getElementById('navClose').onclick=()=>isDesktopNav()?setNavCollapsed(true):document.body.classList.remove('nav-open');
 document.getElementById('navShade').onclick=()=>document.body.classList.remove('nav-open');
 document.getElementById('roomList').addEventListener('click',e=>{const add=e.target.closest('[data-project-new]'),toggle=e.target.closest('[data-project-toggle]');if(add)openNew(false,add.dataset.projectNew);if(toggle){const id=toggle.dataset.projectToggle;collapsedProjects.has(id)?collapsedProjects.delete(id):collapsedProjects.add(id);drawRooms()}if(e.target.closest('a[data-id]'))document.body.classList.remove('nav-open')});
+
+function bindRoomDrag(list){
+  let source=null,highlight=null;
+  function mark(project){
+    if(highlight===project)return;
+    if(highlight)highlight.classList.remove('project-drop-target');
+    highlight=project;
+    if(highlight)highlight.classList.add('project-drop-target');
+  }
+  function destination(event){
+    const project=event.target.closest('[data-project-drop]');
+    return source&&project&&project!==source.project?project:null;
+  }
+  function endDrag(){
+    if(!source)return;
+    mark(null);
+    source.link.classList.remove('room-drag-source');
+    source=null;
+    delete list.dataset.dragging;
+    drawRooms();
+  }
+  list.addEventListener('dragstart',event=>{
+    const link=event.target.closest('a[data-id][draggable="true"]');
+    if(!link)return;
+    source={link,project:link.closest('[data-project-drop]')};
+    event.dataTransfer.setData('application/x-any-room',link.dataset.id);
+    event.dataTransfer.effectAllowed='move';
+    list.dataset.dragging='true';
+    link.classList.add('room-drag-source');
+  });
+  list.addEventListener('dragover',event=>{
+    const project=destination(event);
+    mark(project);
+    if(!project)return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect='move';
+  });
+  list.addEventListener('dragleave',event=>{
+    if(highlight&&!highlight.contains(event.relatedTarget))mark(null);
+  });
+  list.addEventListener('dragend',endDrag);
+  list.addEventListener('drop',async event=>{
+    const target=destination(event);
+    if(!target)return;
+    event.preventDefault();
+    const id=source.link.dataset.id,project=target.dataset.projectDrop;
+    endDrag();
+    const [ok,result]=await post('/api/rooms/move',{id,project});
+    if(!ok)return alert(result.error||'移动失败');
+    collapsedProjects.delete(project);
+    if(typeof RID!=='undefined'&&RID===id&&typeof S!=='undefined'&&S)S.project=project;
+    await pollRooms();
+  });
+}
+bindRoomDrag(document.getElementById('roomList'));
 
 const navSearch=document.getElementById('navSearch');
 navSearch.addEventListener('input',drawRooms);
 navSearch.addEventListener('keydown',e=>{if(e.key==='Escape'){navSearch.value='';drawRooms();navSearch.blur()}});
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&!document.getElementById('modal').classList.contains('show')){e.preventDefault();if(isDesktopNav())setNavCollapsed(false);else document.body.classList.add('nav-open');navSearch.focus();navSearch.select()}});
 if(!/Mac|iPhone|iPad/.test(navigator.platform))document.querySelector('.nav-search kbd').textContent='Ctrl K';
+
+function placeSidebarMenu(menu,x,y){
+  if(typeof placeMessageTools==='function')return placeMessageTools(menu,x,y);
+  const w=menu.offsetWidth||160,h=menu.offsetHeight||120;
+  menu.style.left=Math.max(8,Math.min(x,(typeof innerWidth==='number'?innerWidth:800)-w-8))+'px';
+  menu.style.top=Math.max(8,Math.min(y,(typeof innerHeight==='number'?innerHeight:600)-h-8))+'px';
+}
+function closeSidebarMenu(){
+  if(typeof hideMenu==='function')return hideMenu();
+  const menu=document.getElementById('cmenu');
+  if(menu)menu.classList.remove('on');
+}
+async function moveRoomToProject(roomId,targetProjectId){
+  const room=ROOMS.find(m=>m.id===roomId);
+  const currentProject=room?(room.project||legacyProject(room.workdir)):'';
+  if(!targetProjectId||targetProjectId===currentProject)return false;
+  const [ok,result]=await post('/api/rooms/move',{id:roomId,project:targetProjectId});
+  if(!ok){alert((result&&result.error)||'移动失败');return false}
+  collapsedProjects.delete(targetProjectId);
+  if(typeof RID!=='undefined'&&RID===roomId&&typeof S!=='undefined'&&S)S.project=targetProjectId;
+  await pollRooms();
+  return true;
+}
+function bindRoomContextMenu(list){
+  if(!list)return;
+  list.addEventListener('contextmenu',e=>{
+    const link=e.target.closest('a[data-id]');
+    const menu=document.getElementById('cmenu');
+    if(!link||!menu)return;
+    const room=ROOMS.find(m=>m.id===link.dataset.id);
+    if(!room)return;
+    e.preventDefault();
+    menu.innerHTML='';
+    const addBtn=(label,fn,disabled=false)=>{
+      const b=document.createElement('button');
+      b.type='button';b.textContent=label;b.disabled=disabled;
+      b.onclick=()=>{closeSidebarMenu();return fn()};
+      menu.appendChild(b);
+    };
+    const curPid=room.project||legacyProject(room.workdir);
+    const others=PROJECTS.filter(p=>p.id!==curPid);
+    if(others.length){
+      const lbl=document.createElement('div');
+      lbl.className='cm-label';lbl.textContent='移动到项目';
+      menu.appendChild(lbl);
+      others.forEach(p=>addBtn('↳ '+p.name,()=>moveRoomToProject(room.id,p.id)));
+      const sep=document.createElement('div');sep.className='cm-sep';menu.appendChild(sep);
+    }
+    if(typeof openRename==='function')addBtn('改名',()=>openRename(room.id,room.title));
+    addBtn(room.archived?'取消归档':'归档',async()=>{
+      const [ok,res]=await post('/api/rooms/archive',{id:room.id,on:!room.archived});
+      if(!ok)return alert((res&&res.error)||'失败');
+      if(typeof RID!=='undefined'&&room.id===RID&&typeof loadState==='function')await loadState();
+      await pollRooms();
+    });
+    const busy=!!((room.running&&room.running.length)||room.queued);
+    addBtn('删除',async()=>{
+      if(!confirm('把「'+room.title+'」移到回收站？（可以恢复）'))return;
+      const [ok,res]=await post('/api/rooms/delete',{id:room.id});
+      if(!ok)return alert((res&&res.error)||'失败');
+      if(typeof RID!=='undefined'&&room.id===RID){
+        roomViewGeneration++;RID=null;resetRoomView();
+        const params=new URLSearchParams(location.search);params.delete('r');
+        history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():''));
+        await pickRoom();
+      }else{await pollRooms()}
+    },busy);
+    menu.classList.add('on');
+    placeSidebarMenu(menu,e.clientX,e.clientY);
+  });
+}
+bindRoomContextMenu(document.getElementById('roomList'));
+
+const NAV_WIDTH_KEY='any_nav_width';
+function applyNavWidth(px){
+  const root=document.documentElement;
+  if(!root||!root.style)return;
+  if(px==null){root.style.removeProperty('--nav-w');return}
+  const w=Math.round(Math.min(420,Math.max(220,px)));
+  root.style.setProperty('--nav-w',w+'px');
+  return w;
+}
+function initSidebarResize(){
+  try{
+    const saved=Number(localStorage.getItem(NAV_WIDTH_KEY));
+    if(saved>=220&&saved<=420)applyNavWidth(saved);
+  }catch(e){}
+  const resizer=document.getElementById('navResizer'),nav=document.getElementById('rooms');
+  if(!resizer||!nav)return;
+  let drag=null;
+  resizer.addEventListener('pointerdown',e=>{
+    if(!isDesktopNav()||document.body.classList.contains('nav-collapsed')||e.button!==0)return;
+    e.preventDefault();
+    const rect=nav.getBoundingClientRect();
+    drag={startX:e.clientX,startW:rect&&rect.width?rect.width:276,width:rect&&rect.width?rect.width:276};
+    document.body.classList.add('nav-resizing');
+    if(resizer.setPointerCapture)try{resizer.setPointerCapture(e.pointerId)}catch(err){}
+  });
+  const onMove=e=>{
+    if(!drag)return;
+    drag.width=applyNavWidth(drag.startW+(e.clientX-drag.startX));
+  };
+  const onEnd=()=>{
+    if(!drag)return;
+    const w=drag.width;drag=null;
+    document.body.classList.remove('nav-resizing');
+    try{localStorage.setItem(NAV_WIDTH_KEY,String(w))}catch(e){}
+  };
+  if(typeof addEventListener==='function'){
+    addEventListener('pointermove',onMove);
+    addEventListener('pointerup',onEnd);
+    addEventListener('pointercancel',onEnd);
+  }
+  resizer.addEventListener('dblclick',()=>{
+    applyNavWidth(null);
+    try{localStorage.removeItem(NAV_WIDTH_KEY)}catch(e){}
+  });
+}
+initSidebarResize();

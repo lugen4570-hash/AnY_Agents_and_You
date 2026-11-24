@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """本机 Agent 自动发现与一键连接。
 
-启动 Cojam 时（桌面客户端与同机浏览器共用同一个后台）扫描这台设备上的所有 Agent：
+启动 AnY 时（桌面客户端与同机浏览器共用同一个后台）扫描这台设备上的所有 Agent：
 1. 命令行 / ACP 程序（PATH、npm 全局目录、WinGet、Scoop、各软件自带 CLI 目录）
 2. 桌面软件（常见安装路径 + Windows 卸载注册表 DisplayName）
 3. 已有的 MCP 配置文件
 
 按三层连接策略归并：
-- level="direct"：找到可执行程序，Cojam 直接启动并驱动（优先 ACP / 内置驱动，其次无头 CLI）
-- level="mcp"：只找到桌面软件，一键写入 MCP 配置 + 生成联系人密钥，再由待命模式（cojam_standby）接单
+- level="direct"：找到可执行程序，AnY 直接启动并驱动（优先 ACP / 内置驱动，其次无头 CLI）
+- level="mcp"：只找到桌面软件，一键写入 MCP 配置 + 生成联系人密钥，再由待命模式（any_standby）接单
 - level="unsupported"：既无 CLI/ACP，又不支持 MCP
 """
 import glob
@@ -220,7 +220,7 @@ def _inspect_entry(entry, installed_names, specs, conn_cat, host_map, dismissed)
     verified = bool((cli_cfg or {}).get("verified") or (acp_cfg or {}).get("verified") or (spec and spec.get("verified")))
     reason = ""
     if level == "direct":
-        reason = "已找到命令行程序，可由 Cojam 直接调用"
+        reason = "已找到命令行程序，可由 AnY 直接调用"
     elif level == "mcp":
         reason = "已检测到桌面软件，可一键写入 MCP 插件并在软件内开启待命模式"
     elif level == "unsupported":
@@ -310,7 +310,7 @@ def ensure_scanned(async_scan=False):
             return
         if async_scan:
             _state["scanning"] = True
-            threading.Thread(target=scan, daemon=True, name="cojam-discovery").start()
+            threading.Thread(target=scan, daemon=True, name="any-discovery").start()
             return
     scan()
 
@@ -427,8 +427,8 @@ def connect(pid, via=None, replace_key=False):
         if chosen == "mcp":
             config = agent_settings.view(pid)
             message = agent_settings.install_mcp(pid, replace_key, config["revision"])
-            result = {"ok":True,"id":pid,"via":"mcp","msg":message,"standby_prompt":"/cojam_standby",
-                      "standby_instruction":"请调用 cojam_standby，按会议室给出的会话接管参数连接。"}
+            result = {"ok":True,"id":pid,"via":"mcp","msg":message,"standby_prompt":"/any_standby",
+                      "standby_instruction":"请调用 any_standby，按会议室给出的会话接管参数连接。"}
         else:
             connection = connections.check(pid)
             result = {"ok":connection.get("state") == "ready", "id":pid,"via":chosen,

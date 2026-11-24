@@ -125,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._cookies().get("rt_owner") == RT_TOKEN
 
     def _device_cookie(self):
-        token = self._cookies().get("cojam_device") or ""
+        token = self._cookies().get("any_device") or self._cookies().get("cojam_device") or ""
         return token if token and devices.verify(token) else ""
 
     def _is_local_owner(self):
@@ -141,7 +141,7 @@ class Handler(BaseHTTPRequestHandler):
         return (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
 
     def _device_cookie_header(self, token):
-        parts = ["cojam_device=" + token, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=31536000"]
+        parts = ["any_device=" + token, "HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=31536000"]
         if self._https():
             parts.append("Secure")
         return "; ".join(parts)
@@ -465,7 +465,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._is_host_owner():
                 driver = str(spec.get("driver") or "").strip().lower() if isinstance(spec, dict) else ""
                 if driver != "external":
-                    return self._json(403, {"error": "远程设备只能添加外部接入（external）联系人；本地代理请在运行合拍的设备上添加。"})
+                    return self._json(403, {"error": "远程设备只能添加外部接入（external）联系人；本地代理请在运行 AnY 的设备上添加。"})
                 cur = registry.get(str(spec.get("id") or "").strip().lower())
                 if cur is not None and cur.get("driver") != "external":
                     return self._json(403, {"error": "不能从其他设备修改或覆盖本地代理联系人。"})
@@ -573,7 +573,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(error.code, body)
         if path == "/api/update/download":
             if not self._is_local_owner():
-                return self._json(403, {"error": "请在运行合拍的电脑上下载更新"})
+                return self._json(403, {"error": "请在运行 AnY 的电脑上下载更新"})
             from . import updater
             try:
                 if data.get('auto_install') is True:
@@ -585,7 +585,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(409, {"error": str(error)})
         if path == "/api/update/install":
             if not self._is_local_owner() or bool(getattr(self, "_device_id", "")):
-                return self._json(403, {"error": "请在运行合拍的电脑上安装更新"})
+                return self._json(403, {"error": "请在运行 AnY 的电脑上安装更新"})
             if any(row.get("running") or row.get("queued") for row in R.rooms.listing()):
                 return self._json(409, {"error": "还有任务正在运行或排队，请等待完成后再更新"})
             from . import updater
@@ -699,7 +699,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"connection": connections.status(pid), "member": members.broker.status(pid)})
         if path == "/api/projects/choose-workdir":
             if not self._is_host_owner():
-                return self._json(403, {"error": "只能在运行合拍的 Mac 上选择项目文件夹。"})
+                return self._json(403, {"error": "只能在运行 AnY 的 Mac 上选择项目文件夹。"})
             if sys.platform != "darwin":
                 return self._json(404, {"error": "此系统不提供网页文件夹选择器。"})
             try:
@@ -710,7 +710,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"workdir": workdir})
         if path == "/api/projects/new":
             if not self._is_local_owner() or bool(getattr(self, "_device_id", "")):
-                return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹；请在运行合拍的设备上创建项目。"})
+                return self._json(403, {"error": "不能从其他设备指定这台电脑的文件夹；请在运行 AnY 的设备上创建项目。"})
             try:
                 p = projects.create(data.get("name"), data.get("workdir"))
                 return self._json(200, {"ok": True, "project": p})
@@ -726,7 +726,7 @@ class Handler(BaseHTTPRequestHandler):
                         if any(row.get("running") or row.get("queued") or ((loaded := R.rooms.loaded.get(row["id"])) is not None and loaded.busy_for())
                                for row in project_rows):
                             return self._json(409, {"ok": False, "error": "项目下有正在运行或排队的会话，请先停止后再删除"})
-                        trashed_rooms = []
+                        trashed_rooms: list[str] = []
                         for row in project_rows:
                             ok, msg = R.trash_meeting(row["id"])
                             if not ok:
@@ -800,10 +800,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200 if ok else 409, {"ok": ok, "error": msg})
 
     def _room_post(self, r, act, qs):
-        if act in ('send', 'compact', 'wrapup', 'debate/start'):
+        if act in ('send', 'turn/retry', 'compact', 'wrapup', 'debate/start', 'debate/continue'):
             from . import updater
             if updater.status().get('state') == 'installing':
-                return self._json(409, {"error": "合拍正在更新，请重新打开后再操作"})
+                return self._json(409, {"error": "AnY 正在更新，请重新打开后再操作"})
         if act == "upload":
             name = (parse_qs(qs).get("name") or [""])[0]
             te = (self.headers.get("Transfer-Encoding") or "").lower()
@@ -856,9 +856,14 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 return self._json(500, {"error": "无法保存会话，请检查数据目录权限或文件是否被占用后重试"})
             return self._json(200 if ok else 409, {"ok": ok, "error": msg, "title": r.title()})
-        if act in ("debate/start", "debate/finish"):
+        if act in ("debate/start", "debate/finish", "debate/continue"):
             try:
-                state = debate.start(r, data) if act == "debate/start" else debate.finish(r)
+                if act == "debate/start":
+                    state = debate.start(r, data)
+                elif act == "debate/continue":
+                    state = debate.continue_debate(r, data)
+                else:
+                    state = debate.finish(r)
             except ValueError as error:
                 return self._json(409, {"ok": False, "error": str(error)})
             except OSError:
@@ -883,6 +888,32 @@ class Handler(BaseHTTPRequestHandler):
         if act == "mode":
             ok, msg = r.set_mode(str(data.get("mode", "")))
             return self._json(200 if ok else 409, {"ok": ok, "error": msg})
+        if act in ("turn/retry", "turn/retry/preview"):
+            message_id = data.get("id")
+            if type(message_id) is not int:
+                return self._json(400, {"ok": False, "error": "bad id"})
+            if act.endswith("/preview"):
+                ok, msg, plan = r.retry_preview(message_id)
+                return self._json(200 if ok else 409, {"ok": ok, "error": msg, "plan": plan})
+            ok, msg = r.retry_turn(message_id, data.get("action"))
+            return self._json(200 if ok else 409, {"ok": ok, "error": msg})
+        if act == "turn/approval":
+            approval_id, decision = data.get("id"), data.get("decision")
+            if not isinstance(approval_id, str) or decision not in ("allow", "deny"):
+                return self._json(400, {"ok": False, "error": "bad approval"})
+            ok, msg = r.resolve_turn_approval(approval_id, decision)
+            return self._json(200 if ok else 409, {"ok": ok, "error": msg})
+        if act in ("step/info", "step/diff"):
+            seq, path = data.get("step"), data.get("path")
+            if type(seq) is not int:
+                return self._json(400, {"ok": False, "error": "bad step"})
+            if act == "step/info":
+                step = r.step_info(seq)
+                return self._json(200 if step else 404, {"ok": bool(step), "step": step})
+            if not isinstance(path, str):
+                return self._json(400, {"ok": False, "error": "bad step or path"})
+            ok, diff, reason = r.step_diff(seq, path)
+            return self._json(200 if ok else 404, {"ok": ok, "diff": diff, "reason": reason})
         if act in ("undo", "undo/preview"):
             try:
                 seq = int(data.get("step"))
@@ -984,7 +1015,7 @@ class Handler(BaseHTTPRequestHandler):
         """给外部程序用：桌面应用里的 Claude、终端里的 Claude / Codex 等。room 不填 = 用户最近打开的那场。"""
         from . import updater
         if updater.status().get('state') == 'installing':
-            return self._json(409, {"error": "合拍正在更新，请重新打开后再操作"})
+            return self._json(409, {"error": "AnY 正在更新，请重新打开后再操作"})
         data = self._read_json()
         if data is None:
             return
@@ -999,8 +1030,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(409 if not rid else 404, {"error": "room 必填，请先列出受邀会话" if not rid else "没有这场会话：" + rid})
         if not access.allowed(r, speaker, "read") or not access.allowed(r, speaker, "post"):
             return self._json(403, {"error": "未加入此会话或没有发言权限"})
-        if not access.external_allowed(r, speaker, str(data.get("worker") or self.headers.get("X-Cojam-Worker") or ""),
-                                       str(data.get("binding_token") or self.headers.get("X-Cojam-Execution") or "")):
+        if not access.external_allowed(r, speaker, str(data.get("worker") or self.headers.get("X-AnY-Worker") or self.headers.get("X-Cojam-Worker") or ""),
+                                       str(data.get("binding_token") or self.headers.get("X-AnY-Execution") or self.headers.get("X-Cojam-Execution") or "")):
             return self._json(403, {"error": "此会话属于另一个执行端"})
         if recall:
             if (registry.get(speaker) or {}).get("kind") != "user":
@@ -1019,10 +1050,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(401, {"error": "接入密钥无效或已撤销"})
         if path == "/api/external/rooms":
             connections.seen(pid, self._bearer(), "http")
-            return self._json(200, {"contact": registry.public(registry.get(pid)), "rooms": access.visible_rooms(pid, self.headers.get("X-Cojam-Worker", ""), self.headers.get("X-Cojam-Execution", ""))})
+            worker = str(self.headers.get("X-AnY-Worker") or self.headers.get("X-Cojam-Worker") or "")
+            execution = str(self.headers.get("X-AnY-Execution") or self.headers.get("X-Cojam-Execution") or "")
+            return self._json(200, {"contact": registry.public(registry.get(pid)), "rooms": access.visible_rooms(pid, worker, execution)})
         rid = (q.get("room") or [""])[0]
         r = R.rooms.get(rid) if rid else None
-        if r is None or not access.external_allowed(r, pid, self.headers.get("X-Cojam-Worker", ""), self.headers.get("X-Cojam-Execution", "")):
+        worker = str(self.headers.get("X-AnY-Worker") or self.headers.get("X-Cojam-Worker") or "")
+        execution = str(self.headers.get("X-AnY-Execution") or self.headers.get("X-Cojam-Execution") or "")
+        if r is None or not access.external_allowed(r, pid, worker, execution):
             return self._json(403, {"error": "没有此会话的读取权限"})
         if path == "/api/external/messages":
             connections.seen(pid, self._bearer(), "http")
@@ -1101,27 +1136,38 @@ class ExclusiveServer(ThreadingHTTPServer):
         # HTTPServer.server_bind performs reverse DNS, which can stall startup
         # before the desktop window can connect. The listener already has an IP.
         TCPServer.server_bind(self)
-        self.server_name, self.server_port = self.server_address[:2]
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), int(port)
 
 
 def _stop_runtime() -> None:
-    """Close agent sessions and preserve detached jobs for recovery on reopen."""
+    """Close AnY-owned agent sessions and terminate AnY detached workers cleanly on exit."""
     from . import detached_jobs
+    keep_detached = os.environ.get("ROUNDTABLE_KEEP_DETACHED_ON_EXIT") == "1"
     detached_jobs.begin_shutdown()
-    for room in R.rooms.all():
+    snapshot = R.rooms.all()
+    for room in snapshot:
         try:
             with room.lock:
                 busy = bool(room.state["running"] or room.pending or not room.jobs.empty())
-            if busy and not detached_jobs.has_active_jobs(room):
+            if not keep_detached:
+                if busy:
+                    room.stop_ais()
+                detached_jobs.cancel_jobs(room)
+            elif busy and not detached_jobs.has_active_jobs(room):
                 room.stop_ais()
+        except Exception as error:
+            logger.warning("退出时停止会话失败: %s", error, exc_info=True)
+        try:
             agents.stop_codex(room)
             acp.stop(room)
         except Exception as error:
-            logger.warning("退出时停止会话失败: %s", error, exc_info=True)
+            logger.warning("退出时停止会话子进程失败: %s", error, exc_info=True)
     try:
+        agents.stop_all_codex()
         acp.stop()
     except Exception as error:
-        logger.warning("退出时停止 ACP 会话失败: %s", error, exc_info=True)
+        logger.warning("退出时停止后台 Agent 会话失败: %s", error, exc_info=True)
 
 
 def stop_application(server: Any) -> None:
@@ -1143,6 +1189,7 @@ def stop_idle_for_update(server: Any) -> bool:
         for room in snapshot:
             agents.stop_codex(room)
             acp.stop(room)
+        agents.stop_all_codex()
         acp.stop()
         server.shutdown()
     threading.Thread(target=shutdown, daemon=True).start()
@@ -1209,7 +1256,7 @@ def main(*, headless: bool = False) -> None:
             srv = ExclusiveServer((HOST, PORT), Handler)
         except OSError:
             if headless:
-                print("旧后台尚未退出，请稍后重新启动 Cojam。", file=sys.stderr)
+                print("旧后台尚未退出，请稍后重新启动 AnY。", file=sys.stderr)
                 raise SystemExit(1)
             show_startup_error("旧后台尚未退出，请稍后重新打开 AI Bridge。")
             return
@@ -1221,10 +1268,7 @@ def main(*, headless: bool = False) -> None:
             extra.tailscale_url = tailscale_url
     if owner_lifecycle_enabled():
         from .owner_lifecycle import OwnerLifecycle
-        srv.owner_lifecycle = OwnerLifecycle(
-            lambda: stop_application(srv),
-            is_busy=lambda: any(row.get("running") or row.get("queued") for row in R.rooms.listing()),
-        )
+        srv.owner_lifecycle = OwnerLifecycle(lambda: stop_application(srv))
         if os.environ.get("ROUNDTABLE_OWNER_LIFECYCLE") == "1":
             lease = float(os.environ.get("ROUNDTABLE_STARTUP_LEASE", "90") or "90")
             srv.owner_lifecycle.arm(lease)

@@ -16,11 +16,11 @@ use serde::Deserialize;
 use crate::platform;
 
 pub const APP_NAME: &str = "AI Bridge";
-pub const EXPECTED_VERSION: &str = env!("COJAM_EXPECTED_VERSION");
-pub const EXPECTED_API_REVISION_STR: &str = env!("COJAM_EXPECTED_API_REVISION");
+pub const EXPECTED_VERSION: &str = env!("ANY_EXPECTED_VERSION");
+pub const EXPECTED_API_REVISION_STR: &str = env!("ANY_EXPECTED_API_REVISION");
 
 pub const BUSY_TEXT: &str =
-    "还有任务正在运行或排队。现在关闭窗口，如果这是最后一个合拍页面，任务会中断。确定关闭吗？";
+    "还有任务正在运行或排队。现在关闭窗口，如果这是最后一个 AnY 页面，任务会中断。确定关闭吗？";
 pub const BUSY_UNKNOWN_TEXT: &str =
     "无法确认后台是否仍有任务正在运行或排队。现在关闭窗口可能导致进行中的任务中断。确定关闭吗？";
 
@@ -49,7 +49,7 @@ pub struct RuntimeInfo {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ProbeResult {
-    Cojam(String, Option<u64>),
+    AnY(String, Option<u64>),
     Free,
     Timeout,
     Foreign,
@@ -72,7 +72,7 @@ pub fn base_url_and_port() -> (String, u16) {
     (format!("http://127.0.0.1:{port}"), port)
 }
 
-/// Locate the sibling `CojamCore.exe` / `Cojam.exe` backend, or source `roundtable.py` during dev.
+/// Locate the sibling `AnYCore.exe` / `AnY.exe` backend, or source `roundtable.py` during dev.
 pub fn find_core(current_exe: Option<&Path>) -> Option<CoreLaunch> {
     let exe = match current_exe {
         Some(p) => p.to_path_buf(),
@@ -82,9 +82,9 @@ pub fn find_core(current_exe: Option<&Path>) -> Option<CoreLaunch> {
     let exe_dir = exe.parent()?.to_path_buf();
 
     let candidates = if cfg!(windows) {
-        ["CojamCore.exe", "Cojam.exe"]
+        ["AnYCore.exe", "AnY.exe"]
     } else {
-        ["CojamCore", "Cojam"]
+        ["AnYCore", "AnY"]
     };
     for name in candidates {
         let candidate = exe_dir.join(name);
@@ -96,7 +96,7 @@ pub fn find_core(current_exe: Option<&Path>) -> Option<CoreLaunch> {
             );
             if !same_path_str(&cand_canon.to_string_lossy(), &exe_canon.to_string_lossy()) {
                 let data_dir = resolve_data_dir(&exe_dir);
-                let log_path = data_dir.join("cojam.log");
+                let log_path = data_dir.join("any.log");
                 return Some(CoreLaunch {
                     program: candidate,
                     args: Vec::new(),
@@ -120,7 +120,7 @@ pub fn find_core(current_exe: Option<&Path>) -> Option<CoreLaunch> {
                     .unwrap_or_else(|_| explicit_path.clone()),
             );
             let data_dir = resolve_data_dir(&cwd);
-            let log_path = data_dir.join("cojam.log");
+            let log_path = data_dir.join("any.log");
             return Some(CoreLaunch {
                 program: explicit_path,
                 args: Vec::new(),
@@ -140,7 +140,7 @@ pub fn find_core(current_exe: Option<&Path>) -> Option<CoreLaunch> {
             let repo_canon =
                 strip_win_prefix(&dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()));
             let data_dir = resolve_data_dir(&repo_canon);
-            let log_path = data_dir.join("cojam.log");
+            let log_path = data_dir.join("any.log");
             return Some(CoreLaunch {
                 program: py,
                 args: vec![script.to_string_lossy().into_owned()],
@@ -184,10 +184,13 @@ fn resolve_data_dir(core_dir: &Path) -> PathBuf {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = env::var("HOME") {
-            return PathBuf::from(home)
-                .join("Library")
-                .join("Application Support")
-                .join("Cojam");
+            let support = PathBuf::from(home).join("Library").join("Application Support");
+            let new_dir = support.join("AnY");
+            let old_dir = support.join("Cojam");
+            if !new_dir.exists() && old_dir.exists() {
+                return old_dir;
+            }
+            return new_dir;
         }
     }
     core_dir.join("data")
@@ -260,7 +263,7 @@ pub fn probe(base: &str, port: u16, timeout: Duration) -> ProbeResult {
         Ok(resp) => {
             if let Ok(info) = resp.into_json::<ServerInfo>() {
                 if info.app.as_deref() == Some(APP_NAME) {
-                    return ProbeResult::Cojam(info.version.unwrap_or_default(), info.api_revision);
+                    return ProbeResult::AnY(info.version.unwrap_or_default(), info.api_revision);
                 }
             }
             ProbeResult::Foreign
@@ -304,11 +307,11 @@ pub fn fetch_token(base: &str) -> Result<String, String> {
     let html = http_agent(Duration::from_secs(3))
         .get(&url)
         .call()
-        .map_err(|_| "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?
+        .map_err(|_| "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?
         .into_string()
-        .map_err(|_| "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?;
+        .map_err(|_| "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?;
     extract_rt_token(&html)
-        .ok_or_else(|| "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string())
+        .ok_or_else(|| "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string())
 }
 
 pub fn fetch_runtime(base: &str, token: &str) -> Result<RuntimeInfo, String> {
@@ -317,26 +320,26 @@ pub fn fetch_runtime(base: &str, token: &str) -> Result<RuntimeInfo, String> {
         .get(&url)
         .set("X-RT-Token", token)
         .call()
-        .map_err(|_| "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?
+        .map_err(|_| "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string())?
         .into_json::<RuntimeInfo>()
-        .map_err(|_| "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string())
+        .map_err(|_| "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string())
 }
 
-/// Verify an already-running Cojam instance matches app, install/data paths, and version/API.
+/// Verify an already-running AnY instance matches app, install/data paths, and version/API.
 /// If same install & data directory runs a stale version, stop it cleanly when idle.
 pub fn ensure_backend(base: &str, port: u16, core: &CoreLaunch) -> Result<String, String> {
     match probe(base, port, Duration::from_millis(500)) {
         ProbeResult::Foreign | ProbeResult::Timeout => {
-            return Err(format!("端口 {port} 被其他程序占用，合拍无法启动。"));
+            return Err(format!("端口 {port} 被其他程序占用，AnY 无法启动。"));
         }
-        ProbeResult::Cojam(ver, rev) => {
+        ProbeResult::AnY(ver, rev) => {
             let token = fetch_token(base)?;
             let runtime = fetch_runtime(base, &token)?;
             if !same_path_buf(runtime.install.as_deref(), &core.install_path)
                 || !same_path_buf(runtime.data.as_deref(), &core.data_dir)
             {
                 return Err(
-                    "端口上已有另一份合拍 Cojam。请先退出原来的程序，再打开这一份，以免混用会话数据。"
+                    "端口上已有另一份 AnY。请先退出原来的程序，再打开这一份，以免混用会话数据。"
                         .to_string(),
                 );
             }
@@ -364,18 +367,18 @@ pub fn ensure_backend(base: &str, port: u16, core: &CoreLaunch) -> Result<String
                         thread::sleep(Duration::from_millis(100));
                     }
                     if !freed {
-                        return Err("旧后台尚未退出，请稍后重新打开合拍 Cojam。".to_string());
+                        return Err("旧后台尚未退出，请稍后重新打开 AnY。".to_string());
                     }
                 }
                 Err(ureq::Error::Status(409, _)) => {
                     return Err(
-                        "旧后台还有任务运行或排队。请等待任务结束，再重新打开合拍 Cojam 更新。"
+                        "旧后台还有任务运行或排队。请等待任务结束，再重新打开 AnY 更新。"
                             .to_string(),
                     );
                 }
                 Err(_) => {
                     return Err(
-                        "已运行的合拍后台版本不兼容，请先退出旧版再打开桌面版。".to_string()
+                        "已运行的 AnY 后台版本不兼容，请先退出旧版再打开桌面版。".to_string()
                     );
                 }
             }
@@ -387,7 +390,7 @@ pub fn ensure_backend(base: &str, port: u16, core: &CoreLaunch) -> Result<String
     if wait_ready(base, port, &mut child, Duration::from_secs(30)).is_none() {
         stop_process(&mut child);
         return Err(format!(
-            "合拍后台没有启动成功。日志：{}",
+            "AnY 后台没有启动成功。日志：{}",
             core.log_path.display()
         ));
     }
@@ -398,7 +401,7 @@ pub fn ensure_backend(base: &str, port: u16, core: &CoreLaunch) -> Result<String
     if !same_path_buf(runtime.install.as_deref(), &core.install_path)
         || !same_path_buf(runtime.data.as_deref(), &core.data_dir)
     {
-        return Err("启动后的合拍后台路径校验失败，请检查端口占用后重试。".to_string());
+        return Err("启动后的 AnY 后台路径校验失败，请检查端口占用后重试。".to_string());
     }
     Ok(token)
 }
@@ -429,13 +432,13 @@ fn spawn_core(core: &CoreLaunch) -> Result<Child, String> {
     }
 
     cmd.spawn()
-        .map_err(|e| format!("合拍后台没有启动成功。\n{e}"))
+        .map_err(|e| format!("AnY 后台没有启动成功。\n{e}"))
 }
 
 fn wait_ready(base: &str, port: u16, child: &mut Child, timeout: Duration) -> Option<()> {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if let ProbeResult::Cojam(ver, rev) = probe(base, port, Duration::from_millis(500)) {
+        if let ProbeResult::AnY(ver, rev) = probe(base, port, Duration::from_millis(500)) {
             if ver == EXPECTED_VERSION && rev == expected_api_revision() {
                 return Some(());
             }
@@ -443,7 +446,7 @@ fn wait_ready(base: &str, port: u16, child: &mut Child, timeout: Duration) -> Op
         }
         if matches!(child.try_wait(), Ok(Some(_))) {
             for _ in 0..5 {
-                if let ProbeResult::Cojam(ver, rev) = probe(base, port, Duration::from_millis(400))
+                if let ProbeResult::AnY(ver, rev) = probe(base, port, Duration::from_millis(400))
                 {
                     if ver == EXPECTED_VERSION && rev == expected_api_revision() {
                         return Some(());
@@ -534,13 +537,13 @@ impl TabHeartbeat {
         let bg_closed = Arc::clone(&closed);
 
         let handle = thread::Builder::new()
-            .name("cojam-desktop-heartbeat".to_string())
+            .name("any-desktop-heartbeat".to_string())
             .spawn(move || {
                 let (lock, cvar) = &*bg_signal;
                 let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
                 while !*guard && !bg_closed.load(Ordering::Acquire) {
                     let (next_guard, res) = cvar
-                        .wait_timeout(guard, Duration::from_secs(30))
+                        .wait_timeout(guard, Duration::from_secs(20))
                         .unwrap_or_else(|e| e.into_inner());
                     guard = next_guard;
                     if *guard || bg_closed.load(Ordering::Acquire) {
@@ -684,7 +687,7 @@ pub fn is_local_app_url(url: &url::Url, port: u16) -> bool {
         && url.password().is_none()
 }
 
-/// Allow downloads only from the Cojam localhost origin or safe in-page `blob:`/`data:` payloads.
+/// Allow downloads only from the AnY localhost origin or safe in-page `blob:`/`data:` payloads.
 pub fn is_allowed_download_url(url: &url::Url, port: u16) -> bool {
     is_local_app_url(url, port) || matches!(url.scheme(), "blob" | "data")
 }
@@ -694,7 +697,7 @@ pub fn resolve_download_destination(downloads_dir: &Path, suggested_path: &Path)
     let raw_name = suggested_path
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("cojam-download")
+        .unwrap_or("any-download")
         .trim();
     let clean_name: String = raw_name
         .chars()
@@ -707,7 +710,7 @@ pub fn resolve_download_destination(downloads_dir: &Path, suggested_path: &Path)
         })
         .collect();
     let base_name = if clean_name.is_empty() || clean_name == "." || clean_name == ".." {
-        "cojam-download".to_string()
+        "any-download".to_string()
     } else {
         clean_name
     };
@@ -719,7 +722,7 @@ pub fn resolve_download_destination(downloads_dir: &Path, suggested_path: &Path)
     let stem = path_obj
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("cojam-download");
+        .unwrap_or("any-download");
     let ext = path_obj.extension().and_then(|e| e.to_str()).unwrap_or("");
     let mut existing = HashSet::new();
     if let Ok(entries) = std::fs::read_dir(downloads_dir) {
@@ -748,11 +751,11 @@ mod tests {
     #[test]
     fn path_normalization_ignores_unc_prefix_and_windows_case() {
         assert!(same_path_str(
-            r"\\?\D:\Cojam\CojamCore.exe",
-            r"d:/cojam/CojamCore.exe"
+            r"\\?\D:\AnY\AnYCore.exe",
+            r"d:/any/AnYCore.exe"
         ));
-        assert!(same_path_str(r"D:\Cojam\data\", r"d:\cojam\data"));
-        assert!(!same_path_str(r"D:\CojamA\data", r"D:\CojamB\data"));
+        assert!(same_path_str(r"D:\AnY\data\", r"d:\any\data"));
+        assert!(!same_path_str(r"D:\AnYA\data", r"D:\AnYB\data"));
     }
 
     #[test]

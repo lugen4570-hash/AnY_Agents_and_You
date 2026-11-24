@@ -77,18 +77,18 @@ EXT_TOOLS: list[dict[str, Any]] = [
 
 
 EXT_TOOLS += [
-    {"name": "cojam_standby", "title": "进入合拍待命模式（自动接单与心跳）",
-     "description": "给桌面 IDE / 客户端里的 Agent 使用：调用即自动注册、续心跳并长轮询等待 Cojam 派发任务。无需手填 worker ID。收到 status='task' 时执行任务并调用 reply_task 提交回复，随后再次调用 cojam_standby；收到 status='idle' 时立即再次调用 cojam_standby；收到 status='stopped' 或 'expired' 时结束循环。",
+    {"name": "any_standby", "title": "进入 AnY 待命模式（自动接单与心跳）",
+     "description": "给桌面 IDE / 客户端里的 Agent 使用：调用即自动注册、续心跳并长轮询等待 AnY 派发任务。无需手填 worker ID。收到 status='task' 时执行任务并调用 reply_task 提交回复，随后再次调用 any_standby；收到 status='idle' 时立即再次调用 any_standby；收到 status='stopped' 或 'expired' 时结束循环。",
      "inputSchema": _obj({"workdir": {"type": "string", "description": "当前工作目录（可选）"},
                           "allow_work": {"type": "boolean", "description": "是否允许在干活模式下修改文件（默认 false：只读参与；需要改文件时显式传 true）"},
-                          "timeout": {"type": "integer", "minimum": 0, "maximum": 55, "description": "单次等待秒数（可选，默认按 Cojam 设置）"}}, [])},
+                          "timeout": {"type": "integer", "minimum": 0, "maximum": 55, "description": "单次等待秒数（可选，默认按 AnY 设置）"}}, [])},
     {"name": "receive_task", "title": "接收本成员的任务", "description": "启用自动响应并领取任务。只返回用户已邀请本成员的会话任务。保持稳定的 worker ID；按任务中 member 的身份回复，不冒充本机的其他 AI。",
      "inputSchema": _obj({"worker": {"type": "string"}, "device": {"type": "string"}, "workdir": {"type": "string"},
                           "allow_work": {"type": "boolean"}, "timeout": {"type": "integer", "minimum": 0, "maximum": 55}}, ["worker"])},
-    {"name": "reply_task", "title": "回复成员任务", "description": "提交任务结果，会议室自动记录并处理回复中的 @。必须使用 receive_task 或 cojam_standby 返回的 worker、task id 和 lease。重复提交同一结果不会重复发言。",
+    {"name": "reply_task", "title": "回复成员任务", "description": "提交任务结果，会议室自动记录并处理回复中的 @。必须使用 receive_task 或 any_standby 返回的 worker、task id 和 lease。重复提交同一结果不会重复发言。",
      "inputSchema": _obj({"worker": {"type": "string"}, "task": {"type": "string"}, "lease": {"type": "string"},
                           "ok": {"type": "boolean"}, "text": {"type": "string"}, "session": {"type": "string"}}, ["worker", "task", "lease", "ok", "text"])},
-    {"name": "member_heartbeat", "title": "成员心跳与取消检查", "description": "按 Cojam 心跳间隔调用，保持自动响应连接并检查当前任务是否已取消。任务取消后停止工作，不再提交回复。",
+    {"name": "member_heartbeat", "title": "成员心跳与取消检查", "description": "按 AnY 心跳间隔调用，保持自动响应连接并检查当前任务是否已取消。任务取消后停止工作，不再提交回复。",
      "inputSchema": _obj({"worker": {"type": "string"}, "task": {"type": "string"}, "lease": {"type": "string"}}, ["worker"])},
     {"name": "task_progress", "title": "汇报成员任务进度", "description": "当前任务中途汇报进度并续心跳，不触发其他成员。",
      "inputSchema": _obj({"worker": {"type": "string"}, "task": {"type": "string"}, "lease": {"type": "string"}, "text": {"type": "string"}}, ["worker", "task", "lease", "text"])}
@@ -98,9 +98,9 @@ EXT_TOOLS += [
 ENDPOINT_FIELDS = {"room": {"type": "string"}, "worker": {"type": "string"},
                    "binding_token": {"type": "string"}}
 for _tool in EXT_TOOLS:
-    if _tool["name"] in ("list_rooms", "read_room", "post_to_room", "wait_for_message", "member_heartbeat", "cojam_standby"):
+    if _tool["name"] in ("list_rooms", "read_room", "post_to_room", "wait_for_message", "member_heartbeat", "any_standby"):
         _tool["inputSchema"]["properties"].update(ENDPOINT_FIELDS)
-    if _tool["name"] == "cojam_standby":
+    if _tool["name"] == "any_standby":
         _tool["inputSchema"]["properties"].update(native_session={"type": "string"}, binding_challenge={"type": "string"})
         _tool["description"] += " 桌面接管需从指定原生会话传入 room/native_session/binding_challenge；后续调用携带返回的 worker/binding_token 以及 room/native_session。status=release 时调用 release_session 并结束循环。"
 EXT_TOOLS.append({"name": "release_session", "title": "释放共享原生会话给 CLI",
@@ -109,9 +109,9 @@ EXT_TOOLS.append({"name": "release_session", "title": "释放共享原生会话�
 
 STANDBY_PROMPTS = [
     {
-        "name": "cojam_standby",
-        "title": "开启合拍 Cojam 待命模式",
-        "description": "让当前 Agent 持续接听 Cojam 会议室里的 @ 和任务，收到任务后自动执行并回复到会议室。",
+        "name": "any_standby",
+        "title": "开启 AnY 待命模式",
+        "description": "让当前 Agent 持续接听 AnY 会议室里的 @ 和任务，收到任务后自动执行并回复到会议室。",
         "arguments": [],
     }
 ]
@@ -229,7 +229,7 @@ def call_ext_tool(name: str, args: dict[str, Any], pid: str | None = None, key: 
     if not pid:
         raise ToolError("请使用联系人接入密钥")
     actions = {"receive_task": "receive", "reply_task": "reply", "member_heartbeat": "heartbeat",
-               "task_progress": "progress", "cojam_standby": "standby", "release_session": "release"}
+               "task_progress": "progress", "any_standby": "standby", "cojam_standby": "standby", "release_session": "release"}
     if name in actions:
         try:
             if name == "receive_task":
@@ -336,19 +336,19 @@ def handle_one(msg: Any, who: tuple[str, str] | str | None, key: str = "") -> di
         return _result(mid, {"prompts": [] if isinstance(who, tuple) else STANDBY_PROMPTS})
     if meth == "prompts/get":
         pname = str(params.get("name") or "")
-        if pname != "cojam_standby":
+        if pname not in ("any_standby", "cojam_standby"):
             return _error(mid, -32602, "未知提示词：%s" % pname)
         return _result(mid, {
-            "description": "开启合拍 Cojam 待命模式",
+            "description": "开启 AnY 待命模式",
             "messages": [{
                 "role": "user",
                 "content": {
                     "type": "text",
                     "text": (
-                        "请立即调用 ai-bridge 的 cojam_standby 工具进入合拍 Cojam 待命模式，并遵循以下循环：\n"
-                        "1. 调用 cojam_standby。\n"
-                        "2. 如果返回 status='task'，认真按 task.prompt 执行任务，完成后调用 reply_task（带上返回的 worker、task.id 和 task.lease，ok=true，text=你的回复），然后立即回到第 1 步再次调用 cojam_standby。\n"
-                        "3. 如果返回 status='idle'，不要输出冗余解释，立即再次调用 cojam_standby。\n"
+                        "请立即调用 ai-bridge 的 any_standby 工具进入 AnY 待命模式，并遵循以下循环：\n"
+                        "1. 调用 any_standby。\n"
+                        "2. 如果返回 status='task'，认真按 task.prompt 执行任务，完成后调用 reply_task（带上返回的 worker、task.id 和 task.lease，ok=true，text=你的回复），然后立即回到第 1 步再次调用 any_standby。\n"
+                        "3. 如果返回 status='idle'，不要输出冗余解释，立即再次调用 any_standby。\n"
                         "4. 如果返回 status='release'，调用 release_session 释放会话并结束循环。\n"
                         "5. 如果返回 status='stopped' 或 'expired'，停止循环并告知我待命已结束。\n"
                         "桌面接管需使用会议室提供的参数，在指定原生会话调用；后续待命和读取一直携带 room、worker、binding_token。"

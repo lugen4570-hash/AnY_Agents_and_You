@@ -23,23 +23,23 @@ jobs:
           python tests/test_macos_distribution.py
           archive=$(python packaging/build_macos_python.py)
           ditto -x -k "$archive" "$RUNNER_TEMP/mac-package"
-          "$RUNNER_TEMP/mac-package/Cojam/构建合拍桌面版.command"
+          "$RUNNER_TEMP/mac-package/AnY/构建 AnY 桌面版.command"
       - name: Verify signatures and start the packaged backend
-        working-directory: ${{ runner.temp }}/mac-package/Cojam/dist
+        working-directory: ${{ runner.temp }}/mac-package/AnY/dist
         run: |
-          codesign --verify --deep --strict Cojam.app
+          codesign --verify --deep --strict AnY.app
           export ROUNDTABLE_PORT=18765 ROUNDTABLE_NO_BROWSER=1
-          export ROUNDTABLE_LOG_DIR="$RUNNER_TEMP/cojam-data"
-          Cojam.app/Contents/MacOS/CojamCore > "$RUNNER_TEMP/core.log" 2>&1 &
+          export ROUNDTABLE_LOG_DIR="$RUNNER_TEMP/any-data"
+          AnY.app/Contents/MacOS/AnYCore > "$RUNNER_TEMP/core.log" 2>&1 &
           core_pid=$!
           trap 'kill "$core_pid" 2>/dev/null || true; cat "$RUNNER_TEMP/core.log"' EXIT
           base=http://127.0.0.1:18765
           curl --retry 20 --retry-connrefused --retry-delay 1 --max-time 3 -fsS "$base/api/server/info"
-          curl --max-time 3 -fsS "$base/" -c "$RUNNER_TEMP/cojam-cookies" -o "$RUNNER_TEMP/cojam.html"
+          curl --max-time 3 -fsS "$base/" -c "$RUNNER_TEMP/any-cookies" -o "$RUNNER_TEMP/any.html"
           curl --max-time 3 -fsS "$base/static/workspace.js" -o "$RUNNER_TEMP/workspace.js"
-          curl --max-time 3 -fsS "$base/static/member-connector.zip" -b "$RUNNER_TEMP/cojam-cookies" -o "$RUNNER_TEMP/member.zip"
+          curl --max-time 3 -fsS "$base/static/member-connector.zip" -b "$RUNNER_TEMP/any-cookies" -o "$RUNNER_TEMP/member.zip"
           unzip -tq "$RUNNER_TEMP/member.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: Cojam-desktop-${{ matrix.runner }}
-          path: ${{ runner.temp }}/mac-package/Cojam/dist/Cojam-*-macOS-*.zip
+          name: AnY-desktop-${{ matrix.runner }}
+          path: ${{ runner.temp }}/mac-package/AnY/dist/AnY-*-macOS-*.zip

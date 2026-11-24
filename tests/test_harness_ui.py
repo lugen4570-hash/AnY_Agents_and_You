@@ -156,16 +156,43 @@ const workState = Object.assign({}, state, {
 assert.deepEqual(h.blockedWorkTargets(workState, h.resolveComposerTarget('@codex hi', workState)), ['codex']);
 assert.deepEqual(h.blockedWorkTargets(workState, h.resolveComposerTarget('@antigravity hi', workState)), []);
 
-// 10. Built-in slash commands (/compact, /skills) filter & parse cleanly
+// 10. Full Harness slash commands & clean skill grouping
 const cmdAll = h.filterSlashCommands('/', 1, state, state.agents);
-assert.deepEqual(cmdAll.items.map(i => i.name), ['compact', 'skills']);
+const names = cmdAll.items.map(i => i.name);
+for (const expected of [
+  'compact', 'skills', 'mode', 'model', 'stop', 'debate', 'debate-finish',
+  'wrapup', 'new', 'resume', 'agents', 'scan', 'connect', 'invite',
+  'handoff', 'return', 'project', 'announce', 'todo', 'done', 'status',
+  'undo', 'rename', 'help', 'quit',
+]) {
+  assert.ok(names.includes(expected), 'Missing slash command: ' + expected);
+}
 const cmdComp = h.filterSlashCommands('/com', 4, state, state.agents);
 assert.deepEqual(cmdComp.items.map(i => i.name), ['compact']);
-assert.deepEqual(h.parseComposerSlashCommand('/compact', state), { command: 'compact', targetIds: [], explicitTarget: false, error: '' });
-assert.deepEqual(h.parseComposerSlashCommand('@codex /compact', state), { command: 'compact', targetIds: ['codex'], explicitTarget: true, error: '' });
-assert.deepEqual(h.parseComposerSlashCommand('/compact codex', state), { command: 'compact', targetIds: ['codex'], explicitTarget: true, error: '' });
-assert.deepEqual(h.parseComposerSlashCommand('/skills codex', state), { command: 'skills', targetIds: ['codex'], explicitTarget: true, error: '' });
+assert.equal(h.parseComposerSlashCommand('/compact', state).command, 'compact');
+assert.deepEqual(h.parseComposerSlashCommand('@codex /compact', state).targetIds, ['codex']);
+assert.deepEqual(h.parseComposerSlashCommand('/compact codex', state).targetIds, ['codex']);
+assert.deepEqual(h.parseComposerSlashCommand('/skills codex', state).targetIds, ['codex']);
+assert.equal(h.parseComposerSlashCommand('/mode work', state).argText, 'work');
+assert.equal(h.parseComposerSlashCommand('/todo Fix login', state).argText, 'Fix login');
+assert.equal(h.parseComposerSlashCommand('/done #12', state).argText, '#12');
+assert.equal(h.parseComposerSlashCommand('//escaped text', state), null);
 assert.equal(h.parseComposerSlashCommand('/systematic-debugging check', state), null);
+
+// Single-agent skill owner avoids repeating [Codex] on every row; multi-agent preserves per-row badges
+const singleModel = h.buildSlashMenuModel('/', 1, state, toolsByAi, state.agents);
+assert.equal(singleModel.showPerSkillOwnerTags, false);
+assert.equal(singleModel.singleSkillOwnerLabel, 'Codex');
+const multiTools = Object.assign({}, toolsByAi, {
+  antigravity: { skills: [{ name: 'ui-review', desc: 'check ui', on: true }] },
+});
+const multiState = Object.assign({}, state, {
+  execution: { codex: { endpoint: 'cli' }, antigravity: { endpoint: 'cli' } },
+  ais: Object.assign({}, state.ais, { antigravity: { model: { apply_status: 'applied', model_supported: true } } }),
+});
+const multiModel = h.buildSlashMenuModel('/', 1, multiState, multiTools, multiState.agents);
+assert.equal(multiModel.showPerSkillOwnerTags, true);
+assert.equal(multiModel.singleSkillOwnerLabel, '');
 ''')
 
     def test_extensions_badges_tristate_and_import_validation(self):
@@ -215,7 +242,7 @@ assert.equal(h.resolveLang('zh-CN'), 'zh-CN');
         import os, sys, tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            env = dict(os.environ, ROUNDTABLE_DATA=tmp)
+            env = dict(os.environ, ROUNDTABLE_LOG_DIR=tmp)
             script = r'''
 import os, tempfile
 from bridge import room as R
@@ -237,12 +264,106 @@ with tempfile.TemporaryDirectory() as wd:
     assert r.messages[-1]['text'] == '已允许干活：codex'
     r.add_message('你', '@codex 开始改代码')
     prompt, _, _, _ = r.build_prompt('codex', r.member_mode('codex'))
-    assert '【合拍模式与权限已更新】' in prompt, prompt
+    assert '【AnY 模式与权限已更新】' in prompt, prompt
     assert '"work": true' in prompt, prompt
     assert '干活模式' in prompt, prompt
 '''
             result = subprocess.run([sys.executable, '-c', script], cwd=ROOT, env=env, capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_empty_room_onboarding_and_verification_tracker(self):
+        self.run_node(r'''
+const assert = require('assert/strict');
+const h = require('./static/harness-ui.js');
+
+// 1. No active meeting -> onboarding hidden
+assert.equal(h.buildEmptyRoomOnboardingState(null, [], []).visible, false);
+
+// 2. Empty room with 0 AI -> step 1 active, lists available non-user enabled contacts
+const contacts = [
+  { id: 'codex', label: 'Codex', kind: 'ai', enabled: true, color: '#10a37f', letter: 'C' },
+  { id: 'claude', label: 'Claude', kind: 'ai', enabled: true, color: '#d97706', letter: 'L' },
+  { id: 'disabled_ai', label: 'Disabled', kind: 'ai', enabled: false },
+  { id: 'alice', label: 'Alice', kind: 'user', enabled: true },
+];
+const noAiState = { meeting: 'm1', participants: [], ais: {}, agents: contacts };
+const step1 = h.buildEmptyRoomOnboardingState(noAiState, contacts, []);
+assert.equal(step1.visible, true);
+assert.equal(step1.activeStep, 1);
+assert.deepEqual(step1.roomAiIds, []);
+assert.deepEqual(step1.availableContactAis.map(a => a.id), ['codex', 'claude']);
+
+// 3. Room with only system/recalled messages + 2 AI -> step 2 active
+const twoAiState = {
+  meeting: 'm1',
+  participants: ['codex', 'claude'],
+  ais: { codex: { busy: false }, claude: { busy: false } },
+  agents: contacts,
+};
+const nonChatMsgs = [
+  { id: 1, speaker: '系统', text: '欢迎加入' },
+  { id: 2, speaker: '你', text: '旧消息', recalled: true },
+];
+const step2 = h.buildEmptyRoomOnboardingState(twoAiState, contacts, nonChatMsgs);
+assert.equal(step2.visible, true);
+assert.equal(step2.activeStep, 2);
+assert.deepEqual(step2.roomAiIds, ['codex', 'claude']);
+assert.ok(step2.testPrompt.length > 0);
+
+// 4. Room with a real user or AI message -> onboarding hidden
+assert.equal(h.buildEmptyRoomOnboardingState(twoAiState, contacts, [{ id: 3, speaker: '你', text: 'hi' }]).visible, false);
+assert.equal(h.buildEmptyRoomOnboardingState(twoAiState, contacts, [{ id: 4, speaker: 'codex', text: 'ready' }]).visible, false);
+
+// 5. Verification tracker transitions: waiting -> running -> replied -> failed -> dismissed / room switch
+const tracker = { roomId: 'm1', baselineMaxId: 10, targetAiIds: ['codex', 'claude'], dismissed: false };
+const vWait = h.buildVerificationTrackerState(twoAiState, [], [], tracker);
+assert.equal(vWait.active, true);
+assert.equal(vWait.allReplied, false);
+assert.deepEqual(vWait.items.map(i => i.status), ['waiting', 'waiting']);
+
+const vRun = h.buildVerificationTrackerState(
+  twoAiState,
+  [{ id: 11, speaker: '你', text: 'test' }, { id: 12, speaker: 'codex', text: '已就绪' }],
+  ['claude'],
+  tracker
+);
+assert.equal(vRun.repliedCount, 1);
+assert.equal(vRun.totalCount, 2);
+assert.equal(vRun.allReplied, false);
+assert.deepEqual(vRun.items.map(i => i.status), ['replied', 'running']);
+
+const vDone = h.buildVerificationTrackerState(
+  twoAiState,
+  [{ id: 12, speaker: 'codex', text: 'ok' }, { id: 13, speaker: 'claude', text: 'ok' }],
+  [],
+  tracker
+);
+assert.equal(vDone.allReplied, true);
+assert.equal(vDone.repliedCount, 2);
+
+const failedState = {
+  meeting: 'm1',
+  participants: ['codex', 'claude'],
+  ais: { codex: { busy: false }, claude: { busy: false, last_error: 'CLI exited 1' } },
+  agents: contacts,
+};
+const vFail = h.buildVerificationTrackerState(failedState, [{ id: 12, speaker: 'codex', text: 'ok' }], [], tracker);
+assert.deepEqual(vFail.items.map(i => i.status), ['replied', 'failed']);
+assert.equal(vFail.items[1].detail, 'CLI exited 1');
+
+const firstTest = { ...tracker, baselineMaxId: -1, prompt: 'test' };
+const exact = h.buildVerificationTrackerState(twoAiState, [
+  { id: 0, speaker: '你', text: 'test' },
+  { id: 1, speaker: 'codex', text: 'unrelated', source_message: 99 },
+  { id: 2, speaker: '系统', text: 'timed out', failure: { ai: 'codex' }, source_message: 0 },
+  { id: 3, speaker: 'claude', text: 'ok', source_message: 0 },
+], [], firstTest);
+assert.deepEqual(exact.items.map(i => i.status), ['failed', 'replied']);
+assert.equal(exact.items[0].detail, 'timed out');
+
+assert.equal(h.buildVerificationTrackerState(twoAiState, [], [], { ...tracker, dismissed: true }).active, false);
+assert.equal(h.buildVerificationTrackerState({ ...twoAiState, meeting: 'm2' }, [], [], tracker).active, false);
+''')
 
 
 if __name__ == '__main__':

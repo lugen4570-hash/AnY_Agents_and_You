@@ -1,10 +1,13 @@
 """Track local administrator tabs so the desktop-launched service exits with them."""
+import logging
 import re
 import threading
 import time
 
+logger = logging.getLogger(__name__)
+
 class OwnerLifecycle:
-    def __init__(self, shutdown, grace=6, expiry=180, interval=.5, is_busy=None):
+    def __init__(self, shutdown, grace=1.5, expiry=60, interval=.5, is_busy=None):
         self.shutdown=shutdown
         self.grace=grace
         self.expiry=expiry
@@ -61,8 +64,8 @@ class OwnerLifecycle:
                         if self.is_busy():
                             self.deadline = now + self.grace
                             continue
-                    except Exception:
-                        pass
+                    except Exception as error:
+                        logger.debug("OwnerLifecycle is_busy 检查出错，将继续关停: %s", error)
                 self.closed=True
             self.shutdown()
             return

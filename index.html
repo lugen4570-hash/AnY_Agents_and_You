@@ -25,7 +25,7 @@
 <section class="projects-section"><div class="rh">项目与会话<span class="project-actions"><button type="button" id="bList" aria-label="会话管理、归档与回收站" title="会话管理、归档与回收站">管理</button><button id="projectAdd" aria-label="新建项目" title="新建项目">＋</button></span></div><ul class="rl" id="roomList"></ul></section>
 <details class="contacts-section" id="contactsSection"><summary>联系人 <span id="contactCount"></span><span class="contacts-chevron" aria-hidden="true">⌄</span></summary><div class="rh"><span class="rh-actions"><button id="agentSettingsBtn" title="修改 Agent 程序位置、模型与加入设置" aria-label="Agent 与连接管理">管理</button><button id="contactsAdd" aria-label="接入联系人">＋ 接入</button></span></div><ul id="contactList"></ul></details>
 <button type="button" id="openSettingsBtn" class="nav-settings-btn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span data-i18n="nav.settings">设置</span></button>
-<div class="nav-foot"><img src="/static/logo-collaboration.svg" width="28" height="28" alt=""><span>本机会议室<small>由这台设备托管</small></span><button type="button" id="updateApp" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" title="停止本机 AnY 服务">退出</button></div></nav>
+<div class="nav-foot"><img src="/static/logo-collaboration.svg" width="28" height="28" alt=""><span>本机会议室<small>由这台设备托管</small></span><button type="button" id="updateApp" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" title="停止本机 AnY 服务">退出</button></div><div id="navResizer" class="nav-resizer" aria-hidden="true" title="拖动调整侧栏宽度，双击重置"></div></nav>
 <header>
   <button id="navToggle" aria-label="展开侧栏" title="展开侧栏 (Ctrl+K)"><svg class="ui-icon nav-toggle-icon-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><span class="nav-toggle-icon-mobile" aria-hidden="true">☰</span></button>
   <div class="room-heading"><div class="room-overline"><div id="roomContext">会话空间</div></div><div id="title">会议室</div><div class="room-detail"><div id="roomMemberFaces" aria-hidden="true"></div><div id="roomSummary">人和 AI，在同一张桌上</div></div></div><div id="wd"></div><span id="modeTag">干活模式</span>
@@ -36,11 +36,12 @@
 <div id="cmenu"></div>
 <div id="sideBg"></div>
 <aside id="side" role="dialog" aria-modal="true" aria-label="会议详情与看板" tabindex="-1" inert>
-  <div class="sh"><span data-i18n="side.title">会议详情与看板</span><button type="button" id="sideX" aria-label="关闭会议详情">&times;</button></div>
+  <div class="sh"><span data-i18n="side.title">会议详情与看板</span><div class="side-window-actions"><button type="button" id="sidePin" aria-pressed="false">固定</button><button type="button" id="sideX" aria-label="关闭会议详情">&times;</button></div></div>
   <div class="side-actions" aria-label="会话管理"><button type="button" id="bRename">改名</button><button type="button" id="bAgents">成员与权限</button><button type="button" id="bWrap">整理并落盘</button></div>
   <div class="side-tabs" id="sideTabs" role="tablist" aria-label="右侧栏视图">
     <button type="button" role="tab" data-side-tab="agents" aria-selected="true" data-i18n="side.tabAgents">成员</button>
     <button type="button" role="tab" data-side-tab="board" aria-selected="false" data-i18n="side.tabBoard">看板</button>
+    <button type="button" role="tab" data-side-tab="changes" aria-selected="false" data-i18n="side.tabChanges">改动</button>
     <button type="button" role="tab" data-side-tab="output" aria-selected="false" data-i18n="side.tabOutput">产出</button>
   </div>
   <div id="sideAgentsPane" class="side-pane" data-side-group="agents"></div>
@@ -51,7 +52,8 @@
   <section class="card" data-k="board" data-side-group="board"><h4><span class="ct">看板</span><span class="cn" id="boardN"></span></h4>
     <div class="cb" id="board"><ul id="boardList"></ul>
       <div class="badd"><select id="bKind"><option value="todo">待办</option><option value="note">公告</option></select><input id="bText" maxlength="500" placeholder="加一条…"><button type="button" id="bAdd">加</button></div></div></section>
-  <section class="card" data-k="claims" data-side-group="board"><h4><span class="ct">正在改的文件</span><span class="cn" id="claimN"></span><button type="button" id="cMine" title="你自己在手动改的文件，占住它，AI 就不会去改">我在改…</button></h4>
+  <div id="sideChangesPane" class="side-pane" data-side-group="changes" hidden></div>
+  <section class="card" data-k="claims" data-side-group="changes"><h4><span class="ct">正在改的文件</span><span class="cn" id="claimN"></span><button type="button" id="cMine" title="你自己在手动改的文件，占住它，AI 就不会去改">我在改…</button></h4>
     <div class="cb" id="claims"><ul id="claimList"></ul></div></section>
   <section class="card" data-k="env" data-side-group="output"><h4><span class="ct">环境</span></h4><div class="cb" id="envBox"></div></section>
   <section class="card" data-k="ctx" data-side-group="agents"><h4><span class="ct">上下文</span></h4><div class="cb" id="ctxBox"></div></section>
@@ -88,6 +90,7 @@
       <button type="button" id="composerModelBtn" class="composer-chip model-chip" aria-haspopup="dialog" aria-expanded="false" title="查看或切换当前会话模型">模型</button>
       <button type="button" id="composerExtBtn" class="composer-chip ext-chip" title="配置本会话技能、MCP 与扩展 (/skills)">扩展</button>
       <button type="button" id="debateBtn" class="composer-chip">论道</button>
+      <button type="button" id="debateContinueBtn" class="composer-chip" hidden>继续论道</button>
     </div>
     <div class="composer-meta"><span id="composerTargetHint" class="composer-target-hint"></span><span class="composer-shortcuts" data-i18n="composer.hint">@ 指定成员 · / 命令与技能</span></div>
   </div>

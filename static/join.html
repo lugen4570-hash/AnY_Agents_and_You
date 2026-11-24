@@ -13,9 +13,10 @@
 <script>
 let token='',rid='',since=0,generation=0,permission=false,busy=false,autoOpen=false,presetRoom='',pendingInvite='';
 const el=id=>document.getElementById(id);
-const KEYS={token:'cojam_guest_token',deviceKey:'cojam_guest_device_key',name:'cojam_guest_name',room:'cojam_guest_last_room'};
-function saved(key){try{return localStorage.getItem(key)||''}catch(e){return ''}}
-function save(key,value){try{if(value)localStorage.setItem(key,value);else localStorage.removeItem(key)}catch(e){}}
+const KEYS={token:'any_guest_token',deviceKey:'any_guest_device_key',name:'any_guest_name',room:'any_guest_last_room'};
+const LEGACY_KEYS={token:'cojam_guest_token',deviceKey:'cojam_guest_device_key',name:'cojam_guest_name',room:'cojam_guest_last_room'};
+function saved(key){try{const v=localStorage.getItem(key);if(v)return v;for(const [k,nk] of Object.entries(KEYS)){if(nk===key)return localStorage.getItem(LEGACY_KEYS[k])||''}return ''}catch(e){return ''}}
+function save(key,value){try{if(value)localStorage.setItem(key,value);else{localStorage.removeItem(key);for(const [k,nk] of Object.entries(KEYS)){if(nk===key)localStorage.removeItem(LEGACY_KEYS[k])}}}catch(e){}}
 function guestDeviceName(){const ua=navigator.userAgent,device=/iPhone/i.test(ua)?'iPhone':/iPad/i.test(ua)?'iPad':/Android/i.test(ua)?'Android':/Macintosh|Mac OS X/i.test(ua)?'Mac':/Windows/i.test(ua)?'Windows':'新设备',browser=/Edg\//i.test(ua)?'Edge':/Chrome\//i.test(ua)?'Chrome':/Safari\//i.test(ua)?'Safari':'浏览器';return device+' · '+browser}
 function guestDeviceKey(){let value=saved(KEYS.deviceKey);if(!value){const bytes=crypto.getRandomValues(new Uint8Array(32));value=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');save(KEYS.deviceKey,value)}return value}
 function invitationValue(value) {
@@ -38,7 +39,7 @@ function showRecalls(ids){
 }
 async function recall(id){
   const room=rid,gen=generation;
-  if(!confirm('撤回这条消息并放回输入框？合拍会取消它触发的任务，并撤回能关联到它的 Agent 回复。'))return;
+  if(!confirm('撤回这条消息并放回输入框？AnY 会取消它触发的任务，并撤回能关联到它的 Agent 回复。'))return;
   const fallback=el('feed').querySelector('.msg[data-id="'+id+'"] .message-text')?.textContent||'';
   try{
     const res=await request('/api/external/recall',{room,id});
@@ -95,8 +96,8 @@ setInterval(()=>{if(token)request('/api/external/hello',{client:'AnY 游客'}).c
   // A remembered own-device credential can restore the HttpOnly cookie after
   // a browser restart; it is scoped to this browser and this exact origin.
   async function restoreOwnDevice(){
-    const key='cojam_owner_device_token';
-    let own=saved(key);
+    const key='any_owner_device_token',legacyKey='cojam_owner_device_token';
+    let own=saved(key)||saved(legacyKey);
     try {
       // A valid HttpOnly cookie may survive even when Safari cleared localStorage.
       if(!own){
@@ -106,7 +107,7 @@ setInterval(()=>{if(token)request('/api/external/hello',{client:'AnY 游客'}).c
         own=match[1];save(key,own);
       }
       const response=await fetch('/api/devices/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:own})});
-      if(response.status===401){save(key,'');return false}
+      if(response.status===401){save(key,'');save(legacyKey,'');return false}
       if(!response.ok)return false;
       const html=await (await fetch('/',{cache:'no-store'})).text();
       if(!html.includes('name="rt-'+'token" content="'+own+'"'))return false;

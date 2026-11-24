@@ -158,7 +158,7 @@ class DeviceHTTP(unittest.TestCase):
         for _ in range(2):
             status, _, headers = call('/api/devices/restore', {'token':token})
             self.assertEqual(status, 200)
-            self.assertIn('cojam_device=', headers['Set-Cookie'])
+            self.assertIn('any_device=', headers['Set-Cookie'])
             self.assertEqual(call('/api/rooms', token=token)[0], 200)
         self.assertEqual(call('/api/devices/revoke', {'id':link['id']}, token=web.RT_TOKEN)[0], 200)
         self.assertEqual(call('/api/devices/restore', {'token':token})[0], 401)
@@ -185,7 +185,7 @@ class DeviceHTTP(unittest.TestCase):
 
     def test_code_and_device_routes(self):
         token, device, headers = self.make_device()
-        self.assertIn("cojam_device=" + token, headers.get("Set-Cookie", ""))
+        self.assertIn("any_device=" + token, headers.get("Set-Cookie", ""))
         status, body, _ = call("/api/devices", token=token)
         self.assertEqual(status, 200)
         data = body_json(body)
@@ -227,23 +227,23 @@ class DeviceHTTP(unittest.TestCase):
         self.assertIn("联系人接入密钥", remote)
         self.assertEqual(injected_token(remote), "")
         token, device, _ = self.make_device("手机")
-        with_cookie = page({"Host": "192.168.1.9", "Cookie": "cojam_device=" + token})
+        with_cookie = page({"Host": "192.168.1.9", "Cookie": "any_device=" + token})
         self.assertEqual(injected_token(with_cookie), token)
         forwarded = page({"Host": "192.168.1.9", "X-Forwarded-For": "1.2.3.4",
-                          "Cookie": "cojam_device=" + token})
+                          "Cookie": "any_device=" + token})
         self.assertEqual(injected_token(forwarded), token)
         revoked = call("/api/devices/revoke", {"id": device["id"]}, token=web.RT_TOKEN)
         self.assertEqual(revoked[0], 200)
-        after = page({"Host": "192.168.1.9", "Cookie": "cojam_device=" + token})
+        after = page({"Host": "192.168.1.9", "Cookie": "any_device=" + token})
         self.assertIn("联系人接入密钥", after)
 
     def test_cookie_is_only_for_pages_and_files(self):
         token, _, _ = self.make_device("手机")
-        self.assertEqual(call("/api/devices/code", {"label": "x"}, cookie="cojam_device=" + token)[0], 403)
+        self.assertEqual(call("/api/devices/code", {"label": "x"}, cookie="any_device=" + token)[0], 403)
         files = Path(DATA, "meetings", "room-1", "files")
         files.mkdir(parents=True, exist_ok=True)
         (files / "note.txt").write_text("hello", encoding="utf-8")
-        status, body, _ = call("/files/room-1/files/note.txt", cookie="cojam_device=" + token)
+        status, body, _ = call("/files/room-1/files/note.txt", cookie="any_device=" + token)
         self.assertEqual((status, body), (200, b"hello"))
 
     def test_remote_device_cannot_set_host_project_path(self):
@@ -274,7 +274,7 @@ class DeviceHTTP(unittest.TestCase):
         self.assertIn("接入我的设备", html)
         self.assertIn("/api/devices/enroll", html)
         self.assertIn("location.replace('/')", html)
-        self.assertIn("cojam_owner_device_token", html)
+        self.assertIn("any_owner_device_token", html)
 
     def test_enroll_page_redirects_already_enrolled_devices(self):
         request = urllib.request.Request(BASE + "/enroll", headers={"Host": "192.168.1.9"})

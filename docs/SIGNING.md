@@ -1,6 +1,6 @@
 # Windows 代码签名
 
-合拍使用 Authenticode 对 Windows EXE 签名；需要受信任的代码签名证书、可用的私钥以及 Windows SDK 的 `signtool.exe`。现有机器没有检测到可用证书或 SignTool，当前本地构建因此是**未签名测试版**。不应通过自签名证书声称通过了公开信任验证。
+AnY 使用 Authenticode 对 Windows EXE 签名；需要受信任的代码签名证书、可用的私钥以及 Windows SDK 的 `signtool.exe`。现有机器没有检测到可用证书或 SignTool，当前本地构建因此是**未签名测试版**。不应通过自签名证书声称通过了公开信任验证。
 
 ## 获取签名身份
 
@@ -13,13 +13,13 @@
 安装 Windows SDK，确保 SignTool 可用。把代码签名证书放进当前用户的个人证书库并确保私钥可用。在 PowerShell 当前会话设置：
 
 ```powershell
-$env:COJAM_SIGN_CERT_THUMBPRINT = '证书指纹'
-$env:COJAM_REQUIRE_SIGNATURE = '1'
+$env:ANY_SIGN_CERT_THUMBPRINT = '证书指纹'
+$env:ANY_REQUIRE_SIGNATURE = '1'
 ./build_exe.ps1
 python packaging/build_release.py
 ```
 
-`sign_exe.ps1` 使用 SHA-256、RFC 3161 时间戳，随后验证签名、证书链和时间戳；可通过 `COJAM_SIGN_TIMESTAMP_URL` 选择受信任的时间戳服务。设置 `COJAM_REQUIRE_SIGNATURE=1` 后，构建和打包都会拒绝缺失或无效签名。不要把 PFX 文件、私钥、令牌或密码提交进仓库。只有签名完成且验证通过后才发布安装包。
+`sign_exe.ps1` 使用 SHA-256、RFC 3161 时间戳，随后验证签名、证书链和时间戳；可通过 `ANY_SIGN_TIMESTAMP_URL` 选择受信任的时间戳服务（兼容旧环境变量 `COJAM_*`）。设置 `ANY_REQUIRE_SIGNATURE=1` 后，构建和打包都会拒绝缺失或无效签名。不要把 PFX 文件、私钥、令牌或密码提交进仓库。只有签名完成且验证通过后才发布安装包。
 
 未设置证书时，常规构建会明确标注“未签名测试版”；`./sign_exe.ps1 -RequireSignature` 会失败。PFX 密码不会通过命令行参数传递。
 

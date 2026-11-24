@@ -1,6 +1,6 @@
 # AnY 视觉约定
 
-名称写作 AnY，来自 Agents and You。客户端侧栏搭配高反差衬线 [AnY 字标](../static/wordmark.svg) 与 [A/Y 字母组合](../static/logo-collaboration.svg)。A 代表 Agents，Y 代表 You，两者共用一条粗斜笔，A 的金色横笔落在两者的交接处。主体随主题在墨绿和暖白之间切换。侧栏顶部用 40 px（窄屏 38 px），底部用 28 px，浏览器标签页用同一图形。
+名称写作 AnY，来自 Agents and You。客户端侧栏使用[字标](../static/wordmark.svg)和[任意符号 ∀](../static/logo-collaboration.svg)。深青色 Y 的短竖带一笔微微外挑的衬脚，开口嵌入珊瑚色 A，A 与 ∀ 共用一条横笔。图标为透明底，浅色和深色界面共用同一配色。侧栏顶部用 40 px（窄屏 38 px），底部用 28 px，浏览器标签页使用同一图形。
 
 官网导航使用带珊瑚色错版阴影的手绘斜体 AnY 字标。桌面安装图标和托盘使用几何 `∀`，CLI 使用 `∀ AnY`。
 

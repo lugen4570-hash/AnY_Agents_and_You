@@ -89,7 +89,7 @@ def _compose(spec, base_ctx, session_id, images, mode, prompt):
 def _write_prompt_temp_file(text):
     """Write prompt text into a temporary UTF-8 file and return its path."""
     with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", prefix="cojam-prompt-", suffix=".txt", delete=False
+        mode="w", encoding="utf-8", prefix="any-prompt-", suffix=".txt", delete=False
     ) as handle:
         handle.write(text)
         return handle.name
@@ -614,6 +614,13 @@ def call(pid, prompt, session_id=None, images=(), mode=None, room=None):
         if driver == "cli":
             return call_cli(pid, spec, prompt, session_id, images, mode, room)
         if driver == "http":
+            if spec.get("http_protocol"):
+                from . import direct_model
+                model = room.effective_models(pid)[0] if room is not None else spec["default"][0]
+                try:
+                    return True, direct_model.reply(spec, prompt, model), None, []
+                except ValueError as error:
+                    return False, str(error), None, []
             return call_http(pid, spec, prompt, session_id, images, mode, room)
     except Exception as e:
         return False, "%s 调用失败：%s" % (pid, e), session_id, []

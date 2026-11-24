@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-any-choose-workdir"
+description = "Enables the any_choose_workdir command without any pre-configured scope."
+commands.allow = ["any_choose_workdir"]
+
+[[permission]]
+identifier = "deny-any-choose-workdir"
+description = "Denies the any_choose_workdir command without any pre-configured scope."
+commands.deny = ["any_choose_workdir"]

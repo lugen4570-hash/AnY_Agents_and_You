@@ -1,4 +1,4 @@
-"""Shared helpers for Cojam Platform Abstraction Layer."""
+"""Shared helpers for AnY Platform Abstraction Layer."""
 from __future__ import annotations
 
 import os

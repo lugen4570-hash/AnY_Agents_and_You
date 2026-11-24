@@ -28,14 +28,14 @@ MCP 增加：
 
 | 工具 / 提示词 | 含义 |
 |---|---|
-| `cojam_standby`（工具） | 给桌面 IDE / 客户端里的 Agent 使用：无需手填 worker ID，调用即自动注册、续心跳并长轮询等待任务；收到任务后调用 `reply_task` 回复，再继续调用 `cojam_standby`。默认只读（`allow_work=false`），需要改文件时显式传 `true` |
-| `/cojam_standby`（MCP Prompt） | 在支持 MCP Prompt 的软件里输入一次即可让模型进入 `cojam_standby → reply_task → cojam_standby` 自动待命循环；Cojam 侧可随时点「停止待命」结束循环（停止后 10 分钟内不会自动复活） |
+| `any_standby`（工具） | 给桌面 IDE / 客户端里的 Agent 使用：无需手填 worker ID，调用即自动注册、续心跳并长轮询等待任务；收到任务后调用 `reply_task` 回复，再继续调用 `any_standby`（兼容 `cojam_standby`）。默认只读（`allow_work=false`），需要改文件时显式传 `true` |
+| `/any_standby`（MCP Prompt） | 在支持 MCP Prompt 的软件里输入一次即可让模型进入 `any_standby → reply_task → any_standby` 自动待命循环；AnY 侧可随时点「停止待命」结束循环（停止后 10 分钟内不会自动复活） |
 | `receive_task` | 用稳定的 worker ID 注册自动响应端，长轮询领取任务 |
 | `reply_task` | 携带任务 id 和 lease 提交结果，由会议室统一入库并处理 @ |
-| `member_heartbeat` | 按 Cojam 设定的心跳间隔续连接，任务执行时带 task 和 lease 检查取消 |
+| `member_heartbeat` | 按 AnY 设定的心跳间隔续连接，任务执行时带 task 和 lease 检查取消 |
 | `task_progress` | 当前任务的中途发言，不触发其他成员 |
 
-心跳间隔、多久算掉线、单次长轮询时长、待命最长时长、任务超时与自动重连退避均在 Cojam 的「心跳」设置中统一配置（`data/connection_settings.json`），并通过 `connect / receive / heartbeat` 的 `settings` 与 `settings_rev` 字段实时同步给连接端。
+心跳间隔、多久算掉线、单次长轮询时长、待命最长时长、任务超时与自动重连退避均在 AnY 的「心跳」设置中统一配置（`data/connection_settings.json`），并通过 `connect / receive / heartbeat` 的 `settings` 与 `settings_rev` 字段实时同步给连接端。
 
 不同 Harness 使用不同联系人 ID。同一个身份只允许一个活跃的自动响应端。消息通道连上与自动响应端连上是两个可观察的状态，不会因管理员轮询或复制配置而假报就绪。
 
@@ -48,7 +48,7 @@ MCP 增加：
 | action | 参数 / 结果 |
 |---|---|
 | `connect` | `worker`、`device`、`workdir`、布尔值 `allow_work`；返回 member 身份和心跳间隔 |
-| `receive` | `worker`、`timeout`（0–55，默认按 Cojam 设置）；返回 `task: null` 或任务 |
+| `receive` | `worker`、`timeout`（0–55，默认按 AnY 设置）；返回 `task: null` 或任务 |
 | `standby` | `worker`（可省略）、`workdir`、布尔值 `allow_work`、`timeout`；注册待命并领取任务，返回 `status: idle / task / stopped / expired` |
 | `heartbeat` | `worker`；执行时还带 `task` 和 `lease`，返回当前状态 |
 | `reply` | `worker`、`task`、`lease`、布尔值 `ok`、非空 `text`、可选 `session` |

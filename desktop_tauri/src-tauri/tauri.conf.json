@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AnY",
-  "mainBinaryName": "Cojam",
-  "version": "2.8.18",
-  "identifier": "com.cojam.desktop",
+  "mainBinaryName": "AnY",
+  "version": "2.8.19",
+  "identifier": "com.any.desktop",
   "build": {
     "frontendDist": "../placeholder"
   },

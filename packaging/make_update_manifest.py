@@ -13,9 +13,9 @@ def main():
     parser.add_argument('--notes', default='修复问题并改进使用体验。')
     args = parser.parse_args()
     version = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
-    installer = ROOT / 'dist' / ('Cojam-Setup-%s.exe' % version)
+    installer = ROOT / 'dist' / ('AnY-Setup-%s.exe' % version)
     data = installer.read_bytes()
-    result = {'app':'Cojam', 'version':version,
+    result = {'app':'AnY', 'version':version,
               'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/' + installer.name,
               'sha256':hashlib.sha256(data).hexdigest(), 'size':len(data), 'notes':args.notes[:1000]}
     output = ROOT / 'website' / 'update.json'

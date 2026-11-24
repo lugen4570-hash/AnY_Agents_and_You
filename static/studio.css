@@ -293,3 +293,5 @@ header{position:relative}
 #boardList .board-section-heading[data-board-section=note]{--column-ink:var(--accent);background:var(--studio-sky)}
 #boardList .board-section-heading[data-board-section=done]{--column-ink:var(--faint);background:var(--soft)}
 #boardList .board-section-heading span{font:11px var(--mono);color:var(--mut)}
+#cmenu .cm-sep{height:1px;background:var(--line);margin:4px 6px}
+#cmenu .cm-label{padding:4px 10px;font-size:11px;color:var(--mut)}

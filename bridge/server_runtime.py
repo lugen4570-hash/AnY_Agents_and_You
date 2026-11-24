@@ -35,7 +35,7 @@ def reuse_or_stop(url):
         runtime = json.loads(request("/api/server/runtime", token))
         same_path = lambda a, b: os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
         if not same_path(runtime.get("install", ""), installation()) or not same_path(runtime.get("data", ""), LOG_DIR):
-            return "error", "端口上已有另一份合拍 Cojam。请先退出原来的程序，再打开这一份，以免混用会话数据。"
+            return "error", "端口上已有另一份 AnY。请先退出原来的程序，再打开这一份，以免混用会话数据。"
         if info.get("version") == VERSION and info.get("api_revision") == API_REVISION:
             return "reuse", ""
         request("/api/server/stop", token, {})
@@ -45,11 +45,11 @@ def reuse_or_stop(url):
                 request("/api/server/info")
             except OSError:
                 return "stopped", ""
-        return "error", "旧后台尚未退出，请稍后重新打开合拍 Cojam。"
+        return "error", "旧后台尚未退出，请稍后重新打开 AnY。"
     except Exception as e:
         if getattr(e, "code", None) == 409:
-            return "error", "旧后台还有任务运行或排队。请等待任务结束，再重新打开合拍 Cojam 更新。"
-        return "error", "端口上仍有旧后台或其他程序，当前版本无法启动。请先退出原来运行的合拍 Cojam（关闭网页不会退出后台），再重新打开。不要继续在旧网页里配置接入。"
+            return "error", "旧后台还有任务运行或排队。请等待任务结束，再重新打开 AnY 更新。"
+        return "error", "端口上仍有旧后台或其他程序，当前版本无法启动。请先退出原来运行的 AnY（关闭网页不会退出后台），再重新打开。不要继续在旧网页里配置接入。"
 
 
 def show_startup_error(message):
@@ -59,7 +59,7 @@ def show_startup_error(message):
         from tkinter import messagebox
         root = tk.Tk()
         root.withdraw()
-        messagebox.showerror("合拍 Cojam 启动未完成", message, parent=root)
+        messagebox.showerror("AnY 启动未完成", message, parent=root)
         root.destroy()
     except Exception as error:
         from .common import get_logger

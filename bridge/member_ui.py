@@ -17,7 +17,7 @@ def main():
     pal.prepend_member_gui_paths()
     from . import registry
     root = tk.Tk()
-    root.title("合拍 Cojam · 加入会议室")
+    root.title("AnY · 加入会议室")
     root.geometry("650x640")
     root.minsize(500, 530)
     frame = ttk.Frame(root, padding=24)

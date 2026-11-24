@@ -14,7 +14,7 @@ DIST.mkdir(exist_ok=True)
 
 def verify_signed(path: Path) -> None:
     """Ensure a Windows release binary has a trusted Authenticode signature with timestamp."""
-    if os.environ.get('COJAM_REQUIRE_SIGNATURE') != '1':
+    if os.environ.get('ANY_REQUIRE_SIGNATURE') != '1' and os.environ.get('COJAM_REQUIRE_SIGNATURE') != '1':
         return
     if os.name != 'nt':
         raise RuntimeError('必须在 Windows 上验证正式发行包的签名')
@@ -40,15 +40,15 @@ def write_tree(archive: zipfile.ZipFile, source_dir: Path, dest_prefix: str) -> 
             archive.write(full, f'{dest_prefix}/{rel}')
 
 
-verify_signed(DIST / 'Cojam.exe')
-portable = DIST / f'Cojam-Portable-{VERSION}.exe'
-shutil.copyfile(DIST / 'Cojam.exe', portable)
+verify_signed(DIST / 'AnY.exe')
+portable = DIST / f'AnY-Portable-{VERSION}.exe'
+shutil.copyfile(DIST / 'AnY.exe', portable)
 print(portable)
-connector = DIST/('Cojam-Member-%s.zip' % VERSION)
+connector = DIST/('AnY-Member-%s.zip' % VERSION)
 shutil.copyfile(ROOT/'static'/'member-connector.zip', connector)
-target = DIST/('Cojam-%s-win64.zip' % VERSION)
+target = DIST/('AnY-%s-win64.zip' % VERSION)
 with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
-    for source, name in [('dist/Cojam.exe','Cojam.exe'),('LICENSE','LICENSE'),('packaging/README.txt','README.txt'),
+    for source, name in [('dist/AnY.exe','AnY.exe'),('LICENSE','LICENSE'),('packaging/README.txt','README.txt'),
                          ('packaging/connect-member.bat','连接其他会议室.bat'),('docs/CONTACTS.md','CONTACTS.md'),
                          ('docs/MEMBERS.md','MEMBERS.md'),('docs/PROVIDERS.md','PROVIDERS.md'),
                          ('examples/contact_client.py','contact_client.py')]:
@@ -57,19 +57,19 @@ with zipfile.ZipFile(target) as archive:
     assert archive.testzip() is None
 print(target)
 print(connector)
-desktop_exe = DIST/'CojamDesktop.exe'
+desktop_exe = DIST/'AnYDesktop.exe'
 if desktop_exe.is_file():
-    core_dir = DIST/'CojamCore'
-    core_exe = core_dir/'CojamCore.exe'
+    core_dir = DIST/'AnYCore'
+    core_exe = core_dir/'AnYCore.exe'
     internal_dir = core_dir/'_internal'
     if not core_exe.is_file() or not internal_dir.is_dir():
-        raise RuntimeError('桌面版需要先构建目录核心 dist/CojamCore/（含 CojamCore.exe 与 _internal）')
+        raise RuntimeError('桌面版需要先构建目录核心 dist/AnYCore/（含 AnYCore.exe 与 _internal）')
     verify_signed(desktop_exe)
     verify_signed(core_exe)
-    desktop = DIST/('Cojam-Desktop-%s-win64.zip' % VERSION)
+    desktop = DIST/('AnY-Desktop-%s-win64.zip' % VERSION)
     with zipfile.ZipFile(desktop, 'w', zipfile.ZIP_DEFLATED) as archive:
-        archive.write(desktop_exe, 'Cojam.exe')
-        archive.write(core_exe, 'CojamCore.exe')
+        archive.write(desktop_exe, 'AnY.exe')
+        archive.write(core_exe, 'AnYCore.exe')
         write_tree(archive, internal_dir, '_internal')
         archive.write(ROOT/'packaging'/'desktop-readme.txt', 'README.txt')
         archive.write(ROOT/'LICENSE', 'LICENSE')

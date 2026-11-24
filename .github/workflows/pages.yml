@@ -39,8 +39,8 @@ jobs:
           )
           New-Item -ItemType Directory -Force -Path _site/cli | Out-Null
           $commit = git rev-parse HEAD
-          $cliArchive = "_site/cli/cojam-cli-$commit.tar.gz"
-          git archive --format=tar.gz --prefix=Cojam-CLI/ --output=$cliArchive HEAD -- @cliSources
+          $cliArchive = "_site/cli/any-cli-$commit.tar.gz"
+          git archive --format=tar.gz --prefix=AnY-CLI/ --output=$cliArchive HEAD -- @cliSources
           if ($LASTEXITCODE -ne 0) { throw "CLI source bundle build failed" }
           @{
             commit = $commit
@@ -50,28 +50,28 @@ jobs:
           $macBundle = python packaging/build_macos_python.py
           if ($LASTEXITCODE -ne 0) { throw "macOS source bundle build failed" }
           $macArchive = Get-Item -LiteralPath $macBundle
-          if ($macArchive.Name -notmatch '^Cojam-(?<version>\d+\.\d+\.\d+)-macOS-Python\.zip$') {
+          if ($macArchive.Name -notmatch '^AnY-(?<version>\d+\.\d+\.\d+)-macOS-Python\.zip$') {
             throw "Invalid macOS archive name: $($macArchive.Name)"
           }
           @{
-            app = 'Cojam'
+            app = 'AnY'
             version = $Matches.version
             url = "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/$($macArchive.Name)"
             sha256 = (Get-FileHash -LiteralPath $macBundle -Algorithm SHA256).Hash.ToLowerInvariant()
             size = $macArchive.Length
           } | ConvertTo-Json | Set-Content _site/macos-update.json -Encoding utf8NoBOM
           Copy-Item -LiteralPath $macBundle -Destination _site/downloads/
-          Copy-Item -LiteralPath $macBundle -Destination _site/downloads/Cojam-macOS-Python.zip
+          Copy-Item -LiteralPath $macBundle -Destination _site/downloads/AnY-macOS-Python.zip
           $manifest = Get-Content website/update.json -Raw | ConvertFrom-Json
           $version = $manifest.version
           # Publish an update manifest only when its exact installer is available and verified.
           gh release view "v$version" --repo "${{ github.repository }}" --json tagName 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
             gh release download "v$version" --repo "${{ github.repository }}" `
-              --pattern "Cojam-Setup-$version.exe" --pattern "Cojam-Portable-$version.exe" `
+              --pattern "AnY-Setup-$version.exe" --pattern "AnY-Portable-$version.exe" `
               --dir _site/downloads --clobber
             if ($LASTEXITCODE -ne 0) { throw "Release downloads failed for v$version" }
-            $installer = "_site/downloads/Cojam-Setup-$version.exe"
+            $installer = "_site/downloads/AnY-Setup-$version.exe"
             if (-not (Test-Path $installer)) { throw "Installer missing from Release v$version" }
             if ((Get-Item $installer).Length -ne [long]$manifest.size -or
                 (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant() -ne $manifest.sha256.ToLowerInvariant()) {

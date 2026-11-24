@@ -6,9 +6,9 @@ async function checkConnectionBackend(signal) {
     const response = await fetch('/api/server/info', {signal});
     if (!response.ok) throw Error();
     info = await response.json();
-  } catch (e) { if (signal && signal.aborted) throw e; throw Error('无法连接合拍后台，请重新打开合拍后重试。'); }
-  if (info.app !== 'AI Bridge' || info.version !== '2.8.18' || info.api_revision !== 3)
-    throw Error('界面与后台版本不一致。请重新打开最新的合拍 Cojam，再刷新此页面。');
+  } catch (e) { if (signal && signal.aborted) throw e; throw Error('无法连接 AnY 后台，请重新打开 AnY 后重试。'); }
+  if (info.app !== 'AI Bridge' || info.version !== '2.8.19' || info.api_revision !== 3)
+    throw Error('界面与后台版本不一致。请重新打开最新的 AnY，再刷新此页面。');
   return info;
 }
 function hostFromUrl(value) {
@@ -41,10 +41,11 @@ const CONNECTION_TYPES = {
   local: ['本机 Agent', '检测这台电脑上的 Claude、Codex 或自定义 CLI，直接调用，不需要接入密钥。', uiIcon('terminal')],
   external: ['其他设备上的 Harness', '作为同一个会议室的成员，自动接收任务、回复，并互相 @。', uiIcon('device')],
   http: ['HTTP 服务', '填写你自己的 Harness 服务地址，由本应用主动调用并测试回复。', uiIcon('link')],
+  direct: ['API Key 直连', '用服务商提供的 API Key 直接参与文字讨论，无需安装命令行工具。', uiIcon('link')],
   user: ['其他用户', '生成邀请票；对方打开链接领取身份，只进指定会话。同一设备之后仍是同一个人。', uiIcon('user')]
 };
 function stopConnectionWizard() {
-  if (connectionWizard) { clearInterval(connectionWizard.timer); if (connectionWizard.controller) connectionWizard.controller.abort(); connectionWizard.token = ''; }
+  if (connectionWizard) { clearInterval(connectionWizard.timer); if (connectionWizard.controller) connectionWizard.controller.abort(); connectionWizard.token = ''; connectionWizard.form.serviceKey = ''; }
   connectionWizard = null;
 }
 function connectionModalChanged() {
@@ -192,7 +193,7 @@ function renderConnectionQrUrl(id, text) {
 async function startConnectionWizard(id, type) {
   stopConnectionWizard();
   document.body.classList.remove('nav-open');
-  const w = {seq: ++connectionSequence, step: 1, type: type || '', id: id || '', token: '', base: location.origin,
+  const w = {seq: ++connectionSequence, step: 1, type: type === 'ai' ? '' : type || '', chooseAI: type === 'ai', id: id || '', token: '', base: location.origin,
     form: {}, status: null, busy: false, permissions: {read: true, post: true, trigger: true, board: false, files: false, work: false}};
   connectionWizard = w;
   w.controller = new AbortController();
@@ -203,11 +204,18 @@ async function startConnectionWizard(id, type) {
     if (connectionWizard !== w) return;
     const contact = CONTACTS.find(a => a.id === id);
     if (contact) {
-      w.type = contact.kind === 'user' ? 'user' : contact.driver === 'external' ? 'external' : contact.driver === 'http' ? 'http' : 'local';
+      w.type = contact.http_protocol === 'openai_chat' ? 'direct' : contact.kind === 'user' ? 'user' : contact.driver === 'external' ? 'external' : contact.driver === 'http' ? 'http' : 'local';
       w.status = (agCat.connections || {})[id] || null;
       w.localChoice = id; w.saved = true; w.step = 2;
       w.permissions = {...w.permissions, ...(contact.default_permissions || {})};
-    } else if (type) w.step = 2;
+      if (w.type === 'direct') {
+        w.form.model = contact.default?.[0] || '';
+        const [ok, config] = await connectionGet('/api/agents/config?id=' + encodeURIComponent(id));
+        if (connectionWizard !== w) return;
+        if (ok) w.form.endpoint = config.values.endpoint;
+        w.directSaved = {endpoint:w.form.endpoint || '', model:w.form.model};
+      }
+    } else if (w.type) w.step = 2;
     w.info = info;
     w.base = connectionDefaultBase(w.type, info, location.origin);
     renderConnectionWizard();
@@ -234,12 +242,13 @@ function renderConnectionWizard() {
   const w = connectionWizard; if (!w) return;
   clearInterval(w.timer);
   if (w.step === 1) {
-    const choices = w.chooseAI ? ['local','external'].map(id => [id, CONNECTION_TYPES[id]]) : [
+    const aiChoices = agCat?.local_workspace === false ? ['local','external'] : ['local','direct','external'];
+    const choices = w.chooseAI ? aiChoices.map(id => [id, CONNECTION_TYPES[id]]) : [
       ['user', ['邀请其他人', '生成邀请链接，让朋友加入指定会话。', uiIcon('user')]],
-      ['ai', ['连接 AI', '连接本机程序、其他设备上的 Harness 或 HTTP 服务。', uiIcon('terminal')]],
+      ['ai', ['连接 AI', '使用本机程序、API Key 或其他设备上的 Harness。', uiIcon('terminal')]],
       ['mydevice', CONNECTION_TYPES.mydevice]
     ];
-    wizardFrame(w, '<h3>' + (w.chooseAI ? '选择 AI 的连接方式' : '谁来一起合拍？') + '</h3><p class="hint">' + (w.chooseAI ? '选择 AI 所在的位置或服务类型。' : '选择要邀请的人、AI 或自己的设备。') + '</p><div class="connection-choices">' + choices.map(([id, t]) => '<button class="connection-choice" data-connection-type="' + id + '"><span class="connection-symbol">' + t[2] + '</span><span><b>' + t[0] + '</b><small>' + t[1] + '</small></span><span>›</span></button>').join('') + '</div>' + (w.chooseAI ? '<details class="connection-advanced"><summary>高级设置</summary><button data-connection-type="http">连接自建服务</button></details><div class="btns"><button id="connChoiceBack">返回</button></div>' : ''));
+    wizardFrame(w, '<h3>' + (w.chooseAI ? '选择 AI 的连接方式' : '谁来加入 AnY 会话？') + '</h3><p class="hint">' + (w.chooseAI ? '选择 AI 所在的位置或服务类型。' : '选择要邀请的人、AI 或自己的设备。') + '</p><div class="connection-choices">' + choices.map(([id, t]) => '<button class="connection-choice" data-connection-type="' + id + '"><span class="connection-symbol">' + t[2] + '</span><span><b>' + t[0] + '</b><small>' + t[1] + '</small></span><span>›</span></button>').join('') + '</div>' + (w.chooseAI ? '<details class="connection-advanced"><summary>高级设置</summary><button data-connection-type="http">连接自建服务</button></details><div class="btns"><button id="connChoiceBack">返回</button></div>' : ''));
     if (w.chooseAI) document.getElementById('connChoiceBack').onclick = () => { w.chooseAI = false; renderConnectionWizard(); };
     mbox.querySelectorAll('[data-connection-type]').forEach(b => b.onclick = () => { if (b.dataset.connectionType === 'ai') { w.chooseAI = true; renderConnectionWizard(); return; } w.type = b.dataset.connectionType; w.base = connectionDefaultBase(w.type, w.info, location.origin); w.step = 2; renderConnectionWizard(); });
   } else if (w.step === 2) renderConnectionSetup(w);
@@ -248,7 +257,8 @@ function renderConnectionWizard() {
 }
 function connectionNameFields(w) {
   if (w.saved) return '<div class="connection-identity"><b>' + esc((connectionContact(w) || {}).label || w.id) + '</b><small>@' + esc(w.id) + '</small></div>';
-  return '<label>联系人名称<input id="connName" maxlength="40" placeholder="例如：我的 Harness" value="' + esc(w.form.label || '') + '"></label><details class="connection-advanced"><summary>高级：自定义联系人 ID</summary><input id="connId" maxlength="24" placeholder="留空自动生成，小写英文和数字" value="' + esc(w.form.id || '') + '"></details>';
+  const direct = w.type === 'direct';
+  return '<label>联系人名称' + (direct ? '（可选）' : '') + '<input id="connName" maxlength="40" placeholder="' + (direct ? '留空使用模型名称' : '例如：我的 Harness') + '" value="' + esc(w.form.label || '') + '"></label><details class="connection-advanced"><summary>高级：自定义联系人 ID</summary><input id="connId" maxlength="24" placeholder="留空自动生成，小写英文和数字" value="' + esc(w.form.id || '') + '"></details>';
 }
 function connectionArgsMarkup(w) {
   const values = Array.isArray(w.form.args) ? w.form.args : w.form.localDriver === 'acp' ? ['acp'] : ['-p','{prompt}'];
@@ -282,10 +292,17 @@ function renderConnectionSetup(w) {
       w.localChoice = (local[0] || {}).id || '__custom__';
       w.id = ''; w.saved = false; w.status = null;
     }
-    content += '<p class="hint">自动检测运行合拍的设备上的程序；安装或卸载后可重新检索，也可打开「本机 Agent 扫描」一键连接。</p><label>选择程序<select id="connLocal">' + local.map(a => '<option value="' + esc(a.id) + '"' + (w.localChoice === a.id ? ' selected' : '') + '>' + esc(a.label) + ' · 已检测到</option>').join('') + '<option value="__custom__"' + (w.localChoice === '__custom__' ? ' selected' : '') + '>其他程序…</option></select></label><div class="btns" style="justify-content:flex-start;margin:6px 0"><button id="connRescan" type="button">重新检索已安装程序</button><button id="connOpenScan" type="button">查找其他 AI</button></div>' + (outside.length ? '<p class="hint">已检测到桌面应用。选择配置接入；桌面应用本身不能由会议室直接调用。</p>' + outside.map(a => '<button type="button" data-external-agent="' + esc(a.id) + '">配置 ' + esc(a.label) + '</button>').join('') : '') + '<details class="connection-advanced" id="connCustom"' + (w.localChoice === '__custom__' ? '' : ' hidden') + '><summary>高级设置</summary>' + connectionNameFields(w.localChoice === '__custom__' ? w : {...w, saved: false}) + '<label>协议类型<select id="connLocalDriver"><option value="cli"' + (w.form.localDriver !== 'acp' ? ' selected' : '') + '>无头命令行 (CLI)</option><option value="acp"' + (w.form.localDriver === 'acp' ? ' selected' : '') + '>ACP 协议 (Agent Client Protocol)</option></select></label><label>命令或可执行文件路径<input id="connCommand" placeholder="my-agent 或完整程序路径" value="' + esc(w.form.command || '') + '"></label><h4>调用参数</h4><p class="hint">每个参数单独添加，不需要引号或配置文件。</p><div id="connArgs">' + connectionArgsMarkup(w) + '</div></details><button id="connCheck" class="pri">检测并验证程序</button><p class="hint">检查程序是否可用；登录和模型权限将在首次回复时确认。</p>';
+    content += '<p class="hint">自动检测运行 AnY 的设备上的程序；安装或卸载后可重新检索，也可打开「本机 Agent 扫描」一键连接。</p><label>选择程序<select id="connLocal">' + local.map(a => '<option value="' + esc(a.id) + '"' + (w.localChoice === a.id ? ' selected' : '') + '>' + esc(a.label) + ' · 已检测到</option>').join('') + '<option value="__custom__"' + (w.localChoice === '__custom__' ? ' selected' : '') + '>其他程序…</option></select></label><div class="btns" style="justify-content:flex-start;margin:6px 0"><button id="connRescan" type="button">重新检索已安装程序</button><button id="connOpenScan" type="button">查找其他 AI</button></div>' + (outside.length ? '<p class="hint">已检测到桌面应用。选择配置接入；桌面应用本身不能由会议室直接调用。</p>' + outside.map(a => '<button type="button" data-external-agent="' + esc(a.id) + '">配置 ' + esc(a.label) + '</button>').join('') : '') + '<details class="connection-advanced" id="connCustom"' + (w.localChoice === '__custom__' ? '' : ' hidden') + '><summary>高级设置</summary>' + connectionNameFields(w.localChoice === '__custom__' ? w : {...w, saved: false}) + '<label>协议类型<select id="connLocalDriver"><option value="cli"' + (w.form.localDriver !== 'acp' ? ' selected' : '') + '>无头命令行 (CLI)</option><option value="acp"' + (w.form.localDriver === 'acp' ? ' selected' : '') + '>ACP 协议 (Agent Client Protocol)</option></select></label><label>命令或可执行文件路径<input id="connCommand" placeholder="my-agent 或完整程序路径" value="' + esc(w.form.command || '') + '"></label><h4>调用参数</h4><p class="hint">每个参数单独添加，不需要引号或配置文件。</p><div id="connArgs">' + connectionArgsMarkup(w) + '</div></details><button id="connCheck" class="pri">检测并验证程序</button><p class="hint">检查程序是否可用；登录和模型权限将在首次回复时确认。</p>';
   } else {
     content += connectionNameFields(w);
-    if (w.type === 'http') {
+    if (w.type === 'direct') {
+      const remote = agCat.local_workspace === false;
+      content += remote ? '<p class="hint">请在运行 AnY 的设备上修改模型连接和 API Key。</p>' :
+        '<label>模型服务地址<input id="connEndpoint" type="url" placeholder="https://api.openai.com/v1" value="' + esc(w.form.endpoint || '') + '"></label>'
+        + '<label>模型名称<input id="connModelName" maxlength="200" placeholder="服务商提供的模型 ID" value="' + esc(w.form.model || '') + '"></label>'
+        + '<label>API Key<input id="connServiceKey" type="password" autocomplete="off" placeholder="' + (w.saved ? '留空使用已保存的 Key' : '粘贴服务商提供的 Key') + '"></label>';
+      content += '<p class="hint">这是文字模型。测试会发一句短消息，可能使用少量额度。加入会话后，讨论文字会发送给该服务商。</p><button id="connCheck" class="pri">测试模型回复</button>';
+    } else if (w.type === 'http') {
       content += w.saved ? '<p class="hint">使用此联系人已保存的回调地址和服务密钥。</p>' : '<label>Harness 回调地址<input id="connEndpoint" placeholder="http://127.0.0.1:9100/bridge" value="' + esc(w.form.endpoint || '') + '"></label><label>服务密钥（可选）<input id="connServiceKey" type="password" autocomplete="off" value="' + esc(w.form.serviceKey || '') + '"></label>';
       content += '<p class="hint">测试会向服务发送一条只需简短回复的验证消息，可能消耗少量模型额度，不授予工具或文件权限。</p><button id="connCheck" class="pri">测试连接与回复</button><details class="connection-advanced"><summary>查看服务需要实现的协议</summary><p>接收 POST JSON，其中包含 prompt、speaker、mode、permissions。返回 <code>{"text":"连接成功"}</code>。</p></details>';
     } else {
@@ -298,10 +315,10 @@ function renderConnectionSetup(w) {
   } else if (w.type === 'user') {
     content += '<div class="btns connection-actions"><button id="connBack">更换接入方式</button><button id="connNext" class="pri">完成</button></div>';
   } else {
-    content += '<div id="connEvidence" class="connection-evidence" aria-live="polite"></div><div class="btns connection-actions"><button id="connBack">更换接入方式</button><button id="connLater">稍后验证，先分配会话</button><button id="connNext" class="pri" disabled>下一步：会话与权限</button></div>';
+    content += '<div id="connEvidence" class="connection-evidence" aria-live="polite"></div><div class="btns connection-actions"><button id="connBack">更换接入方式</button>' + (w.type === 'direct' ? '' : '<button id="connLater">稍后验证，先分配会话</button>') + '<button id="connNext" class="pri" disabled>下一步：会话与权限</button></div>';
   }
   wizardFrame(w, content);
-  document.getElementById('connBack').onclick = () => startConnectionWizard();
+  document.getElementById('connBack').onclick = () => startConnectionWizard('', w.chooseAI ? 'ai' : '');
   if (document.getElementById('connLater')) document.getElementById('connLater').onclick = () => advanceConnection(w);
   document.getElementById('connNext').onclick = () => advanceConnection(w);
   if (w.type === 'mydevice') {
@@ -348,8 +365,15 @@ function renderConnectionSetup(w) {
     const selected = [...CONTACTS, ...(agCat.discovered_presets || [])].find(a => a.id === w.localChoice);
     const help = document.createElement('p');
     help.id = 'connProgramHelp'; help.className = 'hint';
-    help.textContent = !localAgentChoices().length ? '没有检测到可调用的 CLI。安装后点“重新检索”，或填写完整程序路径。' : selected ? '已检测到 ' + selected.label + '。检查程序启动后，即可选择加入的会话。' : '';
+    const noLocalProgram = !localAgentChoices().length;
+    help.textContent = noLocalProgram ? '还没找到能直接调用的 AI 程序。按官方指引安装并登录后，回到这里重新检索。' : selected ? '已检测到 ' + selected.label + '。检查程序启动后，即可选择加入的会话。' : '';
     document.getElementById('connLocal').parentElement.after(help);
+    if (noLocalProgram) {
+      help.insertAdjacentHTML('afterend', '<ul class="connection-instructions" aria-label="安装和登录指引">'
+        + '<li><a href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">安装并登录 Codex CLI</a></li>'
+        + '<li><a href="https://code.claude.com/docs/en/quickstart" target="_blank" rel="noopener noreferrer">安装并登录 Claude Code</a></li>'
+        + '<li><a href="https://opencode.ai/docs/" target="_blank" rel="noopener noreferrer">安装并配置 OpenCode CLI</a></li></ul>');
+    }
     document.getElementById('connLocal').onchange = async e => {
       if (w.busy) return;
       w.localChoice = e.target.value; w.id = w.localChoice === '__custom__' ? '' : w.localChoice;
@@ -376,6 +400,12 @@ function renderConnectionSetup(w) {
     };
   }
   const check = document.getElementById('connCheck'); if (check) check.onclick = () => checkConnection(w);
+  if (w.type === 'direct') {
+    for (const id of ['connEndpoint','connModelName','connServiceKey']) {
+      const input = document.getElementById(id);
+      if (input) input.oninput = () => updateConnectionEvidence(w);
+    }
+  }
   const generate = document.getElementById('connGenerate'); if (generate) generate.onclick = () => generateConnection(w);
   const revoke = document.getElementById('connRevoke'); if (revoke) revoke.onclick = async () => {
     if (w.busy || !confirm('撤销后，此联系人的现有密钥和邀请立即失效，继续？')) return;
@@ -396,7 +426,7 @@ function localAgentChoices() {
 }
 function captureConnectionForm(w) {
   const value = id => { const e = document.getElementById(id); return e ? e.value.trim() : undefined; };
-  for (const [field, id] of Object.entries({label:'connName', id:'connId', localDriver:'connLocalDriver', command:'connCommand', endpoint:'connEndpoint', serviceKey:'connServiceKey', deviceName:'connDeviceName'})) {
+  for (const [field, id] of Object.entries({label:'connName', id:'connId', localDriver:'connLocalDriver', command:'connCommand', endpoint:'connEndpoint', model:'connModelName', serviceKey:'connServiceKey', deviceName:'connDeviceName'})) {
     const v = value(id); if (v !== undefined) w.form[field] = v;
   }
   const args = document.getElementById('connArgs');
@@ -406,11 +436,19 @@ function captureConnectionForm(w) {
 }
 async function saveConnectionContact(w) {
   captureConnectionForm(w);
-  if (w.saved) return;
+  if (w.saved && w.type !== 'direct') return;
+  if (w.saved && !w.form.serviceKey) {
+    if ((w.form.endpoint || '') !== w.directSaved.endpoint || w.form.model !== w.directSaved.model) {
+      throw Error('修改服务地址或模型时，请重新填写 API Key');
+    }
+    return;
+  }
+  if (w.saved) w.form.label = (connectionContact(w) || {}).label;
+  if (w.type === 'direct' && !w.form.label) w.form.label = (w.form.model || '').slice(0, 40);
   if (!w.form.label) throw Error('请填写联系人名称');
-  const prefix = w.type === 'user' ? 'person' : w.type === 'local' ? 'agent' : 'harness';
-  const id = w.form.id || prefix + '-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
-  if (CONTACTS.some(a => a.id === id)) throw Error('此联系人 ID 已存在，请换一个或从联系人列表继续接入');
+  const prefix = w.type === 'user' ? 'person' : w.type === 'local' ? 'agent' : w.type === 'direct' ? 'model' : 'harness';
+  const id = w.saved ? w.id : w.form.id || prefix + '-' + crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+  if (!w.saved && CONTACTS.some(a => a.id === id)) throw Error('此联系人 ID 已存在，请换一个或从联系人列表继续接入');
   const localDrv = w.form.localDriver === 'acp' ? 'acp' : 'cli';
   const spec = {id, label: w.form.label, kind: w.type === 'user' ? 'user' : 'agent', driver: ['user','external'].includes(w.type) ? 'external' : w.type === 'local' ? localDrv : 'http', enabled: true};
   if (w.type === 'local') {
@@ -420,7 +458,18 @@ async function saveConnectionContact(w) {
     spec.bin = [w.form.command]; spec.args = localDrv === 'acp' ? {acp: args} : {base: args}; spec.context = 'full'; delete spec.enabled;
   }
   if (w.type === 'http') { const u = new URL(w.form.endpoint); if (!['http:','https:'].includes(u.protocol)) throw Error('回调地址必须以 http:// 或 https:// 开头'); spec.endpoint = w.form.endpoint; spec.token = w.form.serviceKey || ''; }
+  if (w.type === 'direct') {
+    if (!w.form.endpoint || !w.form.model || !w.form.serviceKey) throw Error('请填写模型服务地址、模型名称和 API Key');
+    Object.assign(spec, {http_protocol:'openai_chat', endpoint:w.form.endpoint, token:w.form.serviceKey, default:[w.form.model, '']});
+  }
   const [ok, j] = await post('/api/agents/add', {spec}); if (!ok) throw Error(j.error || '联系人保存失败');
+  if (w.type === 'direct') {
+    w.directSaved = {endpoint:w.form.endpoint, model:w.form.model};
+    w.status = null;
+    w.form.serviceKey = '';
+    const input = wizardCurrent(w) && document.getElementById('connServiceKey');
+    if (input) input.value = '';
+  }
   w.id = id; w.saved = true; await refreshContacts();
 }
 function setConnectionBusy(w, busy) {
@@ -439,7 +488,7 @@ async function checkConnection(w) {
       await refreshContacts();
     }
     await saveConnectionContact(w); if (!wizardCurrent(w)) return;
-    const box = document.getElementById('connEvidence'); box.textContent = w.type === 'http' ? '正在等待服务回复…' : '正在验证程序能否启动…';
+    const box = document.getElementById('connEvidence'); box.textContent = ['http','direct'].includes(w.type) ? '正在等待服务回复…' : '正在验证程序能否启动…';
     const [ok, j] = await post('/api/contacts/check', {id: w.id}); if (!ok) throw Error(j.error || '验证失败');
     if (!wizardCurrent(w)) return; w.status = j.connection;
     await refreshContacts(); if (!wizardCurrent(w)) return;
@@ -452,7 +501,11 @@ function updateConnectionEvidence(w) {
   const member = w.member || (agCat.members || {})[w.id];
   if (member && member.standby) status = {state:'connected', label:'MCP 待命中', detail:'已在软件内开启待命模式（'+member.device+'）。在会话中 @ 它即可派发任务。执行端按会话选择；离线后需手动切回本机程序。'};
   else if (w.type === 'external' && member && member.automatic) status = {state:'connected', label:'自动响应已连接', detail:'成员设备：'+member.device+'。被 @ 后会自动处理并回复原会话。'};
-  else if (w.type === 'external' && status.state === 'connected') status = {...status, label:'消息通道已连接', detail:'可以手动参与；在该软件里输入 /cojam_standby 或开启成员连接端后，才能自动响应会议室任务。'};
+  else if (w.type === 'external' && status.state === 'connected') status = {...status, label:'消息通道已连接', detail:'可以手动参与；在该软件里输入 /any_standby 或开启成员连接端后，才能自动响应会议室任务。'};
+  const address = document.getElementById('connEndpoint');
+  const dirtyDirect = w.type === 'direct' && address && w.directSaved && (address.value.trim() !== w.directSaved.endpoint
+    || document.getElementById('connModelName').value.trim() !== w.directSaved.model || !!document.getElementById('connServiceKey').value.trim());
+  if (dirtyDirect) status = {state:'unchecked', label:'设置已改动，请重新测试'};
   const good = ['ready','connected'].includes(status.state) && !(w.type === 'external' && w.memberMode !== 'manual' && !(member && member.automatic));
   const extraBtns = [];
   if (member && member.standby) extraBtns.push('<button type="button" id="connStopStandby">停止待命</button>');
@@ -620,13 +673,13 @@ function connectionConfiguration(w) {
 function renderConnectionCredentials(w) {
   const box = document.getElementById('connCredentials'); if (!box || !w.token) return;
   if (w.memberMode !== 'manual') {
-    box.innerHTML = '<ol class="connection-instructions"><li>下载下方的成员连接端和连接配置，通过可信渠道把两个文件发给朋友。</li><li>朋友解压连接端：Windows 双击 start-member.bat；Mac 双击 start-member.command（需要 Python 3.11 和 Tk）。</li><li>朋友导入连接配置，选择自己电脑上的 Harness 和工作文件夹，点击「连接并开启自动响应」。</li><li>这里显示「自动响应已连接」后，选择会话与权限。成员随后能接收任务、回复和互相 @。</li></ol><p><a href="/static/member-connector.zip" download="Cojam-Member.zip">下载成员连接端（Windows / macOS 源码包）</a></p><button id="connDownloadMember" class="pri">下载此成员的连接配置</button><button id="connCopyMember">复制连接配置</button><p class="hint">连接配置含成员密钥，只发给对应朋友，不要公开。跨网络需要朋友能够访问上面的地址；不会自动组网，也无需开放朋友电脑的入站端口。</p>';
+    box.innerHTML = '<ol class="connection-instructions"><li>下载下方的成员连接端和连接配置，通过可信渠道把两个文件发给朋友。</li><li>朋友解压连接端：Windows 双击 start-member.bat；Mac 双击 start-member.command（需要 Python 3.11 和 Tk）。</li><li>朋友导入连接配置，选择自己电脑上的 Harness 和工作文件夹，点击「连接并开启自动响应」。</li><li>这里显示「自动响应已连接」后，选择会话与权限。成员随后能接收任务、回复和互相 @。</li></ol><p><a href="/static/member-connector.zip" download="AnY-Member.zip">下载成员连接端（Windows / macOS 源码包）</a></p><button id="connDownloadMember" class="pri">下载此成员的连接配置</button><button id="connCopyMember">复制连接配置</button><p class="hint">连接配置含成员密钥，只发给对应朋友，不要公开。跨网络需要朋友能够访问上面的地址；不会自动组网，也无需开放朋友电脑的入站端口。</p>';
     const profile = JSON.stringify({protocol:1, server:w.base, key:w.token, member:w.id},null,2);
     document.getElementById('connCopyMember').onclick = () => copyText(profile);
     document.getElementById('connDownloadMember').onclick = () => { const url=URL.createObjectURL(new Blob([profile],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ai-bridge-'+w.id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); };
   } else {
     const host = ((agCat && agCat.hosts) || []).find(h => h.id === w.host);
-    box.innerHTML = '<ol class="connection-instructions"><li>在对方软件中添加合拍连接。</li><li>完成后重新加载连接；本页会自动确认状态。</li></ol>' + (host && host.present && w.base === location.origin ? '<button id="connInstall">连接 ' + esc(host.label) + '</button>' : '') + '<details class="connection-advanced"><summary>高级设置</summary><p>需要手动配置时，将以下内容填入对方软件的 MCP 设置。</p><pre id="connMcpConfig"></pre><button id="connCopyConfig">复制连接配置</button><p>请求头：Authorization: Bearer &lt;密钥&gt;</p><input id="connRawKey" readonly aria-label="联系人接入密钥"><button id="connCopyKey">复制密钥</button><pre id="connHttpExample"></pre></details>';
+    box.innerHTML = '<ol class="connection-instructions"><li>在对方软件中添加 AnY 连接。</li><li>完成后重新加载连接；本页会自动确认状态。</li></ol>' + (host && host.present && w.base === location.origin ? '<button id="connInstall">连接 ' + esc(host.label) + '</button>' : '') + '<details class="connection-advanced"><summary>高级设置</summary><p>需要手动配置时，将以下内容填入对方软件的 MCP 设置。</p><pre id="connMcpConfig"></pre><button id="connCopyConfig">复制连接配置</button><p>请求头：Authorization: Bearer &lt;密钥&gt;</p><input id="connRawKey" readonly aria-label="联系人接入密钥"><button id="connCopyKey">复制密钥</button><pre id="connHttpExample"></pre></details>';
     document.getElementById('connMcpConfig').textContent = connectionConfiguration(w);
     document.getElementById('connRawKey').value = w.token;
     document.getElementById('connHttpExample').textContent = 'GET ' + w.base + '/api/external/rooms\nGET ' + w.base + '/api/external/messages?room=<会话 ID>&since=0\nPOST ' + w.base + '/api/post\n{"room":"会话 ID","text":"消息"}\n\n先请求 /api/external/rooms 即可确认连接；受邀会话会在分配后出现。';
@@ -656,6 +709,7 @@ async function advanceConnection(w) {
   finally { if (wizardCurrent(w)) setConnectionBusy(w, false); }
 }
 function renderPermissionChoices(w) {
+  if (w.type === 'direct') return '<p class="hint">这个模型只参与房间文字讨论。</p>';
   if (typeof PERM_GROUPS !== 'undefined' && typeof groupPermValue === 'function') {
     return PERM_GROUPS.map(g => '<label><input type="checkbox" data-connection-permission-group="' + g.id + '"' + (groupPermValue(w.permissions, g) ? ' checked' : '') + '><span>' + esc(g.label) + '<small class="perm-sub">' + esc(g.hint) + '</small></span></label>').join('');
   }
@@ -689,7 +743,9 @@ async function updateConnectionAssignment(w) {
 async function assignConnection(w) {
   if (w.busy) return;
   const groupBoxes = [...mbox.querySelectorAll('[data-connection-permission-group]')];
-  if (groupBoxes.length && typeof expandGroupedPerms === 'function') {
+  if (w.type === 'direct') {
+    w.permissions = {read:true,post:true,trigger:false,board:false,files:false,work:false};
+  } else if (groupBoxes.length && typeof expandGroupedPerms === 'function') {
     w.permissions = expandGroupedPerms(Object.fromEntries(groupBoxes.map(i => [i.dataset.connectionPermissionGroup, i.checked])));
   } else {
     w.permissions = Object.fromEntries([...mbox.querySelectorAll('[data-connection-permission]')].map(i => [i.dataset.connectionPermission, i.checked]));
@@ -761,7 +817,7 @@ function renderDiscoveryModal(disc) {
       + (item.level === 'unsupported' ? '<span class="hint">暂不支持接入</span>' : '');
     return '<div class="disc-row agent-room-row"><div><b>'+esc(item.label)+'</b> <small>@'+esc(item.id)+'</small><p class="hint">'+esc(label)+'</p><small>'+esc(item.exe || item.desktop_path || '')+'</small></div><div class="btns">'+actions+'</div></div>';
   }).join('');
-  showModal('<div id="discoveryModal"><div class="connection-heading"><span class="eyebrow">本机 Agent 自动发现</span><button id="discClose" aria-label="关闭">×</button></div><h3>在这台电脑上发现 '+detected.length+' 个 Agent</h3><p class="hint">CLI 走直连；桌面配置 MCP 后开启 /cojam_standby，以真实心跳保持接入。扫描只提供候选程序，所有修改均进入同一个 Agent 设置页。</p>'+rows+'<p id="discError" role="alert"></p><div class="btns"><button id="discRescan">重新扫描</button><button id="discManual">手动添加</button><button id="discDone" class="pri">完成</button></div></div>');
+  showModal('<div id="discoveryModal"><div class="connection-heading"><span class="eyebrow">本机 Agent 自动发现</span><button id="discClose" aria-label="关闭">×</button></div><h3>在这台电脑上发现 '+detected.length+' 个 Agent</h3><p class="hint">CLI 走直连；桌面配置 MCP 后开启 /any_standby，以真实心跳保持接入。扫描只提供候选程序，所有修改均进入同一个 Agent 设置页。</p>'+rows+'<p id="discError" role="alert"></p><div class="btns"><button id="discRescan">重新扫描</button><button id="discManual">手动添加</button><button id="discDone" class="pri">完成</button></div></div>');
   const current = document.getElementById('discoveryModal');
   document.getElementById('discClose').onclick = hideModal;
   document.getElementById('discDone').onclick = hideModal;
@@ -800,9 +856,9 @@ async function openConnectionSettingsModal(contactId = '') {
     }
     return '<label>' + esc(f.label) + ' <small class="hint">(' + f.min + '–' + f.max + '，默认 ' + f.default + ')</small><input type="number" data-hb-field="' + k + '" min="' + f.min + '" max="' + f.max + '" value="' + esc(current[k]) + '"></label>';
   }).join('');
-  showModal('<div id="connSettingsModal"><div class="connection-heading"><span class="eyebrow">Cojam 统一管控</span><button id="hbClose" aria-label="关闭">×</button></div>'
+  showModal('<div id="connSettingsModal"><div class="connection-heading"><span class="eyebrow">AnY 统一管控</span><button id="hbClose" aria-label="关闭">×</button></div>'
     + '<h3>' + (pid ? '联系人心跳与超时设置（@' + esc(pid) + '）' : '全局连接与心跳设置') + '</h3>'
-    + '<p class="hint">所有参数保存在 Cojam 端并自动下发给成员连接端、MCP 待命端和本机常驻进程，正在运行的连接端会在下一次心跳时自动同步。</p>'
+    + '<p class="hint">所有参数保存在 AnY 端并自动下发给成员连接端、MCP 待命端和本机常驻进程，正在运行的连接端会在下一次心跳时自动同步。</p>'
     + (pid ? '<p class="hint">' + (hasOverride ? '当前使用此联系人的独立覆盖配置。' : '当前继承全局默认设置；保存后将仅对此联系人单独生效。') + '</p>' : '')
     + '<div class="hb-grid">' + inputsHtml + '</div>'
     + '<p id="hbError" role="alert"></p>'

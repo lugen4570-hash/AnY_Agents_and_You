@@ -1,12 +1,13 @@
-// Cojam Harness UI (M2 + M3):
+// AnY Harness UI (M2 + M3):
 // - Theme (system / light / dark) and Language (auto / zh-CN / en)
 // - Composer bar (mode, target-aware model chip + popover, extensions shortcut, / skill menu)
 // - Right inspector 3-tab controller (Agents / Board / Output) with inline session tools
 // - Global Settings center (General / Agents & Connections / Extensions / About & Updates)
 (function (root) {
-  const THEME_KEY = 'cojam_theme';
-  const LANG_KEY = 'cojam_lang';
-  const SIDE_TAB_KEY = 'cojam_side_tab';
+  const THEME_KEY = 'any_theme';
+  const LANG_KEY = 'any_lang';
+  const SIDE_TAB_KEY = 'any_side_tab';
+  const LEGACY_KEYS = { any_theme: 'cojam_theme', any_lang: 'cojam_lang', any_side_tab: 'cojam_side_tab' };
 
   const I18N = {
     'zh-CN': {
@@ -17,6 +18,7 @@
       'side.tabAgents': '成员',
       'side.tabBoard': '看板',
       'side.tabOutput': '产出',
+      'side.tabChanges': '改动',
       'mode.discuss': '讨论模式',
       'mode.work': '干活模式',
       'composer.model': '模型',
@@ -59,6 +61,30 @@
       'ext.scopeUser': '个人',
       'ext.scopeProject': '项目',
       'ext.scopeHost': '宿主',
+      'onboard.title': '开始第一场协作',
+      'onboard.subtitle': '接入 AI，在这个房间测试回复，再开始协作。',
+      'onboard.step1Title': '接入 AI',
+      'onboard.step1Empty': '当前会话还没有 AI 成员。扫描或连接本机已有 CLI / 桌面端即可开聊。',
+      'onboard.step1Ready': '已接入 {n} 位 AI 成员：',
+      'onboard.addAi': '接入 AI',
+      'onboard.addMoreAi': '接入更多 AI',
+      'onboard.manageMembers': '管理本会话成员',
+      'onboard.pickFromContacts': '从已有联系人拉入',
+      'onboard.step2Title': '实测真实回复',
+      'onboard.step2NeedAi': '先完成第 1 步接入至少一位 AI，再在房间内发送测试消息验证真实回复。',
+      'onboard.step2Desc': '直接通过当前房间发送一句短测试（含 Claude / Codex 真实链路），确认成员都能正常回复。',
+      'onboard.sendTest': '发送测试消息验证',
+      'onboard.fillTest': '填入输入框',
+      'onboard.step3Title': '发第一条消息',
+      'onboard.step3Desc': '点击下方常用开场白快速填入输入框，或直接在底部输入你的任务：',
+      'onboard.defaultTestPrompt': '请简短回复一句「已就绪」，确认我们可以开始协作。',
+      'verify.runningTitle': '正在验证真实回复（{done}/{total}）',
+      'verify.doneTitle': '全部 {total} 位 AI 已成功回复，可以开始协作！',
+      'verify.replied': '已回复',
+      'verify.running': '回复中…',
+      'verify.waiting': '等待回复',
+      'verify.failed': '失败',
+      'verify.dismiss': '关闭',
     },
     en: {
       'nav.settings': 'Settings',
@@ -68,6 +94,7 @@
       'side.tabAgents': 'Agents',
       'side.tabBoard': 'Board',
       'side.tabOutput': 'Output',
+      'side.tabChanges': 'Changes',
       'mode.discuss': 'Discuss',
       'mode.work': 'Work',
       'composer.model': 'Models',
@@ -110,11 +137,40 @@
       'ext.scopeUser': 'User',
       'ext.scopeProject': 'Project',
       'ext.scopeHost': 'Host',
+      'onboard.title': 'Start Your First Session',
+      'onboard.subtitle': 'Connect AI members and test their replies in this room.',
+      'onboard.step1Title': 'Connect AI',
+      'onboard.step1Empty': 'No AI members in this room yet. Scan or connect a local CLI or desktop agent.',
+      'onboard.step1Ready': '{n} AI member(s) connected:',
+      'onboard.addAi': 'Connect AI',
+      'onboard.addMoreAi': 'Connect More AI',
+      'onboard.manageMembers': 'Manage Room Members',
+      'onboard.pickFromContacts': 'Add from Contacts',
+      'onboard.step2Title': 'Verify Real Reply',
+      'onboard.step2NeedAi': 'Connect at least one AI in Step 1, then send a test message here to verify real replies.',
+      'onboard.step2Desc': 'Send a short test message directly through this room (verifies Claude / Codex end-to-end).',
+      'onboard.sendTest': 'Send Test & Verify',
+      'onboard.fillTest': 'Fill Composer',
+      'onboard.step3Title': 'Send First Message',
+      'onboard.step3Desc': 'Pick a starter prompt or type your task below:',
+      'onboard.defaultTestPrompt': 'Please reply briefly with "Ready" to confirm we can start collaborating.',
+      'verify.runningTitle': 'Verifying real replies ({done}/{total})',
+      'verify.doneTitle': 'All {total} AI(s) replied successfully — ready to collaborate!',
+      'verify.replied': 'Replied',
+      'verify.running': 'Replying…',
+      'verify.waiting': 'Waiting',
+      'verify.failed': 'Failed',
+      'verify.dismiss': 'Dismiss',
     },
   };
 
   function safeStorageGet(key, fallback) {
-    try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+    try {
+      const val = localStorage.getItem(key);
+      if (val) return val;
+      const legacy = LEGACY_KEYS[key] ? localStorage.getItem(LEGACY_KEYS[key]) : '';
+      return legacy || fallback;
+    } catch (e) { return fallback; }
   }
   function safeStorageSet(key, val) {
     try { localStorage.setItem(key, val); } catch (e) {}
@@ -344,17 +400,220 @@
   const SLASH_COMMANDS = [
     {
       name: 'compact',
-      aliases: [],
+      aliases: ['压缩'],
+      argsHint: '[@成员]',
+      fillArgs: false,
       desc: '压缩上下文（只记要点；可填 @成员 或 /compact 成员）',
-      descEn: 'Compact context (optionally specify @agent)',
+      descEn: 'Compact context (optionally @agent)',
     },
     {
       name: 'skills',
-      aliases: ['skill'],
+      aliases: ['skill', '技能'],
+      argsHint: '[@成员]',
+      fillArgs: false,
       desc: '配置本会话技能、MCP 与插件',
       descEn: 'Configure session skills, MCP & plugins',
     },
+    {
+      name: 'mode',
+      aliases: ['模式'],
+      argsHint: '[discuss|work]',
+      fillArgs: false,
+      desc: '切换只读讨论模式或允许改文件的干活模式',
+      descEn: 'Switch discuss/work mode (/mode work or discuss)',
+    },
+    {
+      name: 'model',
+      aliases: ['模型'],
+      argsHint: '[@成员]',
+      fillArgs: false,
+      desc: '调整当前成员模型与思考强度',
+      descEn: 'Choose model and reasoning effort',
+    },
+    {
+      name: 'stop',
+      aliases: ['停'],
+      argsHint: '[@成员]',
+      fillArgs: false,
+      desc: '立即打断正在回复或排队的 AI（默认全停）',
+      descEn: 'Stop running/queued agent replies',
+    },
+    {
+      name: 'debate',
+      aliases: ['论道'],
+      argsHint: '[议题]',
+      fillArgs: false,
+      desc: '发起多轮 AI 轮流论道并总结',
+      descEn: 'Start multi-round agent debate',
+    },
+    {
+      name: 'debate-continue',
+      aliases: ['继续论道'],
+      argsHint: '[补充意见]',
+      fillArgs: false,
+      desc: '补充意见，继续上一场论道',
+      descEn: 'Continue the previous debate with feedback',
+    },
+    {
+      name: 'debate-finish',
+      aliases: ['finish', '总结论道'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '结束当前论道并请主持人总结收尾',
+      descEn: 'Finish active debate and summarize',
+    },
+    {
+      name: 'wrapup',
+      aliases: ['落盘'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '整理会议结论落盘并提交',
+      descEn: 'Wrap up session conclusions to docs/git',
+    },
+    {
+      name: 'status',
+      aliases: ['状态'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '打开右侧详情查看目录、文件护栏与上下文用量',
+      descEn: 'Show workspace, file locks & context details',
+    },
+    {
+      name: 'agents',
+      aliases: ['成员'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '管理本场会话成员与权限开关',
+      descEn: 'Manage session members and permissions',
+    },
+    {
+      name: 'scan',
+      aliases: ['扫描'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '重新扫描本机安装的 CLI 与桌面端 Harness',
+      descEn: 'Scan local installed CLI and desktop harnesses',
+    },
+    {
+      name: 'connect',
+      aliases: ['接入', '连接'],
+      argsHint: '[@成员]',
+      fillArgs: false,
+      desc: '配置 Agent 接入方式、MCP 与参数设置',
+      descEn: 'Configure agent connections and settings',
+    },
+    {
+      name: 'invite',
+      aliases: ['邀请'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '新增 AI 成员、手机设备或邀请他人旁听',
+      descEn: 'Add agent, device or invite participant',
+    },
+    {
+      name: 'handoff',
+      aliases: ['交终端'],
+      argsHint: '@成员',
+      fillArgs: true,
+      desc: '将本机 AI 会话交给原生终端继续操作',
+      descEn: 'Hand off native session to terminal',
+    },
+    {
+      name: 'return',
+      aliases: ['收回'],
+      argsHint: '@成员',
+      fillArgs: true,
+      desc: '从终端收回已交出的 AI 会话控制权',
+      descEn: 'Return session from terminal to room',
+    },
+    {
+      name: 'announce',
+      aliases: ['目标', '公告'],
+      argsHint: '[内容]',
+      fillArgs: false,
+      desc: '设置或编辑本场会议的目标公告',
+      descEn: 'Set or edit meeting goal/announcement',
+    },
+    {
+      name: 'todo',
+      aliases: ['待办'],
+      argsHint: '内容',
+      fillArgs: true,
+      desc: '向当前会话看板新增一条待办（/todo 内容）',
+      descEn: 'Add todo item to board (/todo text)',
+    },
+    {
+      name: 'done',
+      aliases: ['完成'],
+      argsHint: '#编号',
+      fillArgs: true,
+      desc: '标记看板中的 #编号 待办为已完成',
+      descEn: 'Mark board todo #id as done (/done #id)',
+    },
+    {
+      name: 'undo',
+      aliases: ['撤回'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '预览并按步撤回最近一次干活文件修改',
+      descEn: 'Preview and undo latest edit step',
+    },
+    {
+      name: 'new',
+      aliases: ['新建'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '在当前项目下新建一场会话',
+      descEn: 'Create a new session in current project',
+    },
+    {
+      name: 'resume',
+      aliases: ['会话列表', '切换'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '切换历史会话或打开项目/回收站管理',
+      descEn: 'Browse/switch sessions and trash',
+    },
+    {
+      name: 'project',
+      aliases: ['项目'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '新建绑定本地工作目录的项目',
+      descEn: 'Create a new workspace project',
+    },
+    {
+      name: 'rename',
+      aliases: ['改名'],
+      argsHint: '[新标题]',
+      fillArgs: false,
+      desc: '修改当前会话标题',
+      descEn: 'Rename current session',
+    },
+    {
+      name: 'help',
+      aliases: ['帮助'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '查看所有斜杠命令说明与示例',
+      descEn: 'Show all slash commands and usage',
+    },
+    {
+      name: 'quit',
+      aliases: ['exit', '退出'],
+      argsHint: '',
+      fillArgs: false,
+      desc: '安全退出 AnY 客户端与后台服务',
+      descEn: 'Quit AnY client and backend server',
+    },
   ];
+
+  const SLASH_COMMAND_MAP = new Map();
+  SLASH_COMMANDS.forEach(cmd => {
+    SLASH_COMMAND_MAP.set(cmd.name.toLowerCase(), cmd);
+    (cmd.aliases || []).forEach(a => SLASH_COMMAND_MAP.set(String(a).toLowerCase(), cmd));
+  });
+  const MEMBER_ARG_COMMANDS = new Set(['compact', 'skills', 'stop', 'model', 'handoff', 'return', 'connect']);
 
   function filterSlashCommands(text, cursorPos, state, contacts) {
     const slash = parseSlashQuery(text, cursorPos);
@@ -362,46 +621,89 @@
     const q = slash.query;
     const target = resolveComposerTarget(text, state);
     const isEn = resolveLang(getLangPref()) === 'en';
-    const items = SLASH_COMMANDS.filter(cmd =>
+    const isCjk = /[\u4e00-\u9fa5]/.test(q);
+    const matched = SLASH_COMMANDS.filter(cmd =>
       !q
       || cmd.name.includes(q)
-      || (cmd.aliases || []).some(a => a.includes(q))
-      || cmd.desc.toLowerCase().includes(q)
-      || cmd.descEn.toLowerCase().includes(q)
-    ).map(cmd => ({
+      || (cmd.aliases || []).some(a => a.toLowerCase().includes(q))
+      || (isCjk && (cmd.desc.toLowerCase().includes(q) || cmd.descEn.toLowerCase().includes(q)))
+    );
+    if (q) {
+      matched.sort((a, b) => Number(!a.name.startsWith(q)) - Number(!b.name.startsWith(q)));
+    }
+    const items = matched.map(cmd => ({
       kind: 'command',
       name: cmd.name,
+      argsHint: cmd.argsHint || '',
+      fillArgs: Boolean(cmd.fillArgs),
       desc: isEn ? cmd.descEn : cmd.desc,
       agentIds: target.mode === 'single' ? [target.aiId] : (target.aiIds || []),
-      agentLabels: [isEn ? 'Command' : '命令'],
+      agentLabels: [],
     }));
     return { slash, target, items };
   }
 
+  function buildSlashMenuModel(text, cursorPos, state, toolsByAi, contacts) {
+    const cmdRes = filterSlashCommands(text, cursorPos, state, contacts);
+    const skillRes = filterSlashSkills(text, cursorPos, state, toolsByAi, contacts);
+    const slash = (cmdRes && cmdRes.slash) || (skillRes && skillRes.slash) || null;
+    const target = (cmdRes && cmdRes.target) || (skillRes && skillRes.target) || resolveComposerTarget(text, state);
+    const commandItems = (cmdRes && cmdRes.items) || [];
+    const skillItems = ((skillRes && skillRes.items) || []).map(item => Object.assign({ kind: 'skill' }, item));
+    const ownerIds = [];
+    skillItems.forEach(item => {
+      (item.agentIds || []).forEach(id => {
+        if (!ownerIds.includes(id)) ownerIds.push(id);
+      });
+    });
+    const singleSkillOwnerLabel = ownerIds.length === 1 ? agentDisplayName(state, contacts, ownerIds[0]) : '';
+    const showPerSkillOwnerTags = ownerIds.length > 1;
+    return {
+      slash,
+      target,
+      desktopOnly: Boolean(skillRes && skillRes.desktopOnly && !commandItems.length),
+      notice: (skillRes && skillRes.notice) || '',
+      commandItems,
+      skillItems,
+      singleSkillOwnerLabel,
+      showPerSkillOwnerTags,
+      items: [...commandItems, ...skillItems],
+    };
+  }
+
   function parseComposerSlashCommand(text, state) {
     const s = String(text || '').trim();
-    const m = s.match(/^((?:@[A-Za-z0-9_.-]+\s+)*)\/([A-Za-z0-9_.-]+)(?:\s+([\s\S]*))?$/);
+    if (s.startsWith('//')) return null;
+    const m = s.match(/^((?:@[A-Za-z0-9_.-]+\s+)*)\/([A-Za-z0-9_.\-\u4e00-\u9fa5]+)(?:\s+([\s\S]*))?$/);
     if (!m) return null;
-    const cmd = m[2].toLowerCase();
-    if (cmd !== 'compact' && cmd !== 'skills' && cmd !== 'skill') return null;
+    const spec = SLASH_COMMAND_MAP.get(m[2].toLowerCase());
+    if (!spec) return null;
     const aiIds = getRoomAiIds(state);
     const mentions = extractExplicitMentions(s, aiIds);
     const arg = (m[3] || '').trim();
     let targetIds = [];
     let error = '';
-    if (arg) {
-      const cleanArg = arg.replace(/^@/, '').trim();
-      const matched = aiIds.find(id => id.toLowerCase() === cleanArg.toLowerCase())
-        || aiIds.find(id => agentDisplayName(state, null, id).toLowerCase() === cleanArg.toLowerCase());
-      if (matched) targetIds = [matched];
-      else error = '未找到可操作的会话成员：' + arg;
+    if (MEMBER_ARG_COMMANDS.has(spec.name)) {
+      if (arg) {
+        const cleanArg = arg.replace(/^@/, '').trim();
+        const pool = spec.name === 'connect' && Array.isArray(state && state.agents)
+          ? [...new Set([...aiIds, ...state.agents.map(a => a && a.id).filter(Boolean)])]
+          : aiIds;
+        const matched = pool.find(id => id.toLowerCase() === cleanArg.toLowerCase())
+          || pool.find(id => agentDisplayName(state, null, id).toLowerCase() === cleanArg.toLowerCase());
+        if (matched) targetIds = [matched];
+        else error = '未找到可操作的会话成员：' + arg;
+      } else if (mentions.length) {
+        targetIds = mentions;
+      }
     } else if (mentions.length) {
       targetIds = mentions;
     }
     return {
-      command: cmd === 'skill' ? 'skills' : cmd,
+      command: spec.name,
       targetIds,
-      explicitTarget: Boolean(arg || mentions.length),
+      explicitTarget: Boolean((MEMBER_ARG_COMMANDS.has(spec.name) && arg) || mentions.length),
+      argText: arg,
       error,
     };
   }
@@ -461,6 +763,87 @@
     return ids.filter(id => state.permissions[id] && state.permissions[id].work === false);
   }
 
+  function buildEmptyRoomOnboardingState(state, contacts, messages) {
+    if (!state || !state.meeting) {
+      return {
+        visible: false,
+        activeStep: 1,
+        roomAiIds: [],
+        roomAis: [],
+        availableContactAis: [],
+        testPrompt: t('onboard.defaultTestPrompt'),
+      };
+    }
+    const list = Array.isArray(messages) ? messages : [];
+    const hasConversationMessages = list.some(m => m && !m.recalled && m.speaker && m.speaker !== '系统');
+    const roomAiIds = getRoomAiIds(state);
+    const allContacts = Array.isArray(contacts) ? contacts : ((state && state.agents) || []);
+    const roomAis = roomAiIds.map(id => {
+      const meta = allContacts.find(c => c && c.id === id)
+        || ((state && state.agents) || []).find(c => c && c.id === id)
+        || {};
+      return {
+        id,
+        label: meta.label || id,
+        color: meta.color || '#64748b',
+        letter: meta.letter || String(id).slice(0, 1).toUpperCase(),
+        enabled: meta.enabled !== false,
+      };
+    });
+    const inRoom = new Set(roomAiIds);
+    const availableContactAis = allContacts
+      .filter(c => c && c.kind !== 'user' && c.enabled && !inRoom.has(c.id))
+      .map(c => ({ id: c.id, label: c.label || c.id }));
+    return {
+      visible: !hasConversationMessages,
+      activeStep: roomAiIds.length === 0 ? 1 : 2,
+      roomAiIds,
+      roomAis,
+      availableContactAis,
+      testPrompt: t('onboard.defaultTestPrompt'),
+    };
+  }
+
+  function buildVerificationTrackerState(state, messages, runningIds, tracker) {
+    if (!tracker || tracker.dismissed || !state || state.meeting !== tracker.roomId) {
+      return { active: false, allReplied: false, repliedCount: 0, totalCount: 0, items: [] };
+    }
+    const roomSet = new Set(getRoomAiIds(state));
+    const targetAiIds = (tracker.targetAiIds || []).filter(id => roomSet.has(id));
+    if (!targetAiIds.length) {
+      return { active: false, allReplied: false, repliedCount: 0, totalCount: 0, items: [] };
+    }
+    const baseline = Number.isInteger(tracker.baselineMaxId) ? tracker.baselineMaxId : -1;
+    const list = Array.isArray(messages) ? messages : [];
+    let recent = list.filter(m => m && !m.recalled && Number(m.id) > baseline);
+    if (tracker.prompt) {
+      const source = recent.find(m => m.speaker === '你' && m.text === tracker.prompt);
+      recent = source ? recent.filter(m => m.source_message === source.id) : [];
+    }
+    const runningSet = new Set(Array.isArray(runningIds) ? runningIds : []);
+    const contacts = (state && state.agents) || [];
+    const items = targetAiIds.map(id => {
+      const label = agentDisplayName(state, contacts, id);
+      const aiState = (state.ais && state.ais[id]) || {};
+      const replied = recent.some(m => m.speaker === id);
+      if (replied) return { id, label, status: 'replied', detail: '' };
+      if (runningSet.has(id) || aiState.busy) return { id, label, status: 'running', detail: '' };
+      const sysErr = recent.find(m => m.failure?.ai === id) || (!tracker.prompt && recent.find(m => m.speaker === '系统' && typeof m.text === 'string' && m.text.includes(id) && /失败|超时|错误|error|failed/i.test(m.text)));
+      if (aiState.last_error || sysErr) {
+        return { id, label, status: 'failed', detail: aiState.last_error || (sysErr && sysErr.text) || '' };
+      }
+      return { id, label, status: 'waiting', detail: '' };
+    });
+    const repliedCount = items.filter(i => i.status === 'replied').length;
+    return {
+      active: true,
+      allReplied: repliedCount === items.length,
+      repliedCount,
+      totalCount: items.length,
+      items,
+    };
+  }
+
   // ===== Export pure API for Node unit tests =====
   const exported = {
     applyTheme,
@@ -474,14 +857,18 @@
     resolveComposerTarget,
     buildModelChipState,
     blockedWorkTargets,
+    buildEmptyRoomOnboardingState,
+    buildVerificationTrackerState,
     parseSlashQuery,
     filterSlashCommands,
     parseComposerSlashCommand,
+    buildSlashMenuModel,
     filterSlashSkills,
     applySlashSelection,
     classifyExtensionBadges,
     validateImportPayload,
   };
+  root.AnYHarness = exported;
   root.CojamHarness = exported;
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = exported;
@@ -498,6 +885,224 @@
   let settingsTab = 'general';
   let extSubTab = 'skill';
   let extImportOpen = false;
+  let verifyTracker = null;
+  let onboardingSig = '';
+  let verifySig = '';
+
+  function htmlEsc(v) {
+    if (typeof esc === 'function') return esc(v);
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function currentMaxMessageId() {
+    if (typeof msgById === 'undefined' || !msgById) return -1;
+    let maxId = -1;
+    for (const m of Object.values(msgById)) {
+      const id = Number(m && m.id) || 0;
+      if (id > maxId) maxId = id;
+    }
+    return maxId;
+  }
+
+  function fillComposerText(text, autoSend) {
+    const taEl = document.getElementById('ta');
+    if (!taEl) return;
+    taEl.value = text;
+    taEl.dispatchEvent(new Event('input', { bubbles: true }));
+    if (autoSend && typeof send === 'function') {
+      send();
+    } else {
+      taEl.focus();
+    }
+  }
+
+  function syncEmptyRoomOnboarding() {
+    const feedEl = document.getElementById('feed');
+    if (!feedEl) return;
+    const state = typeof S !== 'undefined' ? S : null;
+    const contacts = typeof CONTACTS !== 'undefined' ? CONTACTS : [];
+    const messages = typeof msgById !== 'undefined' && msgById ? Object.values(msgById) : [];
+    const model = buildEmptyRoomOnboardingState(state, contacts, messages);
+    const existing = document.getElementById('roomOnboarding');
+    if (!model.visible) {
+      if (existing) existing.remove();
+      onboardingSig = '';
+      return;
+    }
+
+    const lang = resolveLang(getLangPref());
+    const starters = lang === 'en'
+      ? [
+          'Summarize the project structure and main entry points',
+          'Let us discuss a design plan for a new feature',
+          'Help investigate a recent error or failing test',
+        ]
+      : [
+          '先帮我梳理这个项目的目录和核心入口',
+          '我想做一个新功能，先一起讨论方案',
+          '帮我排查最近的一处报错原因',
+        ];
+    const sig = JSON.stringify({
+      meeting: state && state.meeting,
+      lang,
+      activeStep: model.activeStep,
+      roomAis: model.roomAis.map(a => a.id + ':' + a.label),
+      avail: model.availableContactAis.length,
+    });
+    if (existing && onboardingSig === sig) return;
+    onboardingSig = sig;
+
+    const card = existing || document.createElement('section');
+    card.id = 'roomOnboarding';
+    card.className = 'room-onboarding';
+    card.setAttribute('aria-label', t('onboard.title'));
+
+    const step1Done = model.roomAis.length > 0;
+    const step1Class = step1Done ? 'is-done' : 'is-active';
+    const step2Class = !step1Done ? 'is-disabled' : 'is-active';
+    const step3Class = !step1Done ? 'is-disabled' : '';
+
+    const step1Desc = step1Done
+      ? t('onboard.step1Ready').replace('{n}', String(model.roomAis.length))
+      : t('onboard.step1Empty');
+    const chipsHtml = step1Done
+      ? '<div class="onboard-ai-chips">' + model.roomAis.map(a =>
+          '<span class="onboard-ai-chip" style="--c:' + htmlEsc(a.color) + '"><span class="onboard-ai-dot"></span>' + htmlEsc(a.label) + '</span>'
+        ).join('') + '</div>'
+      : '';
+    const step1Actions = step1Done
+      ? '<button type="button" data-onboard-action="manage">' + htmlEsc(t('onboard.manageMembers')) + '</button>'
+        + '<button type="button" data-onboard-action="connect">' + htmlEsc(t('onboard.addMoreAi')) + '</button>'
+      : '<button type="button" class="pri" data-onboard-action="connect">' + htmlEsc(t('onboard.addAi')) + '</button>'
+        + (model.availableContactAis.length
+          ? '<button type="button" data-onboard-action="manage">' + htmlEsc(t('onboard.pickFromContacts')) + '</button>'
+          : '');
+
+    const step2Body = step1Done
+      ? '<p>' + htmlEsc(t('onboard.step2Desc')) + '</p>'
+        + '<div class="onboard-prompt-preview">' + htmlEsc(model.testPrompt) + '</div>'
+        + '<div class="onboard-actions">'
+        + '<button type="button" class="pri" data-onboard-action="send-test">' + htmlEsc(t('onboard.sendTest')) + '</button>'
+        + '<button type="button" data-onboard-action="fill-test">' + htmlEsc(t('onboard.fillTest')) + '</button>'
+        + '</div>'
+      : '<p>' + htmlEsc(t('onboard.step2NeedAi')) + '</p>'
+        + '<div class="onboard-actions"><button type="button" disabled>' + htmlEsc(t('onboard.sendTest')) + '</button></div>';
+
+    const step3Body = '<p>' + htmlEsc(t('onboard.step3Desc')) + '</p>'
+      + '<div class="onboard-starters">' + starters.map((s, idx) =>
+        '<button type="button" class="onboard-starter" data-onboard-starter="' + idx + '"' + (step1Done ? '' : ' disabled') + '>' + htmlEsc(s) + '</button>'
+      ).join('') + '</div>';
+
+    card.innerHTML =
+      '<div class="onboard-head"><h2>' + htmlEsc(t('onboard.title')) + '</h2><p>' + htmlEsc(t('onboard.subtitle')) + '</p></div>'
+      + '<div class="onboard-steps">'
+      +   '<div class="onboard-step ' + step1Class + '"><span class="onboard-step-num">' + (step1Done ? '✓' : '1') + '</span><div class="onboard-step-body"><h3>' + htmlEsc(t('onboard.step1Title')) + '</h3><p>' + htmlEsc(step1Desc) + '</p>' + chipsHtml + '<div class="onboard-actions">' + step1Actions + '</div></div></div>'
+      +   '<div class="onboard-step ' + step2Class + '"><span class="onboard-step-num">2</span><div class="onboard-step-body"><h3>' + htmlEsc(t('onboard.step2Title')) + '</h3>' + step2Body + '</div></div>'
+      +   '<div class="onboard-step ' + step3Class + '"><span class="onboard-step-num">3</span><div class="onboard-step-body"><h3>' + htmlEsc(t('onboard.step3Title')) + '</h3>' + step3Body + '</div></div>'
+      + '</div>';
+
+    card.onclick = async e => {
+      const actionBtn = e.target.closest('[data-onboard-action]');
+      if (actionBtn) {
+        const act = actionBtn.dataset.onboardAction;
+        if (act === 'connect') {
+          if (typeof startConnectionWizard === 'function') startConnectionWizard('', 'ai');
+          else if (typeof openConnection === 'function') openConnection();
+        } else if (act === 'manage') {
+          if (typeof openAgents === 'function') openAgents();
+        } else if (act === 'fill-test') {
+          fillComposerText(model.testPrompt, false);
+        } else if (act === 'send-test') {
+          verifyTracker = {
+            roomId: state.meeting,
+            baselineMaxId: currentMaxMessageId(),
+            targetAiIds: model.roomAiIds.slice(),
+            prompt: model.testPrompt,
+            dismissed: false,
+          };
+          verifySig = '';
+          actionBtn.disabled = true;
+          const attempt = verifyTracker;
+          const [ok, data] = await post(api('send'), {text:model.testPrompt});
+          if (verifyTracker !== attempt || S?.meeting !== state.meeting) return;
+          if (!ok) {
+            verifyTracker = null;
+            actionBtn.disabled = false;
+            alert(data.error || '发送失败，请重试。');
+          } else {
+            poll();
+          }
+        }
+        return;
+      }
+      const starterBtn = e.target.closest('[data-onboard-starter]');
+      if (starterBtn) {
+        const text = starters[Number(starterBtn.dataset.onboardStarter)];
+        if (text) fillComposerText(text, false);
+      }
+    };
+
+    if (!existing) feedEl.appendChild(card);
+  }
+
+  function syncVerificationBanner() {
+    const feedEl = document.getElementById('feed');
+    if (!feedEl) return;
+    const state = typeof S !== 'undefined' ? S : null;
+    if (verifyTracker && (!state || state.meeting !== verifyTracker.roomId)) {
+      verifyTracker = null;
+    }
+    const messages = typeof msgById !== 'undefined' && msgById ? Object.values(msgById) : [];
+    const runningIds = (typeof lastRun !== 'undefined' && lastRun && lastRun.running) || [];
+    const model = buildVerificationTrackerState(state, messages, runningIds, verifyTracker);
+    const existing = document.getElementById('roomVerifyBanner');
+    if (!model.active) {
+      if (existing) existing.remove();
+      verifySig = '';
+      return;
+    }
+
+    const lang = resolveLang(getLangPref());
+    const sig = JSON.stringify({ lang, model });
+    if (existing && verifySig === sig) return;
+    verifySig = sig;
+
+    const statusLabel = st => st === 'replied' ? t('verify.replied')
+      : st === 'running' ? t('verify.running')
+      : st === 'failed' ? t('verify.failed')
+      : t('verify.waiting');
+    const summaryText = (model.allReplied ? t('verify.doneTitle') : t('verify.runningTitle'))
+      .replace('{done}', String(model.repliedCount))
+      .replace('{total}', String(model.totalCount));
+
+    const banner = existing || document.createElement('div');
+    banner.id = 'roomVerifyBanner';
+    banner.className = 'room-verify-banner' + (model.allReplied ? ' is-done' : '');
+    banner.setAttribute('role', 'status');
+    banner.innerHTML =
+      '<span class="room-verify-summary">' + htmlEsc(summaryText) + '</span>'
+      + '<div class="room-verify-chips">' + model.items.map(item =>
+        '<span class="verify-chip is-' + htmlEsc(item.status) + '" title="' + htmlEsc(item.detail || '') + '">'
+        + htmlEsc(item.label) + ' · ' + htmlEsc(statusLabel(item.status))
+        + '</span>'
+      ).join('') + '</div>'
+      + '<button type="button" class="room-verify-close">' + htmlEsc(t('verify.dismiss')) + '</button>';
+
+    const closeBtn = banner.querySelector('.room-verify-close');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        if (verifyTracker) verifyTracker.dismissed = true;
+        banner.remove();
+        verifySig = '';
+      };
+    }
+
+    if (!existing) feedEl.insertBefore(banner, feedEl.firstChild);
+  }
 
   function activeProjectId() {
     if (typeof S !== 'undefined' && S && S.project) return S.project;
@@ -527,9 +1132,169 @@
     }
   }
 
-  // ---- Right Inspector 3-Tab Controller ----
+  let inspectedStep = null;
+  let changesPaneSignature = '';
+
+  function drawChangesPane() {
+    const pane = document.getElementById('sideChangesPane');
+    if (!pane) return;
+    const room = S?.meeting;
+    if (inspectedStep?.room !== room) inspectedStep = room ? {room, seq:null} : null;
+    const rows = (S?.steps || []).slice().reverse();
+    if (inspectedStep?.archived && !rows.some(row => row.seq === inspectedStep.seq)) rows.push(inspectedStep.archived);
+    const step = rows.find(row => row.seq === inspectedStep?.seq) || rows[0];
+    const signature = JSON.stringify([room, rows, step?.seq, S?.steps_undone]);
+    if (signature === changesPaneSignature) return;
+    changesPaneSignature = signature;
+    if (!step) {
+      pane.innerHTML = '<p class="hint">这场会话还没有记录到文件改动。</p>';
+      return;
+    }
+    const undone = (S?.steps_undone || []).includes(step.seq);
+    pane.innerHTML = '<label class="change-step-label">改动步骤<select data-change-step>' + rows.map(row =>
+      '<option value="' + esc(String(row.seq)) + '"' + (row.seq === step.seq ? ' selected' : '') + '>第 ' + esc(String(row.seq)) + ' 步 · ' + esc(row.ai) + ' · ' + esc(row.time || '') + '</option>').join('')
+      + '</select></label><div class="change-files">' + step.files.map(file => '<button type="button" data-change-file="' + esc(file.path) + '" aria-pressed="false"><span>' + esc(file.st) + '</span>' + esc(file.path) + '</button>').join('')
+      + '</div><div class="change-diff" aria-live="polite">选择文件查看差异。</div>'
+      + (undone ? '<p class="hint">这一步已撤回。</p>' : '<button type="button" data-change-undo>预览撤回这一步</button>');
+    pane.querySelector('[data-change-step]').onchange = event => openStepChanges(Number(event.target.value));
+    const undo = pane.querySelector('[data-change-undo]');
+    if (undo) undo.onclick = () => undoStep(step.seq);
+    const output = pane.querySelector('.change-diff');
+    let diffRequest = null;
+    pane.querySelectorAll('[data-change-file]').forEach(button => {
+      button.onclick = async () => {
+        const request = {};
+        diffRequest = request;
+        pane.querySelectorAll('[data-change-file]').forEach(file => file.setAttribute('aria-pressed', String(file === button)));
+        output.textContent = '正在读取差异…';
+        const [ok, data] = await post(api('step/diff'), {step:step.seq, path:button.dataset.changeFile});
+        if (room !== S?.meeting || diffRequest !== request || !output.isConnected) return;
+        if (!ok || !data.diff) {
+          output.textContent = data.reason || data.error || '这份文件没有可显示的差异。';
+          return;
+        }
+        const pre = document.createElement('pre');
+        pre.tabIndex = 0;
+        for (const line of data.diff.split('\n')) {
+          const span = document.createElement('span');
+          if (line.startsWith('+') && !line.startsWith('+++')) span.className = 'diff-add';
+          else if (line.startsWith('-') && !line.startsWith('---')) span.className = 'diff-remove';
+          span.textContent = line || '\u00a0';
+          pre.appendChild(span);
+        }
+        output.replaceChildren(pre);
+      };
+    });
+  }
+
+  async function openStepChanges(seq) {
+    const room = S?.meeting;
+    if (!room || !Number.isInteger(seq)) return;
+    const request = {room, seq, archived:null};
+    inspectedStep = request;
+    if (!(S.steps || []).some(row => row.seq === seq)) {
+      const [ok, data] = await post(api('step/info'), {step:seq});
+      if (room !== S?.meeting || inspectedStep !== request) return;
+      if (!ok) return alert('这一步的改动记录已不可用。');
+      request.archived = data.step;
+    }
+    openInspectorTab('changes');
+  }
+
+  function attachRoomFeedback(message, element) {
+    if (message.step != null) {
+      const inspect = document.createElement('button');
+      inspect.type = 'button';
+      inspect.className = 'inspect-step';
+      inspect.textContent = '查看改动';
+      inspect.onclick = () => openStepChanges(message.step);
+      element.appendChild(inspect);
+    }
+    if (!message.approval && !message.failure) return;
+    element.classList.add('has-room-feedback');
+    const controls = document.createElement('div');
+    controls.className = 'room-feedback';
+    controls.dataset.feedbackId = message.id;
+    controls.innerHTML = '<span class="room-feedback-state"></span><div class="room-feedback-actions"></div><p class="room-feedback-error" role="status" hidden></p>';
+    element.appendChild(controls);
+  }
+
+  function syncRoomFeedback() {
+    const room = S?.meeting;
+    if (!room) return;
+    feed.querySelectorAll('[data-feedback-id]').forEach(card => {
+      const id = Number(card.dataset.feedbackId), message = msgById[id];
+      if (!message) return;
+      const approval = message.approval;
+      const failure = message.failure;
+      const agent = S.ais?.[(approval || failure).ai];
+      const active = approval ? agent?.approval?.id === approval.id : agent?.failure === id && !agent.busy && failure.retryable;
+      const signature = JSON.stringify([active, S.mode, S.running, S.queued, S.steps_undone, (S.claims || []).map(claim => claim.key)]);
+      if (card.dataset.state === signature) return;
+      card.dataset.state = signature;
+      const note = card.querySelector('.room-feedback-state');
+      const actions = card.querySelector('.room-feedback-actions');
+      const error = card.querySelector('.room-feedback-error');
+      actions.replaceChildren();
+      error.hidden = true;
+      let submitting = false;
+      function addAction(label, url, payload, confirmText) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.onclick = async () => {
+          if (submitting) return;
+          if (confirmText && !window.confirm(confirmText)) return;
+          submitting = true;
+          actions.querySelectorAll('button').forEach(action => { action.disabled = true; });
+          error.hidden = true;
+          const [ok, data] = await post(api(url), payload);
+          if (room !== S?.meeting || !card.isConnected) return;
+          if (!ok) {
+            submitting = false;
+            error.textContent = data.error || '操作失败，请重试。';
+            error.hidden = false;
+            actions.querySelectorAll('button').forEach(action => { action.disabled = false; });
+          } else {
+            actions.replaceChildren();
+            note.textContent = approval ? '确认已提交。' : '已安排重试。';
+            poll();
+          }
+        };
+        actions.appendChild(button);
+      }
+      if (approval) {
+        note.textContent = active ? '这次操作需要你确认。' : '确认已结束。';
+        if (active) {
+          addAction('仅允许这次', 'turn/approval', {id:approval.id, decision:'allow'});
+          addAction('拒绝', 'turn/approval', {id:approval.id, decision:'deny'});
+        }
+        return;
+      }
+      note.textContent = failure.changes === 'recorded' ? '这一步有已记录的文件改动。'
+        : failure.changes === 'unknown' ? '这一步的改动无法确认，请先检查工作区。' : '这一步在讨论模式下失败。';
+      if (failure.step != null) {
+        const inspect = document.createElement('button');
+        inspect.type = 'button';
+        inspect.textContent = '查看改动';
+        inspect.onclick = () => openStepChanges(failure.step);
+        actions.appendChild(inspect);
+      }
+      if (!active) return;
+      addAction(failure.mode === 'work' ? '保留现状并重试' : '重试', 'turn/retry', {id, action:'continue'},
+        failure.changes === 'unknown' ? '这一步可能已修改文件。确认按当前工作区状态重试？' : '');
+      if (failure.undo_possible) {
+        post(api('turn/retry/preview'), {id}).then(([ok, data]) => {
+          if (submitting || room !== S?.meeting || !card.isConnected || card.dataset.state !== signature) return;
+          if (ok) addAction('撤回后重试', 'turn/retry', {id, action:'undo'}, '撤回这一步的 ' + data.plan.items.length + ' 个文件改动后重试？');
+        });
+      }
+    });
+  }
+
+  // ---- Right Inspector ----
   function setSideTab(tab) {
-    const valid = ['agents', 'board', 'output'].includes(tab) ? tab : 'agents';
+    const valid = ['agents', 'board', 'output', 'changes'].includes(tab) ? tab : 'agents';
     currentSideTab = valid;
     safeStorageSet(SIDE_TAB_KEY, valid);
     const side = document.getElementById('side');
@@ -541,6 +1306,7 @@
       el.hidden = el.dataset.sideGroup !== valid;
     });
     if (valid === 'agents') drawSideAgentsPane();
+    if (valid === 'changes') drawChangesPane();
   }
 
   function openInspectorTab(tab) {
@@ -571,13 +1337,16 @@
         ? (mo.observed && mo.observed.model ? '实际回报：' + mo.observed.model : t('composer.desktopManaged'))
         : (mo.label || mo.model || mo.default_model || '模型未回报');
       const ctxDesc = typeof ctxTitle === 'function' ? ctxTitle(x) : '';
-      const permBlocked = state.mode === 'work' && state.permissions && state.permissions[id] && state.permissions[id].work === false;
+      const isDirectModel = state.agents?.some(agent => agent.id === id && agent.http_protocol === 'openai_chat');
+      const permBlocked = !isDirectModel && state.mode === 'work' && state.permissions && state.permissions[id] && state.permissions[id].work === false;
+      const activity = x.approval ? '等你确认' : x.busy ? '运行中' : x.failure != null ? '执行失败' : '';
       return '<div class="side-agent-card" data-side-agent="' + esc(id) + '">'
         + '<div class="side-agent-head"><span class="side-agent-dot" style="--c:' + esc(color) + '"></span>'
         + '<span class="side-agent-name">' + esc(name) + '</span>'
         + '<span class="side-agent-badge' + (desktop ? ' desktop' : '') + '">' + esc(endpointLabel) + '</span></div>'
+        + (activity ? '<p class="side-agent-meta side-agent-activity">' + esc(activity) + '</p>' : '')
         + (permBlocked ? '<p class="side-agent-meta" style="color:var(--work)">当前会议已切到干活模式，但此成员未开启「允许干活」权限，仍将只读。</p>' : '')
-        + '<p class="side-agent-meta">' + esc(modelDesc) + (ctxDesc ? '<br>' + esc(ctxDesc) : '') + '</p>'
+        + '<p class="side-agent-meta">' + esc(modelDesc) + (isDirectModel ? '<br>仅参与文字讨论' : ctxDesc ? '<br>' + esc(ctxDesc) : '') + '</p>'
         + '<div class="side-agent-actions">'
         + (permBlocked ? '<button type="button" data-open-perms="' + esc(id) + '">开启允许干活</button>' : '')
         + '<button type="button" data-open-ai="' + esc(id) + '">模型与执行端</button>'
@@ -793,6 +1562,190 @@
     return true;
   }
 
+  function showSlashHelpModal() {
+    if (typeof showModal !== 'function') return;
+    const rows = SLASH_COMMANDS.map(cmd =>
+      '<tr><td><code>/' + esc(cmd.name) + (cmd.argsHint ? ' ' + esc(cmd.argsHint) : '') + '</code></td><td>' + esc(cmd.desc) + '</td></tr>'
+    ).join('');
+    showModal(
+      '<div id="slashHelpModal">'
+      + '<div class="connection-heading"><h3>全部内置命令</h3><button type="button" id="slashHelpClose" aria-label="关闭">×</button></div>'
+      + '<p class="hint">在输入框输入 <code>/</code> 可同时检索内置命令与各 Agent 技能；发送以斜杠开头的普通文字可用 <code>//</code> 开头。</p>'
+      + '<div style="max-height:55vh;overflow:auto"><table class="slash-help-table"><tbody>' + rows + '</tbody></table></div>'
+      + '</div>'
+    );
+    const closeBtn = document.getElementById('slashHelpClose');
+    if (closeBtn && typeof hideModal === 'function') closeBtn.onclick = hideModal;
+  }
+
+  async function executeSlashCommand(command, targetIds, explicitTarget, argText = '') {
+    closeSlashMenu();
+    const targetId = targetIds && targetIds[0] ? targetIds[0] : '';
+    switch (command) {
+      case 'skills':
+        openSlashSkillsModal(targetId);
+        return true;
+      case 'compact':
+        return await executeSlashCompact(targetIds || [], explicitTarget);
+      case 'mode': {
+        const arg = String(argText || '').trim().toLowerCase();
+        if (!arg) {
+          if (typeof toggleMode === 'function') await toggleMode();
+          return true;
+        }
+        const want = (arg === 'work' || arg === '干活') ? 'work' : ((arg === 'discuss' || arg === '讨论') ? 'discuss' : '');
+        if (!want) { alert('用法：/mode discuss 或 /mode work'); return false; }
+        if (S && S.mode === want) return true;
+        if (want === 'work' && !confirm('切到干活模式？\n\n开启干活权限的成员可改文件与跑命令（每一步支持按步撤回）。')) return false;
+        const [ok, j] = await post(api('mode'), { mode: want });
+        if (!ok) { alert((j && j.error) || '切换模式失败'); return false; }
+        await loadState();
+        if (typeof poll === 'function') poll();
+        return true;
+      }
+      case 'model':
+        if (targetId && typeof openAi === 'function') openAi(targetId);
+        else document.getElementById('composerModelBtn')?.click();
+        return true;
+      case 'stop':
+        if (typeof stopAi === 'function') await stopAi(targetId);
+        return true;
+      case 'debate': {
+        const btn = document.getElementById('debateBtn');
+        if (btn) btn.click();
+        if (argText) {
+          setTimeout(() => {
+            const topicEl = document.querySelector('#debateForm [name="topic"]');
+            if (topicEl && !topicEl.value) topicEl.value = argText;
+          }, 0);
+        }
+        return true;
+      }
+      case 'debate-continue': {
+        const button = document.getElementById('debateContinueBtn');
+        if (!button || button.hidden || button.disabled) {
+          alert('当前没有可继续的论道。');
+          return false;
+        }
+        button.click();
+        const feedback = document.querySelector('#debateContinueForm [name="feedback"]');
+        if (!feedback) return false;
+        feedback.value = argText;
+        return true;
+      }
+      case 'debate-finish': {
+        const [ok, j] = await post(api('debate/finish'), {});
+        if (!ok) { alert((j && j.error) || '当前没有可结束的论道'); return false; }
+        if (S && j && j.debate) S.debate = j.debate;
+        if (typeof drawDebate === 'function') drawDebate();
+        if (typeof poll === 'function') poll();
+        return true;
+      }
+      case 'wrapup':
+        document.getElementById('bWrap')?.click();
+        return true;
+      case 'status':
+        if (typeof setMeetingSide === 'function') setMeetingSide(true);
+        else document.getElementById('sideToggleBtn')?.click();
+        return true;
+      case 'agents':
+        if (typeof openAgents === 'function') await openAgents();
+        else document.getElementById('bAgents')?.click();
+        return true;
+      case 'scan':
+        if (typeof openDiscoveryModal === 'function') await openDiscoveryModal(true);
+        return true;
+      case 'connect':
+        if (targetId && typeof openAi === 'function' && S && S.ais && S.ais[targetId]) openAi(targetId);
+        else if (targetId && typeof openAgentSettings === 'function') await openAgentSettings(targetId);
+        else if (typeof openAgentManager === 'function') await openAgentManager();
+        return true;
+      case 'invite':
+        if (typeof openConnection === 'function') openConnection();
+        else document.getElementById('bAdd')?.click();
+        return true;
+      case 'handoff':
+      case 'return': {
+        let ai = targetId;
+        if (!ai && S && S.ais) {
+          const candidates = Object.keys(S.ais).filter(id => command === 'return' ? S.ais[id].handed_off : !S.ais[id].handed_off);
+          if (candidates.length === 1) ai = candidates[0];
+        }
+        if (!ai) { alert('请指定要操作的 @成员，例如：/' + command + ' claude'); return false; }
+        const [ok, j] = await post(api('handoff'), { ai, on: command === 'handoff' });
+        if (!ok) { alert((j && j.error) || '操作失败'); return false; }
+        await loadState();
+        if (typeof poll === 'function') poll();
+        if (command === 'handoff' && typeof openAi === 'function') openAi(ai);
+        return true;
+      }
+      case 'announce':
+        if (argText) {
+          const [ok, j] = await post(api('announcement'), { text: argText });
+          if (!ok) { alert((j && j.error) || '公告保存失败'); return false; }
+          await loadState();
+          if (typeof poll === 'function') poll();
+        } else {
+          document.getElementById('annBtn')?.click();
+        }
+        return true;
+      case 'todo':
+        if (!argText) {
+          const ann = document.getElementById('ann');
+          if (ann) ann.classList.add('open');
+          document.getElementById('bText')?.focus();
+          return false;
+        }
+        if (typeof boardPost === 'function') await boardPost({ op: 'add', kind: 'todo', text: argText });
+        return true;
+      case 'done': {
+        const m = String(argText || '').match(/\d+/);
+        if (!m) { alert('用法：/done #待办编号'); return false; }
+        if (typeof boardPost === 'function') await boardPost({ op: 'done', id: Number(m[0]) });
+        return true;
+      }
+      case 'undo': {
+        const steps = ((S && S.steps) || []).filter(st => !st.undone);
+        if (!steps.length) {
+          if (typeof setMeetingSide === 'function') setMeetingSide(true);
+          alert('当前会话暂无可撤回的文件修改步骤。');
+          return false;
+        }
+        if (typeof undoStep === 'function') await undoStep(steps[steps.length - 1].seq);
+        return true;
+      }
+      case 'new':
+        if (typeof openNew === 'function') await openNew();
+        else document.getElementById('bNew')?.click();
+        return true;
+      case 'resume':
+        if (typeof openList === 'function') await openList();
+        else document.getElementById('bList')?.click();
+        return true;
+      case 'project':
+        if (typeof openProject === 'function') await openProject();
+        return true;
+      case 'rename':
+        if (argText) {
+          const [ok, j] = await post(api('rename'), { title: argText });
+          if (!ok) { alert((j && j.error) || '重命名失败'); return false; }
+          await loadState();
+          if (typeof pollRooms === 'function') await pollRooms();
+        } else if (typeof openRename === 'function' && S) {
+          openRename(RID, S.title);
+        }
+        return true;
+      case 'help':
+        showSlashHelpModal();
+        return true;
+      case 'quit':
+        document.getElementById('quitApp')?.click();
+        return true;
+      default:
+        return false;
+    }
+  }
+
   async function handleComposerSlashCommand(text) {
     const parsed = parseComposerSlashCommand(text, S);
     if (!parsed) return { handled: false };
@@ -800,17 +1753,8 @@
       alert(parsed.error);
       return { handled: true, clear: false };
     }
-    if (parsed.command === 'skills') {
-      closeSlashMenu();
-      openSlashSkillsModal(parsed.targetIds[0] || '');
-      return { handled: true, clear: true };
-    }
-    if (parsed.command === 'compact') {
-      closeSlashMenu();
-      const ok = await executeSlashCompact(parsed.targetIds, parsed.explicitTarget);
-      return { handled: true, clear: ok };
-    }
-    return { handled: false };
+    const ok = await executeSlashCommand(parsed.command, parsed.targetIds, parsed.explicitTarget, parsed.argText);
+    return { handled: true, clear: Boolean(ok) };
   }
 
   exported.handleComposerSlashCommand = handleComposerSlashCommand;
@@ -823,6 +1767,24 @@
     slashActiveIndex = 0;
   }
 
+  function renderSlashItem(item, idx, showOwnerTags) {
+    const active = idx === slashActiveIndex ? ' active' : '';
+    const cmdCls = item.kind === 'command' ? ' is-command' : '';
+    let rightHtml = '';
+    if (item.kind === 'command') {
+      rightHtml = item.argsHint ? '<span class="slash-cmd-arg">' + esc(item.argsHint) + '</span>' : '';
+    } else if (showOwnerTags && Array.isArray(item.agentLabels) && item.agentLabels.length) {
+      rightHtml = '<span class="slash-item-agents">' + item.agentLabels.map(l => '<span class="slash-agent-tag">' + esc(l) + '</span>').join('') + '</span>';
+    }
+    return (
+      '<button type="button" role="option" class="slash-item' + active + cmdCls + '" data-slash-idx="' + idx + '">'
+      + '<span class="slash-item-main"><span class="slash-item-name">/' + esc(item.name) + '</span>'
+      + (item.desc ? '<span class="slash-item-desc">' + esc(item.desc) + '</span>' : '') + '</span>'
+      + rightHtml
+      + '</button>'
+    );
+  }
+
   async function updateSlashMenu() {
     const taEl = document.getElementById('ta');
     const menu = document.getElementById('slashMenu');
@@ -830,38 +1792,33 @@
     const slash = parseSlashQuery(taEl.value, taEl.selectionStart);
     if (!slash) return closeSlashMenu();
 
-    const cmdRes = filterSlashCommands(taEl.value, taEl.selectionStart, S, CONTACTS);
     const target = resolveComposerTarget(taEl.value, S);
     const needIds = (target.mode === 'single' ? [target.aiId] : target.aiIds).filter(id => !isDesktopManaged(S, id));
     await Promise.all(needIds.map(id => ensureRoomTools(id)));
 
     const toolsByAi = {};
     needIds.forEach(id => { toolsByAi[id] = toolsCache.get(RID + ':' + id) || null; });
-    const skillRes = filterSlashSkills(taEl.value, taEl.selectionStart, S, toolsByAi, CONTACTS);
-    const cmdItems = (cmdRes && cmdRes.items) || [];
-    const skillItems = ((skillRes && skillRes.items) || []).map(item => Object.assign({ kind: 'skill' }, item));
-    const allItems = [...cmdItems, ...skillItems];
-    slashState = {
-      slash,
-      target,
-      desktopOnly: Boolean(skillRes && skillRes.desktopOnly && !cmdItems.length),
-      notice: (skillRes && skillRes.notice) || '',
-      items: allItems,
-    };
-    if (slashActiveIndex >= allItems.length) slashActiveIndex = 0;
+    const model = buildSlashMenuModel(taEl.value, taEl.selectionStart, S, toolsByAi, CONTACTS);
+    slashState = model;
+    if (slashActiveIndex >= model.items.length) slashActiveIndex = 0;
 
     let html = '';
-    if (slashState.notice) html += '<div class="slash-notice">' + esc(slashState.notice) + '</div>';
-    if (!allItems.length) {
-      if (!slashState.desktopOnly) html += '<div class="slash-notice">' + esc(t('composer.noSkills')) + '</div>';
+    if (model.notice) html += '<div class="slash-notice">' + esc(model.notice) + '</div>';
+    if (!model.items.length) {
+      if (!model.desktopOnly) html += '<div class="slash-notice">' + esc(t('composer.noSkills')) + '</div>';
     } else {
-      html += allItems.map((item, idx) =>
-        '<button type="button" role="option" class="slash-item' + (idx === slashActiveIndex ? ' active' : '') + (item.kind === 'command' ? ' is-command' : '') + '" data-slash-idx="' + idx + '">'
-        + '<span class="slash-item-main"><span class="slash-item-name">/' + esc(item.name) + '</span>'
-        + (item.desc ? '<span class="slash-item-desc">' + esc(item.desc) + '</span>' : '') + '</span>'
-        + '<span class="slash-item-agents">' + item.agentLabels.map(l => '<span class="slash-agent-tag">' + esc(l) + '</span>').join('') + '</span>'
-        + '</button>'
-      ).join('');
+      let cursorIdx = 0;
+      if (model.commandItems.length) {
+        html += '<div class="slash-section-head"><span>内置命令 · Harness 与会话</span><span class="slash-section-meta">' + model.commandItems.length + ' 项</span></div>';
+        html += model.commandItems.map(item => renderSlashItem(item, cursorIdx++, false)).join('');
+      }
+      if (model.skillItems.length) {
+        const ownerMeta = model.singleSkillOwnerLabel
+          ? esc(model.singleSkillOwnerLabel) + ' · ' + model.skillItems.length + ' 项'
+          : '多成员 · ' + model.skillItems.length + ' 项';
+        html += '<div class="slash-section-head"><span>Agent 技能</span><span class="slash-section-meta">' + ownerMeta + '</span></div>';
+        html += model.skillItems.map(item => renderSlashItem(item, cursorIdx++, model.showPerSkillOwnerTags)).join('');
+      }
     }
     menu.innerHTML = html;
     menu.hidden = false;
@@ -877,7 +1834,7 @@
     if (item.kind === 'command') {
       const before = taEl.value.slice(0, currentSlash.start);
       const after = taEl.value.slice(currentSlash.end);
-      if (mode === 'tab') {
+      if (mode === 'tab' || item.fillArgs) {
         taEl.value = before + '/' + item.name + (after.startsWith(' ') ? '' : ' ') + after;
         closeSlashMenu();
         taEl.focus();
@@ -889,24 +1846,13 @@
       const targetIds = currentTarget.explicit
         ? (currentTarget.mode === 'single' ? [currentTarget.aiId] : currentTarget.aiIds)
         : [];
-      if (item.name === 'skills') {
+      const ok = await executeSlashCommand(item.name, targetIds, currentTarget.explicit, '');
+      if (ok) {
         taEl.value = /^(?:@[A-Za-z0-9_.-]+\s*)+$/.test(stripped) ? '' : stripped;
         if (typeof saveDraft === 'function') saveDraft();
-        closeSlashMenu();
         syncComposerBar();
-        openSlashSkillsModal(targetIds[0] || '');
-        return;
       }
-      if (item.name === 'compact') {
-        closeSlashMenu();
-        const ok = await executeSlashCompact(targetIds, currentTarget.explicit);
-        if (ok) {
-          taEl.value = /^(?:@[A-Za-z0-9_.-]+\s*)+$/.test(stripped) ? '' : stripped;
-          if (typeof saveDraft === 'function') saveDraft();
-          syncComposerBar();
-        }
-        return;
-      }
+      return;
     }
     const applied = applySlashSelection(taEl.value, currentSlash, item, currentTarget);
     taEl.value = applied.text;
@@ -1008,7 +1954,8 @@
     if (extImportOpen && local && extSubTab === 'skill' && importRoots.length) {
       const agents = [...new Set(importRoots.map(r => r.agent_id))];
       const pid = activeProjectId();
-      const canPick = Boolean(window.cojamDesktop && window.cojamDesktop.canChooseWorkdir());
+      const desktopBridge = window.anyDesktop || window.cojamDesktop;
+      const canPick = Boolean(desktopBridge && desktopBridge.canChooseWorkdir());
       html += '<div class="ext-import-box" id="extImportBox"><h4>' + esc(t('ext.import')) + '</h4>'
         + '<div class="ext-import-grid">'
         + '<label>目标 Agent<select id="extImpAgent">' + agents.map(a => '<option value="' + esc(a) + '">' + esc(a) + '</option>').join('') + '</select></label>'
@@ -1046,7 +1993,7 @@
   }
 
   function renderAboutTab() {
-    return '<div class="settings-group"><h4>合拍 Cojam</h4>'
+    return '<div class="settings-group"><h4>AnY · Agents and You</h4>'
       + '<p class="hint" id="aboutVersionText">正在读取版本信息…</p>'
       + '<div class="btns" style="justify-content:flex-start;margin-top:12px">'
       + '<button type="button" class="pri" id="aboutCheckUpdate">检查更新</button></div>'
@@ -1101,10 +2048,11 @@
         const cancelBtn = document.getElementById('extImpCancel');
         if (cancelBtn) cancelBtn.onclick = () => { extImportOpen = false; body.innerHTML = renderExtensionsContent(extensionsCache, ''); wireExtHandlers(); };
         const pickBtn = document.getElementById('extImpPick');
-        if (pickBtn && window.cojamDesktop) {
+        const desktopBridge = window.anyDesktop || window.cojamDesktop;
+        if (pickBtn && desktopBridge) {
           pickBtn.onclick = async () => {
             try {
-              const p = await window.cojamDesktop.chooseWorkdir();
+              const p = await desktopBridge.chooseWorkdir();
               const inp = document.getElementById('extImpPath');
               if (p && inp) inp.value = p;
             } catch (e) {}
@@ -1204,9 +2152,13 @@
   function syncHarnessUi() {
     syncComposerBar();
     setSideTab(currentSideTab);
+    syncEmptyRoomOnboarding();
+    syncVerificationBanner();
+    syncRoomFeedback();
   }
 
   root.syncHarnessUi = syncHarnessUi;
+  root.attachRoomFeedback = attachRoomFeedback;
   root.drawSideAgentsPane = drawSideAgentsPane;
   root.openAppSettings = openAppSettings;
   root.openInspectorTab = openInspectorTab;

@@ -14,7 +14,7 @@ from bridge import updater
 
 class Updates(unittest.TestCase):
     def test_macos_uses_separate_manifest_and_downloads_verified_zip(self):
-        archive = 'Cojam-99.0.0-macOS-Python.zip'
+        archive = 'AnY-99.0.0-macOS-Python.zip'
         manifest = self.manifest(b'macos archive')
         manifest['url'] = updater.DOWNLOAD_ROOT + archive
         with self.assertRaises(ValueError):
@@ -35,16 +35,16 @@ class Updates(unittest.TestCase):
             self.assertEqual(Path(tmp, archive).read_bytes(), b'macos archive')
 
     def manifest(self, payload=b'installer'):
-        return {'app':'Cojam', 'version':'99.0.0',
-                'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe',
+        return {'app':'AnY', 'version':'99.0.0',
+                'url':'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-99.0.0.exe',
                 'sha256':hashlib.sha256(payload).hexdigest(), 'size':len(payload)}
 
     def test_rejects_untrusted_urls_and_bad_manifest(self):
-        for url in ['http://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe',
-                    'https://evil.test/Cojam/downloads/Cojam-Setup-99.0.0.exe',
-                    'https://jun-genyan.github.io/Cojam/downloads/Cojam-Setup-99.0.0.exe',
-                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/../Cojam-Setup-99.0.0.exe',
-                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/Cojam-Setup-99.0.0.exe?x=y']:
+        for url in ['http://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-99.0.0.exe',
+                    'https://evil.test/AnY/downloads/AnY-Setup-99.0.0.exe',
+                    'https://jun-genyan.github.io/Cojam/downloads/AnY-Setup-99.0.0.exe',
+                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/../AnY-Setup-99.0.0.exe',
+                    'https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-99.0.0.exe?x=y']:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 updater.parse_manifest(dict(self.manifest(),url=url))
         with self.assertRaises(ValueError):
@@ -57,7 +57,7 @@ class Updates(unittest.TestCase):
 
     def test_generated_manifest_matches_the_trusted_account(self):
         script = Path(__file__).resolve().parents[1] / 'packaging' / 'make_update_manifest.py'
-        spec = importlib.util.spec_from_file_location('cojam_manifest_generator', script)
+        spec = importlib.util.spec_from_file_location('any_manifest_generator', script)
         self.assertIsNotNone(spec)
         generator = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(generator)
@@ -66,7 +66,7 @@ class Updates(unittest.TestCase):
             (root / 'dist').mkdir()
             (root / 'website').mkdir()
             (root / 'pyproject.toml').write_text('[project]\nversion = "99.0.0"\n', encoding='utf-8')
-            (root / 'dist' / 'Cojam-Setup-99.0.0.exe').write_bytes(b'installer')
+            (root / 'dist' / 'AnY-Setup-99.0.0.exe').write_bytes(b'installer')
             with patch.object(generator, 'ROOT', root), patch.object(sys, 'argv', ['make_update_manifest.py']):
                 generator.main()
             import json
@@ -77,7 +77,7 @@ class Updates(unittest.TestCase):
     def test_verified_download_never_runs_and_never_overwrites(self):
         release=updater.parse_manifest(self.manifest())
         with tempfile.TemporaryDirectory() as tmp:
-            old=Path(tmp,'Cojam-Setup-99.0.0.exe');old.write_bytes(b'old')
+            old=Path(tmp,'AnY-Setup-99.0.0.exe');old.write_bytes(b'old')
             with patch.object(updater,'_open',return_value=io.BytesIO(b'installer')):
                 updater._download(release,tmp)
             result=updater.status()
@@ -103,10 +103,10 @@ class Updates(unittest.TestCase):
         payload=b'verified-installer'
         release=updater.parse_manifest(self.manifest(payload))
         with tempfile.TemporaryDirectory() as tmp:
-            folder=Path(tmp,'My Cojam');folder.mkdir()
-            core=folder/'CojamCore.exe';core.write_bytes(b'core')
-            (folder/'Cojam.exe').write_bytes(b'shell')
-            installer=Path(tmp,'Cojam-Setup-99.0.0.exe');installer.write_bytes(payload)
+            folder=Path(tmp,'My AnY');folder.mkdir()
+            core=folder/'AnYCore.exe';core.write_bytes(b'core')
+            (folder/'AnY.exe').write_bytes(b'shell')
+            installer=Path(tmp,'AnY-Setup-99.0.0.exe');installer.write_bytes(payload)
             old_state=dict(updater.STATE);old_release=updater.RELEASE
             self.addCleanup(lambda: (updater.STATE.clear(),updater.STATE.update(old_state),setattr(updater,'RELEASE',old_release)))
             updater.STATE.update(state='downloaded',path=str(installer));updater.RELEASE=release
@@ -117,8 +117,8 @@ class Updates(unittest.TestCase):
                 args=launch.call_args.args[0]
                 self.assertIn('-EncodedCommand',args)
                 env=launch.call_args.kwargs['env']
-                self.assertEqual(Path(env['COJAM_UPDATE_DIRECTORY']),folder.resolve())
-                self.assertEqual(env['COJAM_UPDATE_INSTALLER'],str(installer))
+                self.assertEqual(Path(env['ANY_UPDATE_DIRECTORY']),folder.resolve())
+                self.assertEqual(env['ANY_UPDATE_INSTALLER'],str(installer))
                 self.assertIn('/NOFORCECLOSEAPPLICATIONS',updater._INSTALL_HELPER)
                 self.assertIn('Start-Process -FilePath $shellPath',updater._INSTALL_HELPER)
                 updater.STATE['state']='downloaded';installer.write_bytes(b'altered-installer!')

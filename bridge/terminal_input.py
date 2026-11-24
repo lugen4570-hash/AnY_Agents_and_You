@@ -1,4 +1,4 @@
-"""Prompt editing and contextual completion for the Cojam terminal."""
+"""Prompt editing and contextual completion for the AnY terminal."""
 from __future__ import annotations
 
 import re
@@ -31,6 +31,7 @@ COMMANDS = {
     "resume": Command("搜索并切换会话"),
     "model": Command("选择成员的模型和思考强度", "[成员 [模型 [强度]]]", optional=True),
     "debate": Command("开启论道，设置议题和参辩成员", "[议题]", optional=True),
+    "debate-continue": Command("补充意见，继续上一场论道", "[补充意见]", optional=True),
     "debate-finish": Command("结束轮流发言并请主持人总结"),
     "mode": Command("切换讨论或干活模式", "discuss|work"),
     "status": Command("查看目录、成员和执行状态"),

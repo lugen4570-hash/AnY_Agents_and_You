@@ -155,7 +155,7 @@ def prepare(room: Any, pid: str, endpoint: str, expected: int) -> dict[str, Any]
         result: dict[str, Any] = {"execution": describe(room, pid)}
         if challenge:
             args = {"room": room.id, "native_session": sid or "当前原生会话 ID", "binding_challenge": challenge}
-            result["instruction"] = "在同一条原生会话中调用 ai-bridge 的 cojam_standby，参数：" + json.dumps(args, ensure_ascii=False)
+            result["instruction"] = "在同一条原生会话中调用 ai-bridge 的 any_standby，参数：" + json.dumps(args, ensure_ascii=False)
             command = agents.agent_executable(pid)
             if native_session.provider(pid) == "claude" and sid and command:
                 command += list(((registry.get(pid) or {}).get("args") or {}).get("base") or []) + ["--desktop", "--resume", sid]

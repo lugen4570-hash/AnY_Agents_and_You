@@ -1,8 +1,8 @@
-﻿# 打成 Windows 便携单文件 exe（dist\Cojam.exe）及桌面目录版核心（dist\CojamCore\）
+﻿# 打成 Windows 便携单文件 exe（dist\AnY.exe）及桌面目录版核心（dist\AnYCore\）
 # 需要先装 PyInstaller：pip install pyinstaller
 #   .\build_exe.ps1                 默认同时构建便携单文件版与桌面 --onedir 核心
-#   .\build_exe.ps1 -Mode onefile   只打 dist\Cojam.exe（浏览器/便携单文件版）
-#   .\build_exe.ps1 -Mode onedir    只打 dist\CojamCore\（桌面安装版目录核心）
+#   .\build_exe.ps1 -Mode onefile   只打 dist\AnY.exe（浏览器/便携单文件版）
+#   .\build_exe.ps1 -Mode onedir    只打 dist\AnYCore\（桌面安装版目录核心）
 # 注意：exe 里自带 Python，但 claude / codex / gemini 这些命令还得用户自己装在 PATH 里。
 param([ValidateSet('all', 'onefile', 'onedir')][string]$Mode = 'all')
 $ErrorActionPreference = "Stop"
@@ -42,10 +42,10 @@ function Invoke-CoreBuild([string]$KindFlag, [string]$OutName, [string]$BuiltRel
 }
 
 if ($Mode -in @('all', 'onefile')) {
-    Invoke-CoreBuild "--onefile" "Cojam" "dist/Cojam.exe"
-    Write-Host "好了：dist\Cojam.exe" -ForegroundColor Green
+    Invoke-CoreBuild "--onefile" "AnY" "dist/AnY.exe"
+    Write-Host "好了：dist\AnY.exe" -ForegroundColor Green
 }
 if ($Mode -in @('all', 'onedir')) {
-    Invoke-CoreBuild "--onedir" "CojamCore" "dist/CojamCore/CojamCore.exe"
-    Write-Host "好了：dist\CojamCore\CojamCore.exe" -ForegroundColor Green
+    Invoke-CoreBuild "--onedir" "AnYCore" "dist/AnYCore/AnYCore.exe"
+    Write-Host "好了：dist\AnYCore\AnYCore.exe" -ForegroundColor Green
 }

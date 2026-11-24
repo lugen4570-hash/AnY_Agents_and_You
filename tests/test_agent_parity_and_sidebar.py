@@ -54,7 +54,7 @@ class SidebarCollapseTests(unittest.TestCase):
         script = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
 const ws = fs.readFileSync('static/workspace.js', 'utf8');
-const part = ws.slice(ws.indexOf("const NAV_COLLAPSE_KEY='cojam_nav_collapsed';"));
+const part = ws.slice(ws.indexOf("const NAV_COLLAPSE_KEY='any_nav_collapsed';"));
 assert.ok(part.includes('setNavCollapsed'), 'nav collapse helpers must exist in workspace.js');
 const makeClassList = () => {
   const set = new Set();
@@ -90,7 +90,7 @@ const els = {
   navSearch: makeEl({value: ''}),
   modal: makeEl({classList: modalClassList}),
 };
-const store = new Map([['cojam_nav_collapsed', '1']]);
+const store = new Map([['any_nav_collapsed', '1']]);
 let keydownHandler = null;
 const kbd = {textContent: ''};
 const ctx = vm.createContext({
@@ -116,12 +116,12 @@ assert.equal(els.navToggle.attributes['aria-expanded'], 'false');
 els.navToggle.onclick();
 assert.equal(bodyClassList.contains('nav-collapsed'), false);
 assert.equal(els.rooms.inert, false);
-assert.equal(store.get('cojam_nav_collapsed'), '0');
+assert.equal(store.get('any_nav_collapsed'), '0');
 assert.equal(els.navToggle.attributes['aria-expanded'], 'true');
 els.navClose.onclick();
 assert.equal(bodyClassList.contains('nav-collapsed'), true);
 assert.equal(els.rooms.inert, true);
-assert.equal(store.get('cojam_nav_collapsed'), '1');
+assert.equal(store.get('any_nav_collapsed'), '1');
 keydownHandler({ctrlKey: true, key: 'k', preventDefault(){}});
 assert.equal(bodyClassList.contains('nav-collapsed'), false, 'Ctrl+K expands collapsed desktop sidebar');
 ctx.window.innerWidth = 640;
@@ -514,7 +514,7 @@ class AllAgentCompactionTests(unittest.TestCase):
         self.assertEqual(r.meta['old_sessions']['acp_c'], ['acp-s1'])
         self.assertEqual(seen[0][2], 'acp-s1')
         self.assertIsNone(seen[1][2])
-        self.assertIn('【合拍】你是 @acp_c', seen[1][1])
+        self.assertIn('【AnY】你是 @acp_c', seen[1][1])
         self.assertIn('ACP 阶段摘要', seen[1][1])
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test openAi modal')

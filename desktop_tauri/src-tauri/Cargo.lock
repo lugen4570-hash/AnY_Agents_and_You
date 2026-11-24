@@ -541,8 +541,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cojam-desktop"
-version = "2.8.18"
+name = "any-desktop"
+version = "2.8.19"
 dependencies = [
  "rand 0.8.8",
  "rfd",

@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 """Detached CLI job runner & dialogue collector.
 
-Cojam acts as a meeting room and conversation collector: closing or restarting
-Cojam does NOT kill in-flight local CLI agent jobs. Each CLI turn runs in a
-detached process group that writes live status and final parsed results to
-`<room_dir>/jobs/<job_id>.json`. When Cojam reopens (or while it stays open),
-it collects completed replies and reattaches to still-running jobs.
+AnY acts as a meeting room and conversation collector; closing or restarting
+can optionally detach or terminate in-flight local CLI agent jobs depending on
+runtime shutdown policy. Each CLI turn runs in its own process group that writes
+live status and final parsed results to `<room_dir>/jobs/<job_id>.json`. When
+AnY reopens (or while it stays open), it collects completed replies and
+reattaches to still-running jobs.
 """
 from __future__ import annotations
 
-import json
 import os
 import secrets
-import signal
 import subprocess
 import sys
 import threading
@@ -30,7 +29,7 @@ _collect_lock = threading.Lock()
 
 
 def begin_shutdown() -> None:
-    """Signal Cojam watchers to detach cleanly without killing running CLI workers."""
+    """Signal AnY watchers to detach cleanly without killing running CLI workers."""
     _shutting_down.set()
 
 
@@ -88,27 +87,8 @@ def pid_alive(pid: int) -> bool:
 
 
 def kill_pid_tree(pid: int) -> None:
-    if not isinstance(pid, int) or pid <= 0:
-        return
-    if sys.platform == "win32":
-        try:
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                timeout=10,
-            )
-        except Exception:
-            pass
-        return
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except Exception:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except Exception:
-            pass
+    from . import pal
+    pal.kill_pid_tree(pid)
 
 
 def _worker_cmd(job_path: str) -> list[str]:
@@ -203,7 +183,7 @@ def wait_for_job(
     is_cancelled: Any = None,
     poll_interval: float = 0.25,
 ) -> tuple[str, dict[str, Any] | None]:
-    """Wait until job finishes, is cancelled, worker dies, or Cojam begins shutting down.
+    """Wait until job finishes, is cancelled, worker dies, or AnY begins shutting down.
 
     Returns (state, job_data) where state is one of:
     'done' | 'detached' | 'cancelled' | 'dead'.
@@ -241,7 +221,10 @@ def wait_for_job(
 
 def cancel_jobs(room: Any, targets: list[str] | None = None, *, source: int | None = None) -> int:
     """Explicitly cancel and terminate detached jobs for targets (user clicked Stop)."""
-    jdir = jobs_dir(room.dir)
+    room_dir = getattr(room, "dir", None)
+    if not room_dir:
+        return 0
+    jdir = jobs_dir(room_dir)
     if not os.path.isdir(jdir):
         return 0
     wanted = set(targets) if targets is not None else None
@@ -265,6 +248,17 @@ def cancel_jobs(room: Any, targets: list[str] | None = None, *, source: int | No
         if pid:
             kill_pid_tree(pid)
         killed += 1
+    return killed
+
+
+def cancel_all(rooms: Any) -> int:
+    """Cancel and terminate active detached CLI worker processes across all rooms."""
+    killed = 0
+    for room in rooms or ():
+        try:
+            killed += cancel_jobs(room)
+        except OSError as error:
+            logger.debug("Failed cancelling detached jobs for room %s: %s", getattr(room, "id", "?"), error)
     return killed
 
 
@@ -343,7 +337,12 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
             with room.lock:
                 room.meta[ai + "_session"] = new_sid
                 room.save_meta()
-        room.add_message("系统", out or ("%s 后台任务失败" % ai))
+        step = room.record_step(ai, pre_tree, edits, t0, t1) if pre_tree is not None else None
+        if was_stopped:
+            room.add_message("系统", out or ("%s 被你打断了" % ai))
+        else:
+            room.add_turn_failure(ai, out or ("%s 后台任务失败" % ai), mode, source, step)
+        return True
 
     if pre_tree is not None:
         room.record_step(ai, pre_tree, edits, t0, t1)
@@ -384,7 +383,9 @@ def collect_for_room(room: Any) -> int:
                 elif isinstance(fresh, dict) and fresh.get("status") in ("starting", "running"):
                     fresh["status"] = "collected"
                     write_json(path, fresh)
-                    room.add_message("系统", "%s 之前的后台任务已意外退出，未返回结果。" % (fresh.get("ai") or "AI"))
+                    ai = fresh.get("ai") or "AI"
+                    room.add_turn_failure(ai, "%s 之前的后台任务已意外退出，未返回结果。" % ai,
+                                          fresh.get("mode") or room.mode(), fresh.get("source_message"))
     return collected
 
 
@@ -441,13 +442,12 @@ def _reattach_watcher(room: Any, job_path: str, data: dict[str, Any]) -> None:
 
 
 def recover_all(rooms_store: Any) -> int:
-    """Scan all rooms on disk at Cojam startup and collect any pending detached jobs."""
+    """Scan all rooms on disk at AnY startup and collect any pending detached jobs."""
     total = 0
     for row in rooms_store.listing():
         rid = row.get("id")
         if not rid:
             continue
-        rdir = os.path.join(os.path.dirname(os.path.abspath(rooms_store.room_dir(rid))) if hasattr(rooms_store, "room_dir") else "", rid)
         # Check jobs dir directly via common.MEET_DIR to avoid loading idle rooms with no jobs.
         from .common import MEET_DIR
         jdir = jobs_dir(os.path.join(MEET_DIR, rid))
@@ -568,8 +568,8 @@ def run_worker(job_path: str) -> int:
         # Always cleanly stop any codex app-server spawned by this worker so no thread lock leaks.
         try:
             agents.stop_codex(proxy)
-        except Exception:
-            pass
+        except Exception as error:
+            logger.debug("停止 worker 的 Codex 会话时出错: %s", error)
 
     cur = read_json(job_path)
     if not isinstance(cur, dict):
