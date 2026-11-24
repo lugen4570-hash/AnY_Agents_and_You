@@ -82,6 +82,7 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
             launcher = Path(stdout.getvalue().strip())
             self.assertTrue(launcher.is_file())
             self.assertEqual(launcher.parent, root.resolve())
+            self.assertIn('-I -X utf8 -m bridge.cli', launcher.read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

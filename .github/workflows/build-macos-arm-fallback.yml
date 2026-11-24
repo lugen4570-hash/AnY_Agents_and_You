@@ -1,6 +1,11 @@
 name: Build Apple Silicon fallback on Intel
 
 on:
+  workflow_call:
+    inputs:
+      source_tag:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       source_tag:

@@ -14,6 +14,13 @@ jobs:
 
   macos:
     uses: ./.github/workflows/build-macos.yml
+    with:
+      intel_only: true
+
+  macos-arm64:
+    uses: ./.github/workflows/build-macos-arm-fallback.yml
+    with:
+      source_tag: ${{ github.ref_name }}
 
   cli-linux:
     runs-on: ubuntu-latest
@@ -26,7 +33,7 @@ jobs:
         run: python packaging/smoke_cli_install.py
 
   publish:
-    needs: [windows, macos, cli-linux]
+    needs: [windows, macos, macos-arm64, cli-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +117,7 @@ jobs:
           )
           gh release create "$tag" --repo "${{ github.repository }}" --verify-tag --draft --title "AnY ${ver}" --notes-file <(
             echo "AnY ${ver} 正式安装包与校验文件。"
+            echo 'Apple 芯片版已核验架构、签名和 DMG 内容，Apple Silicon 原生启动待验收。'
             echo ""
             echo "### SHA-256"
             echo '```'

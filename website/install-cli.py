@@ -90,11 +90,11 @@ def write_launcher(root, interpreter):
     if sys.platform == "win32":
         launcher = root / "any.cmd"
         executable = str(interpreter.relative_to(root))
-        command = f'@echo off\n"%~dp0{executable}" -I -m bridge.cli %*\n'
+        command = f'@echo off\n"%~dp0{executable}" -I -X utf8 -m bridge.cli %*\n'
         atomic_text(launcher, command)
     else:
         launcher = root / "any"
-        command = f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} -I -m bridge.cli "$@"\n'
+        command = f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} -I -X utf8 -m bridge.cli "$@"\n'
         atomic_text(launcher, command, executable=True)
     return launcher
 
@@ -168,7 +168,7 @@ def main(argv=None):
             return 0
         print(f"AnY CLI 已就绪。下次也可运行：{launcher}", flush=True)
         if not args.install_only:
-            return subprocess.call([str(interpreter), "-I", "-m", "bridge.cli"])
+            return subprocess.call([str(interpreter), "-I", "-X", "utf8", "-m", "bridge.cli"])
         return 0
     except KeyboardInterrupt:
         return 130
