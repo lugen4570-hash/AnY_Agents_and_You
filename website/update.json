@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.29",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.29.exe",
-  "sha256": "c3e06a4e1d6dde3624b2ab683e0c5b63f501f381c45f5b73ba038e3a22fc45ba",
-  "size": 13410078,
-  "notes": "AnY 2.8.29：新增按成员配置调用与转派、按设备绑定工作区、远端撤权回执，以及向指定成员分享正文和附件。"
+  "version": "2.8.31",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.31.exe",
+  "sha256": "a3b9dcf7033268cb53cf4f21881a0ff768f2749fb0b717d70fbcc5ccc21358a6",
+  "size": 13664172,
+  "notes": "AnY 2.8.31：补齐各二级功能弹窗返回导航（设置、Agent 管理与详情、自动发现、接入引导、心跳设置、项目设置与改名等），并更新新版 T2 图标。"
 }
