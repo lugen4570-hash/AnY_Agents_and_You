@@ -2,6 +2,22 @@
 
 最近更新：2026-11-25。
 
+## AnY 2.8.34 正式发布（2026-11-25）
+
+- 三端全面升级为 T2 蓝宝石光学座舱视觉（`Y` 冷银代表人、`A` 18K 金代表 AI，珊瑚橙用于权限确认与护栏提示，绯红用于失败或撤回）。官网采用全站暗场、半连笔花体签名字标与 `Agents and You` 副标，背景改用 Canvas 竖向落雨（随机速度与疏密分布的金色字节流 + 冷银人类协作短句，支持一键暂停与系统减弱动态效果）；GUI 同步深浅双主题、访客/接入页与桌面壳启动底色；CLI 更新主题与 `WelcomeMark`，并在 [bridge/terminal.py](../bridge/terminal.py) 修复退出时 `refresh_backend` 竞态导致的 `NoMatches` 错误。
+- 发布源码为 `235122f6f0c9af6df5c63043444650fdee6d595d`。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45642711275)一次通过 Windows Rust 8 项与 Python 全量回归、静态检查、安装与卸载数据保留、运行中安装保护、双架构 macOS 安装包和三种系统的 CLI 安装测试；`build-report-2.8.34.json` 标记 `source_dirty: false`。Windows 产物未签名，Tauri 桌面窗口及 macOS 实体机原生启动待真机验收。[构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.34/build-report-2.8.34.json)
+- [v2.8.34 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.34) 的 12 个附件均已实际下载，大小与 SHA-256 与 GitHub 元数据及 [SHA-256 清单](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.34/SHA256SUMS-2.8.34.txt) 一致；4 份发布 ZIP 完整性通过；下载后的 `AnYCore.exe`（`18875`）与 `AnY-Portable-2.8.34.exe`（`18876`）通过隔离数据目录启动、`/api/server/info`（`2.8.34` / `api_revision=3`）、6 份前端核心资源与 `v2.8.34` 标签逐字节比对及 `/api/server/exit` 正常退出验收。
+- 官网提交 `29204d4c7058595dc10700369e025037d43bf512` 已通过 [Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45646692095)。已核对首页、下载页、`update.json`、三份 macOS 更新清单、`downloads/manifest.json` 与 `cli/current.json`，并实际下载验证 Windows 安装版、便携版、双架构 macOS DMG、两条 macOS Python ZIP 地址及 CLI 源码包，大小和 SHA-256 全部一致。[官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
+| 官网文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Windows 安装版 | 13664719 | `5530610226c519b9dbcd64a0d0e19e882b472991bdb2d0454eca149436623f77` |
+| Windows 便携版 | 13501666 | `7b9a1b67580ac9b3a9429a7a6c25ecc76bb2cad66243f1747ffed60c36099ade` |
+| macOS Apple 芯片 DMG | 32309523 | `84b9c12d24ee2b93d6c9b16e5fe0d7b5a7afa4f97e197d9338695789b351fd36` |
+| macOS Intel DMG | 27035673 | `2be54cc648a8a682dbc63155294e07c3114d8504c2e273185101925eb915c0e6` |
+| macOS Python ZIP | 1986154 | `ba658d0aa931f75b4e1615993021a96aa84d0c0a1a628e90a6a23b9a1eb84bcd` |
+| CLI 源码包 | 472711 | `f6161557e2ed95a97fd72bb1300f62dce1cf33ce31d75a24c41991836b2b9097` |
+
 ## AnY 2.8.33 正式发布（2026-11-25）
 
 - 新建会话、会话成员与权限和 Agent 与连接优先用已有联系人资料显示，日常轮询只读取联系人和连接状态，主动查找已安装 Agent 时仍执行完整扫描。隔离复测中，三个入口显示内容耗时为 6–302 毫秒，轻量联系人请求为 31–34 毫秒。
