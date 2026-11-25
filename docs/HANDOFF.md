@@ -2,6 +2,22 @@
 
 最近更新：2026-11-25。
 
+## AnY 2.8.33 正式发布（2026-11-25）
+
+- 新建会话、会话成员与权限和 Agent 与连接优先用已有联系人资料显示，日常轮询只读取联系人和连接状态，主动查找已安装 Agent 时仍执行完整扫描。隔离复测中，三个入口显示内容耗时为 6–302 毫秒，轻量联系人请求为 31–34 毫秒。
+- 2.8.32 首次发布流程在 Windows 全量回归中发现成员权限测试夹具缺少已加载目录，未生成正式 Release。补齐夹具后递增到 2.8.33，保留旧标签。发布源码为 `67d79ea67d4a76615d844bfa76f5d149dc3acd83`。[2.8.32 首次流程](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45635649726) · [2.8.33 发布流程](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45636863055)
+- 2.8.33 的 Windows Rust 和 Python 全量回归、静态检查、安装与卸载数据保留、运行中安装保护、Windows/macOS/Linux CLI 安装均通过。两种 Mac 架构的 DMG 内容、架构和签名校验通过，Intel 构建还通过了后台启动、资源读取和退出检查。Apple 芯片版的原生启动尚未在 Apple Silicon 实机验证。Windows 构建报告标记源码干净、产物未签名。[构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.33/build-report-2.8.33.json)
+- 实际下载 GitHub Release 的全部 12 个附件并核对大小及 SHA-256，ZIP 完整性检查通过。下载后的 Windows 便携版和桌面核心用隔离数据目录验证了 `2.8.33 / api_revision=3`、轻量联系人接口、三份前端资源及正常退出。桌面包打开了真实的 Tauri 窗口。首次关闭时后台未在 7 秒观察窗口内退出，等待界面初始化 3 秒后复测，关闭窗口后后台约 3.3 秒退出。[GitHub Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.33) · [SHA-256 清单](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.33/SHA256SUMS-2.8.33.txt)
+- 官网提交 `5f57e944390a40e6479f0036356d0a6086d609d9` 部署成功。线上首页指向本版下载页，核对了 Windows 更新清单、三份 macOS 更新清单、下载总清单和 CLI 版本清单。实际下载了 Windows 安装版和便携版、两种 Mac DMG、两个 macOS Python ZIP 地址及 CLI 源码包，大小与 SHA-256 均一致，CLI 源码包对应发布标签。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45638857499) · [官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
+| 官网文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Windows 安装版 | 13665773 | `e8abfa5e07ae2b41be51918c1e2602bc68c84a02bd5d3c75a198fa6d6497f2a6` |
+| Windows 便携版 | 13494322 | `0a179af50aa50eb407220e75fbbf2b14071e2fc8bf5018036469520a23515236` |
+| macOS Apple 芯片 DMG | 32571847 | `5a4c3b09b2af44ab2bff69b88d57c8a181d158e033e48a177284086ceafc8193` |
+| macOS Intel DMG | 27028150 | `055983d1fb3ddfaa8e9071a1c2d6c2a50a383bbe2936e12591de82f3446e94d4` |
+| macOS Python ZIP | 1980002 | `b5822e1dae26820750abf1f023e072e35c068a46463c9d42f4f53fc9f4b039a5` |
+
 ## AnY 2.8.31 正式发布（2026-11-25）
 
 - 本版包含 `2.8.30` 新增的二级/多级弹窗返回导航（[app-core.js](../static/app-core.js) 弹窗返回栈、`← 返回` 顶部按钮及保存/取消回退，覆盖设置、Agent 管理与详情、自动发现、接入引导、心跳设置、模型与执行端跳转、项目设置与改名等路径，并在 [test_simplified_frontend.py](../tests/test_simplified_frontend.py) 补齐回归用例），以及 `7a274cc` 更新的新版 T2 蓝宝石图标资源。
