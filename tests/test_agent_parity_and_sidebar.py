@@ -655,6 +655,7 @@ const mbox = {
 const ctx = vm.createContext({
   RID: 'r1',
   contactMode: 'global',
+  agCat: {local_workspace: true, owner_devices: []},
   CONTACTS: [
     {id: 'claude', label: 'Claude', enabled: true},
     {id: 'codex', label: 'Codex', enabled: true},
@@ -669,7 +670,7 @@ const ctx = vm.createContext({
   },
   mbox,
   esc: s => String(s).replace(/"/g, '&quot;'),
-  refreshContacts: async () => {},
+  pollContacts: async () => { throw new Error('opening with cached contacts should not fetch'); },
   showModal: html => { dom = parseOpenAgents(html); },
   hideModal: () => {},
   post: async (url, body) => { posted = {url, body}; return [true, {}]; },
