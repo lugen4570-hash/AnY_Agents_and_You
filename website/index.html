@@ -6,15 +6,15 @@
   <meta name="theme-color" content="#070A0F">
   <meta name="page-type" content="software">
   <meta name="site-kind" content="software">
-  <meta name="description" content="AnY — 多 Agent 与多人的本地协作空间。让 Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 与伙伴同席讨论、论道与协作。">
+  <meta name="description" content="AnY — 多 Agent 与多人的本地协作空间。让 Claude Code、Codex、Kimi Code、Antigravity、Cursor、OpenCode 与伙伴同席讨论、论道与协作。">
   <meta property="og:title" content="AnY · 和 Agent 在本地开会">
   <meta property="og:description" content="在同一个本地项目里，邀请多个 Agent 和你的伙伴一起讨论、分工。">
   <meta property="og:image" content="https://lugen4570-hash.github.io/AnY_Agents_and_You/assets/workspace.png">
   <meta name="twitter:card" content="summary_large_image">
   <title>AnY — 多 Agent 与多人的本地协作空间</title>
   <link rel="icon" href="assets/logo.svg?v=t2">
-  <link rel="stylesheet" href="style.css?v=2.8.34">
-  <script src="site.js?v=2.8.34" defer></script>
+  <link rel="stylesheet" href="style.css?v=2.8.34-flow">
+  <script src="site.js?v=2.8.34-flow" defer></script>
 </head>
 <body class="page-home">
   <header class="topbar">
@@ -58,14 +58,24 @@
             <span class="signal-node">你</span>
             <svg viewBox="0 0 280 48" preserveAspectRatio="none" aria-hidden="true">
               <defs><linearGradient id="signal-gradient"><stop stop-color="#B7D0DC"/><stop offset="1" stop-color="#E4A832"/></linearGradient></defs>
-              <path class="signal-line" data-signal="discuss" pathLength="1" d="M0 24C42 42 58 7 113 13S218 39 280 24M104 13C156 -2 198 11 228 18M125 15C148 39 191 43 226 33"/>
-              <path class="signal-line" data-signal="debate" pathLength="1" d="M0 24C31 29 38 4 69 6S118 43 145 41 192 6 217 9 249 33 280 24"/>
-              <path class="signal-line" data-signal="work" pathLength="1" d="M0 24C33 24 44 17 69 18 108 18 124 2 159 7 208 14 224 23 280 24M69 18C101 20 126 42 163 41 199 40 218 26 250 24"/>
+              <path class="signal-line" data-signal="discuss" d="M0 24 C95 24 135 12 280 12"/>
+              <path class="signal-line" data-signal="discuss" d="M0 24 C95 24 135 36 280 36"/>
+              <path class="signal-line" data-signal="debate" d="M0 24 C42 24 58 12 92 12 S156 36 188 36 S238 24 280 24"/>
+              <circle class="signal-round" data-signal="debate" cx="92" cy="12" r="2"/>
+              <circle class="signal-round" data-signal="debate" cx="188" cy="36" r="2"/>
+              <path class="signal-line" data-signal="work" d="M0 24 H60 C104 24 110 12 165 12 H280"/>
+              <path class="signal-line" data-signal="work" d="M0 24 H60 C104 24 110 36 165 36 H280"/>
               <circle class="signal-bead" data-signal-bead r="2.4">
-                <animateMotion data-signal-travel dur=".86s" begin="indefinite"/>
+                <animateMotion dur=".92s" begin="indefinite"/>
+              </circle>
+              <circle class="signal-bead" data-signal-bead r="2.4">
+                <animateMotion dur=".92s" begin="indefinite"/>
               </circle>
             </svg>
-            <span class="signal-node" data-signal-target>两个 Agent</span>
+            <div class="signal-targets" data-signal-targets>
+              <span class="signal-node">安装包</span>
+              <span class="signal-node">官网下载</span>
+            </div>
           </div>
           <article class="stage-window">
             <div class="stage-top">
@@ -87,7 +97,7 @@
                 <span class="cap-chip" data-agent-cap="antigravity" style="--dot:#8056dd"><i aria-hidden="true"></i>Antigravity</span>
                 <span class="cap-chip" data-agent-cap="codex" style="--dot:#168066"><i aria-hidden="true"></i>Codex</span>
                 <span class="cap-chip" data-agent-cap="claude" style="--dot:#ba6044"><i aria-hidden="true"></i>Claude</span>
-                <span class="cap-chip" data-agent-cap="gemini" style="--dot:#3468cf"><i aria-hidden="true"></i>Gemini</span>
+                <span class="cap-chip" data-agent-cap="kimi" style="--dot:#3468cf"><i aria-hidden="true"></i>Kimi Code</span>
               </div>
             </div>
 

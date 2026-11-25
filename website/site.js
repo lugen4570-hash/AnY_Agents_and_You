@@ -210,7 +210,7 @@ const stage = document.querySelector('[data-stage]');
 if (stage) {
   const scenarios = {
     discuss: {
-      target: '多个 Agent',
+      targets: ['Antigravity', 'Codex'],
       caption: '两位 Agent 在同一场会话里接上彼此的思路。',
       active: ['antigravity', 'codex'],
       prompt: '@Claude 帮忙补充跨设备测试。',
@@ -221,18 +221,19 @@ if (stage) {
       ],
     },
     debate: {
-      target: '按轮发言',
+      targets: ['论道共识'],
       caption: '围绕一个问题分轮发言，再收拢成共识。',
-      active: ['claude', 'gemini'],
+      active: ['claude', 'kimi'],
       prompt: '/debate 选择议题与参与者',
       messages: [
         ['你', '论道议题', '手机和电脑同时在线时，草稿该怎么保存？'],
         ['Claude', '第 1 轮', '把草稿按设备保存，每台设备都可以继续上次的编辑。'],
-        ['Gemini', '第 2 轮', '同意。还要验证切回原设备时，能找回刚才粘贴的图片。'],
+        ['Kimi Code', '第 2 轮', '同意。还要验证切回原设备时，能找回刚才粘贴的图片。'],
+        ['Claude', '共识', '草稿按设备保存，并把图片恢复加进回归检查。'],
       ],
     },
     work: {
-      target: '两个 Agent',
+      targets: ['安装包', '官网下载'],
       caption: '两位 Agent 并行核查，最后一步由你确认。',
       active: ['codex', 'claude'],
       prompt: '确认后继续…',
@@ -252,10 +253,9 @@ if (stage) {
   const prompt = stage.querySelector('[data-stage-prompt]');
   const poster = stage.closest('[data-poster]');
   const caption = stage.querySelector('[data-poster-caption]');
-  const targetNode = stage.querySelector('[data-signal-target]');
-  const signalLines = [...stage.querySelectorAll('[data-signal]')];
-  const signalBead = stage.querySelector('[data-signal-bead]');
-  const signalTravel = stage.querySelector('[data-signal-travel]');
+  const signalTargets = stage.querySelector('[data-signal-targets]');
+  const signalLines = [...stage.querySelectorAll('.signal-line')];
+  const signalBeads = [...stage.querySelectorAll('[data-signal-bead]')];
   const replay = stage.querySelector('[data-stage-replay]');
   const light = stage.querySelector('.stage-light');
   let transitions = [];
@@ -288,7 +288,7 @@ if (stage) {
   }
 
   function renderScenario(key) {
-    const { active, messages, prompt: nextPrompt, caption: nextCaption, target } = scenarios[key];
+    const { active, messages, prompt: nextPrompt, caption: nextCaption, targets } = scenarios[key];
     stage.dataset.scenarioMode = key;
     poster.dataset.scene = key;
     for (const button of scenariosButtons) {
@@ -300,7 +300,12 @@ if (stage) {
     feed.replaceChildren(...messages.map(renderMessage));
     prompt.textContent = nextPrompt;
     caption.textContent = nextCaption;
-    targetNode.textContent = target;
+    signalTargets.replaceChildren(...targets.map((target) => {
+      const node = document.createElement('span');
+      node.className = 'signal-node';
+      node.textContent = target;
+      return node;
+    }));
   }
 
   function clearMotion() {
@@ -308,29 +313,34 @@ if (stage) {
     transitions = [];
   }
 
+  function playSignal() {
+    if (motionPreference.matches || !stage.animate ||
+        document.documentElement.hasAttribute('data-motion-paused')) return;
+    const paths = signalLines.filter((line) => line.dataset.signal === poster.dataset.scene);
+    for (const [index, path] of paths.entries()) {
+      const bead = signalBeads[index];
+      const travel = bead.querySelector('animateMotion');
+      if (!travel?.beginElement) continue;
+      travel.setAttribute('path', path.getAttribute('d'));
+      travel.beginElement();
+      transitions.push(bead.animate(
+        [{ opacity: 0 }, { opacity: 1, offset: .12 }, { opacity: 1, offset: .84 }, { opacity: 0 }],
+        { duration: 920 },
+      ));
+    }
+  }
+
   function playCut() {
     clearMotion();
     if (motionPreference.matches || !feed.animate) return;
-    const route = signalLines.find((line) => line.dataset.signal === poster.dataset.scene);
     const easing = 'cubic-bezier(.22,1,.36,1)';
-    if (signalTravel.beginElement) {
-      signalTravel.setAttribute('path', route.getAttribute('d').split('M', 2).join('M'));
-      signalTravel.beginElement();
-      transitions.push(signalBead.animate(
-        [{ opacity: 0 }, { opacity: 1, offset: .12 }, { opacity: 1, offset: .82 }, { opacity: 0 }],
-        { duration: 860 },
-      ));
-    }
+    playSignal();
     transitions.push(
-      route.animate(
-        [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
-        { duration: 820, easing: 'ease-out' },
-      ),
       light.animate(
         [{ opacity: .12 }, { opacity: .84, offset: .5 }, { opacity: .48 }],
         { duration: 900, easing },
       ),
-      targetNode.animate(
+      signalTargets.animate(
         [{ boxShadow: '0 0 0 0 currentColor' }, { boxShadow: '0 0 0 10px transparent' }],
         { duration: 400, delay: 710, easing },
       ),
@@ -375,6 +385,12 @@ if (stage) {
   }
   renderScenario('work');
   playCut();
+  const pulseLoop = window.setInterval(() => {
+    if (document.hidden) return;
+    transitions = transitions.filter((animation) => animation.playState === 'running');
+    playSignal();
+  }, 3600);
+  window.addEventListener('beforeunload', () => window.clearInterval(pulseLoop), { once: true });
 }
 
 const nestedGroups = [...document.querySelectorAll('[data-nested-group]')];
@@ -678,21 +694,4 @@ if (docNavLinks.length && 'IntersectionObserver' in window) {
     }
   }
 
-  if (stage) {
-    const pulseLoop = window.setInterval(() => {
-      if (document.hidden || motionPreference.matches || document.documentElement.hasAttribute('data-motion-paused')) return;
-      const bead = stage.querySelector('[data-signal-bead]');
-      const travel = stage.querySelector('[data-signal-travel]');
-      const route = stage.querySelector(`[data-signal="${stage.dataset.scenarioMode}"]`);
-      if (travel?.beginElement && route && bead) {
-        travel.setAttribute('path', route.getAttribute('d').split('M', 2).join('M'));
-        travel.beginElement();
-        bead.animate(
-          [{ opacity: 0 }, { opacity: 1, offset: .14 }, { opacity: 1, offset: .82 }, { opacity: 0 }],
-          { duration: 920 }
-        );
-      }
-    }, 3600);
-    window.addEventListener('beforeunload', () => window.clearInterval(pulseLoop), { once: true });
-  }
 })();

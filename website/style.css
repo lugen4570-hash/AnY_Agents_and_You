@@ -226,21 +226,21 @@ pre code { padding: 0; background: none; color: inherit; }
 }
 .signal-map svg { display: block; width: 100%; height: clamp(74px, 8vw, 115px); overflow: visible; }
 .signal-node { border: 1px solid var(--line); border-radius: 5px; background: var(--paper); padding: 4px 9px; font-size: 12px; font-weight: 700; }
-[data-signal-target] { color: var(--ai); }
+.signal-targets { display: grid; grid-auto-rows: 1fr; align-self: stretch; align-items: center; justify-items: start; color: var(--ai); }
+[data-signal] { display: none; }
 .signal-line {
-  display: none;
   fill: none;
   stroke: url(#signal-gradient);
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
   filter: drop-shadow(0 0 4px #b7d0dc44);
-  stroke-dasharray: 1;
   vector-effect: non-scaling-stroke;
 }
 [data-scene="discuss"] [data-signal="discuss"],
 [data-scene="debate"] [data-signal="debate"],
 [data-scene="work"] [data-signal="work"] { display: block; }
+.signal-round { fill: var(--ai); stroke: var(--paper); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .signal-bead { fill: var(--ai); stroke: currentColor; stroke-width: 1.2; opacity: 0; }
 .stage-description { padding: 9px 16px 0; color: var(--muted); font-size: 12px; }
 .stage-tabs .stage-replay { border-color: var(--line); margin-inline-start: 5px; }
