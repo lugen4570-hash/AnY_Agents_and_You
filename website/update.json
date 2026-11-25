@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.28",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.28.exe",
-  "sha256": "f47867629996aa91ee2fd02e36463d88734657d8a459897feade1a918569a6b2",
-  "size": 13369563,
-  "notes": "AnY 2.8.28：输入 / 即可打开命令菜单，桌面聊天区移除顶部横幅，侧栏分为会话和联系人视图。"
+  "version": "2.8.29",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.29.exe",
+  "sha256": "c3e06a4e1d6dde3624b2ab683e0c5b63f501f381c45f5b73ba038e3a22fc45ba",
+  "size": 13410078,
+  "notes": "AnY 2.8.29：新增按成员配置调用与转派、按设备绑定工作区、远端撤权回执，以及向指定成员分享正文和附件。"
 }
