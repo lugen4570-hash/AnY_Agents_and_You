@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Any
 
-from . import agents, drivers, execution, registry
+from . import access, agents, drivers, execution, registry
 from .common import HERE, PROJECT, get_logger, mode_key, now_str, read_json, write_json
 
 logger = get_logger(__name__)
@@ -131,6 +131,7 @@ def spawn_job(
     t0: float,
     model_revision: str = "",
     source: int | None = None,
+    dispatch: dict[str, Any] | None = None,
 ) -> str:
     """Persist job spec to disk and launch a detached worker process. Returns job_path."""
     jdir = jobs_dir(room.dir)
@@ -162,6 +163,7 @@ def spawn_job(
         "t0": t0,
         "model_revision": model_revision,
         "source_message": source,
+        "dispatch": dispatch,
         "status": "starting",
         "pid": 0,
         "live": "",
@@ -306,6 +308,11 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
         if pre_tree is not None:
             room.record_step(ai, pre_tree, edits, t0, t1)
         return True
+    context = access.DispatchContext.restore(data["dispatch"]) if data.get("dispatch") else room.dispatch_context(source, mode)
+    if context is None or access.can_dispatch(room, context, ai):
+        if pre_tree is not None:
+            room.record_step(ai, pre_tree, edits, t0, t1)
+        return True
 
     from . import model_catalog
     model_catalog.result(room, ai, str(data.get("model_revision") or ""), ok, out, new_sid)
@@ -324,14 +331,14 @@ def apply_job_result(room: Any, job_path: str, data: dict[str, Any], *, was_stop
             room.state["chain"] += 1
         if was_stopped:
             rest, ch = room.apply_board_cmds(ai, out)
-            rest, sent, errs = room.apply_send_cmds(rest)
+            rest, sent, errs = room.apply_send_cmds(rest, ai)
             if rest or sent or not (ch or errs):
                 from .common import mentions
                 room.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai), source=source)
             room.board_note(ai, ch, not_for=ai)
             room.send_note(ai, errs)
         else:
-            room.handle_message(ai, out, source=source)
+            room.handle_message(ai, out, source=source, dispatch=context)
     else:
         if new_sid and new_sid != data.get("sid"):
             with room.lock:

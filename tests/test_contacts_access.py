@@ -264,6 +264,126 @@ class Contacts(unittest.TestCase):
         finally:
             self.r.enqueue=old
 
+    def test_dispatch_ceiling_and_target_handoff_policy(self):
+        registry.save_agent({"id": "sourcebot", "driver": "external", "enabled": True})
+        try:
+            room = self.other
+            members = ["alice", "bot", "sourcebot"]
+            self.assertTrue(room.set_members(members, {"alice": {"trigger": True}, "bot": {"work": True}})[0])
+            self.assertTrue(room.set_mode("work")[0])
+            room.set_contact_policies({"alice": {"call_agents": []}}, {"bot": {"accept_handoff": False}})
+            owner = access.DispatchContext("你", "你", ceiling="discuss")
+            self.assertEqual(access.can_dispatch(room, owner, "bot"), "")
+            self.assertIn("未接受转派", access.can_dispatch(room, owner.handoff("sourcebot"), "bot"))
+            guest = access.DispatchContext("alice", "alice", ceiling="work").handoff("sourcebot")
+            self.assertIn("房间未允许", access.can_dispatch(room, guest, "bot"))
+            self.assertEqual(access.effective_mode(room, owner, "bot", "work"), "discuss")
+            self.assertEqual(access.effective_mode(room, guest, "bot", "work"), "discuss")
+        finally:
+            registry.remove_agent("sourcebot")
+
+    def test_external_discussion_requires_both_grants_and_keeps_owner_context_private(self):
+        ok, error = registry.save_agent({"id": "public-model", "driver": "http", "http_protocol": "openai_chat",
+                                         "endpoint": "https://models.example.test/v1", "token": "test-key",
+                                         "default": ["review-model", ""], "enabled": True})
+        self.assertTrue(ok, error)
+        try:
+            room = self.other
+            room.add_message("你", "入房之前的内容")
+            self.assertTrue(room.set_mode("work")[0])
+            self.assertTrue(room.set_members(["alice", "bot", "public-model"], {"alice": {"work": True}})[0])
+            room.add_message("bot", "本机 Agent 的私有输出")
+            room.meta["public-model_session"] = "private-session"
+            endpoint = "/api/external/messages?room=" + quote(room.id)
+            with patch.object(R.direct_model, "reply", return_value="公开讨论的回复") as model, \
+                    patch.object(R, "ai_caller") as native:
+                def ask(text):
+                    status, result = call("/api/post", {"room": room.id, "text": text}, self.key)
+                    self.assertEqual(status, 200)
+                    return result.get("dispatch_errors")
+
+                self.assertIn("房间未允许", ask("@public-model 第一条")[0]["reason"])
+                self.assertTrue(room.set_members(list(room.ais), {"alice": {"trigger": True, "work": True}})[0])
+                self.assertIn("尚未开放", ask("@public-model 第二条")[0]["reason"])
+                self.assertFalse(room.set_members(list(room.ais), {}, {"bot": True})[0])
+                self.assertTrue(room.set_members(list(room.ais), {"alice": {"trigger": True, "work": True}}, {"public-model": True})[0])
+                self.assertEqual(ask("这是一条普通发言"), [])
+                self.assertIn("尚未开放", ask("@bot 修改文件")[0]["reason"])
+                model.assert_not_called()
+                self.assertEqual(ask("@public-model 请讨论"), [])
+                with room.ai_lock("public-model"):
+                    pass
+                for job in threading.enumerate():
+                    if job.name.endswith("(run_job)"):
+                        job.join(timeout=2)
+                model.assert_called_once()
+                self.assertIn("请讨论", model.call_args.args[1])
+                self.assertNotIn("入房之前的内容", model.call_args.args[1])
+                self.assertNotIn("本机 Agent 的私有输出", model.call_args.args[1])
+                self.assertEqual(room.meta["public-model_session"], "private-session")
+                native.assert_not_called()
+            self.assertFalse(access.permissions(room, "alice")["work"])
+            status, messages = call(endpoint, key=self.key)
+            self.assertEqual(status, 200)
+            visible = [entry["text"] for entry in messages["messages"]]
+            self.assertIn("公开讨论的回复", visible)
+            self.assertNotIn("入房之前的内容", visible)
+            self.assertNotIn("本机 Agent 的私有输出", visible)
+        finally:
+            registry.remove_agent("public-model")
+
+    def test_share_publishes_only_selected_parts_to_selected_user(self):
+        registry.save_agent({"id": "ben", "kind": "user", "driver": "external", "enabled": True})
+        try:
+            ben_key = access.credential("ben")
+            room = self.other
+            self.assertTrue(room.set_members(["alice", "ben", "bot"], {})[0])
+            room_id = quote(room.id)
+            first = room.save_upload("review.txt", lambda n: b"hello"[:n], 5)
+            private = room.add_message("bot", "私有正文", [R.make_attachment(first)])
+            url = "/api/r/" + room_id + "/contact/share"
+            payload = {"id": private["id"], "recipients": ["alice"], "attachments": [0], "share_text": False}
+            self.assertEqual(call(url, payload, self.key)[0], 403)
+            code, shared = call(url, payload, owner=True)
+            self.assertEqual(code, 200, shared)
+            listing = "/api/external/messages?room=" + room_id
+            result = call(listing, key=self.key)[1]["messages"][-1]
+            self.assertEqual(result["text"], "")
+            self.assertEqual(result["shared_attachments"], [{"name": "review.txt", "size": 5, "index": 0}])
+            self.assertFalse(any(m["id"] == shared["id"] for m in call(listing, key=ben_key)[1]["messages"]))
+            self.assertFalse(any(m["id"] == shared["id"] for m in call(listing, key=self.bot_key)[1]["messages"]))
+            download = "/api/external/attachment?room=%s&message=%d&index=0" % (room_id, shared["id"])
+            Path(first).write_bytes(b"later")
+            req = urllib.request.Request(BASE + download, headers={"Authorization": "Bearer " + self.key})
+            with urllib.request.urlopen(req) as response:
+                self.assertEqual(response.read(), b"hello")
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(call(download, key=ben_key)[0], 404)
+            revoke = "/api/r/" + room_id + "/contact/revoke"
+            self.assertEqual(call(revoke, {"contact": "alice"}, owner=True)[0], 200)
+            self.assertEqual(call(download, key=self.key)[0], 403)
+        finally:
+            registry.remove_agent("ben")
+
+    def test_unenforceable_workspace_policy_blocks_native_dispatch(self):
+        room = self.other
+        self.assertTrue(room.set_members(["bot"], {})[0])
+        room_id = quote(room.id)
+        url = "/api/r/" + room_id + "/contact/policies"
+        policy = {"contact": "bot", "policy": {"workspace": {"read": True, "write": False, "exec": False}}}
+        self.assertEqual(call(url, policy, owner=True)[0], 200)
+        with patch.object(room, "enqueue") as enqueue:
+            room.handle_message("你", "@bot 审阅项目")
+            enqueue.assert_not_called()
+        self.assertIn("无法强制执行", room.messages[-1]["text"])
+
+    def test_native_edit_hook_honors_explicit_workspace(self):
+        room = self.other
+        self.assertTrue(room.set_members(["claude"], {"claude": {"work": True}})[0])
+        room.set_contact_policies({}, {"claude": {"workspace": {"read": True, "write": True, "exec": True}}})
+        result = agents.guard_decide("claude", room, "claude", {"tool_input": {"file_path": str(Path(DATA).parent / "other.txt")}})
+        self.assertEqual(result["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_mcp_auth_and_scope(self):
         msg={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "read_room", "arguments": {"room": self.other.id}}}
         self.assertEqual(call("/mcp", msg)[0], 401)

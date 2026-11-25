@@ -122,6 +122,17 @@ class InviteRedeem(unittest.TestCase):
         self.assertIsNone(access.identify(first["token"]))
         self.assertEqual(access.identify(second["token"]), first["contact"]["id"])
 
+    def test_room_revocation_cannot_be_undone_by_redeeming_old_invite(self):
+        first = invites.redeem(self.invite["token"], device_key="device-a", name="小林")
+        pid = first["contact"]["id"]
+        self.assertTrue(self.room.remove_external_human(pid))
+        for token in ("", first["token"]):
+            with self.assertRaises(invites.InviteError) as caught:
+                invites.redeem(self.invite["token"], contact_token=token, device_key="device-a")
+            self.assertEqual(caught.exception.code, 403)
+        self.assertEqual(access.identify(first["token"]), pid)
+        self.assertFalse(access.allowed(self.room, pid))
+
     def test_new_invite_on_same_device_reuses_identity(self):
         first = invites.redeem(self.invite["token"], device_key="device-a", name="小林")
         other_room = R.rooms.create("第二个会话", "", DATA, participants=[])

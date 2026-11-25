@@ -152,6 +152,11 @@ class Client:
             raise ConnectionError("会议室任务格式无效")
         if task["member"] != self.member or task.get("protocol") != 1:
             raise ConnectionError("任务身份或成员协议不匹配")
+        workspace = task.get("workspace_binding")
+        if workspace and (workspace.get("worker") != self.worker or not workspace.get("path")
+                          or os.path.normcase(os.path.realpath(workspace["path"])) != os.path.normcase(os.path.realpath(self.workdir))):
+            self.task_request("reply", task, ok=False, text="执行设备或工作目录已变更，请重新授权工作区", session="")
+            return
         self.active = task
         self.emit("正在处理「%s」的任务…" % task.get("title", task["room"]))
         answer, done = {}, threading.Event()
@@ -188,7 +193,9 @@ class Client:
             thread.join(5)
             if thread.is_alive():
                 self.stop_event.set()  # Never start another task alongside an uninterruptible old one.
-            self.emit("任务已停止；已经发生的文件修改或外部服务操作不会自动回滚。")
+            else:
+                self._acknowledge_stop(task)
+                self.emit("任务已停止；已经发生的文件修改或外部服务操作不会自动回滚。")
             self.active = None
             return
         # Retrying a lost acknowledgement submits the cached result, never reruns a model.
@@ -199,10 +206,18 @@ class Client:
                 break
             except ConnectionError as e:
                 if e.code in (401, 403, 409, 410, 413):
+                    if e.code == 410:
+                        self._acknowledge_stop(task)
                     self.emit(str(e))
                     break
                 self.stop_event.wait(3)
         self.active = None
+
+    def _acknowledge_stop(self, task):
+        try:
+            self.task_request("stop-ack", task, timeout=2)
+        except ConnectionError:
+            self.emit("停止回执未送达，会议室可能仍显示未确认。")
 
 
 def configure_state(directory):
@@ -307,8 +322,10 @@ class LocalExecutor:
             return answer
         finally:
             from .guard import guard
-            r.state["running"] = []
-            r.live.clear()
+            with r.lock:
+                r.state["running"] = []
+                r.state["stopped"].discard(self.agent)
+                r.live.clear()
             guard.release_turn((r.id, self.agent))
             self.current = None
 

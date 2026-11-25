@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, Sequence
 from urllib.parse import quote
 
-from . import access, agents, debate, detached_jobs, drivers, execution, model_catalog, registry, workspace as ws
+from . import access, agents, debate, detached_jobs, devices, direct_model, drivers, execution, model_catalog, registry, workspace as ws
 from .common import (AIS, ATT_BASE, LAST_FILE, LOG_DIR, MAX_ATTACH, MAX_IMAGES, MAX_UPLOAD, MEET_DIR, MODES, PROJECT,
                      ROOM_RE, TRASH_DIR, get_logger, in_dir, is_archived, kill_tree, kind_of, mentions, mode_key,
                      norm, now_str, preamble, read_json, ref_safe, safe_title, sanitize_name, write_json)
@@ -186,6 +186,8 @@ def md_local_path(target):
 
 
 def _hidden_from(m, ai):
+    if m.get("origin") in ("shared-result", "guest-discussion"):
+        return True
     nf = m.get("not_for")
     if isinstance(nf, (list, tuple, set)):
         return ai in nf
@@ -222,8 +224,9 @@ class Room:
         self.turn_failures = {}
         for message in self.messages:
             self._update_turn_failure(message)
-        self.pending: list[tuple[str, str, int | None]] = []  # Agent、队列代数、触发消息
+        self.pending: list[tuple[str, str, int | None, access.DispatchContext]] = []
         self.turn_sources: dict[str, int | None] = {}
+        self.turn_dispatch: dict[str, access.DispatchContext] = {}
         self.interrupting: set[str] = set()
         self.turn_ready = threading.Condition(self.lock)
         self.state: dict[str, Any] = {
@@ -348,12 +351,16 @@ class Room:
         elif message.get("origin") != "external":
             self.turn_failures.pop(message.get("retry_ai", message["speaker"]), None)
 
-    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None, source=None, failure=None, retry_ai=None, approval=None):
+    def add_message(self, speaker, text, attachments=None, to_user=False, quiet=False, step=None, not_for=None, origin=None, reply_to=None, progress=None, source=None, failure=None, retry_ai=None, approval=None, dispatch_device="", shared_with=None):
         now = datetime.now()
         with self.lock:
             m = {"id": len(self.messages), "speaker": speaker, "text": text, "time": now.strftime("%H:%M:%S")}
             if source is not None:
                 m["source_message"] = source
+            if dispatch_device:
+                m["dispatch_device"] = dispatch_device
+            if shared_with:
+                m["shared_with"] = list(shared_with)
             if failure:
                 m["failure"] = failure
             if retry_ai:
@@ -396,7 +403,7 @@ class Room:
     def _apply_recalls(self):
         for index, message in enumerate(self.messages):
             if message["id"] in self.recalled:
-                self.messages[index] = {**{k: message[k] for k in ("id", "speaker", "time")},
+                self.messages[index] = {**{k: message[k] for k in ("id", "speaker", "time", "origin", "source_message") if k in message},
                                         "text": "消息已撤回", "recalled": True}
             elif (reply := message.get("reply_to")) and reply["id"] in self.recalled:
                 self.messages[index] = {**message, "reply_to": {
@@ -490,6 +497,59 @@ class Room:
                 out.append(make_attachment(full))
         return out
 
+    def share_result(self, message_id, recipients, selection, share_text=True):
+        with self.lock:
+            if self.closed or type(message_id) is not int or not 0 <= message_id < len(self.messages):
+                raise ValueError("找不到这条结果")
+            original = self.messages[message_id]
+            if original.get("recalled") or original.get("quiet") or original["speaker"] == "系统":
+                raise ValueError("这条结果无法分享")
+            if not isinstance(recipients, list) or not recipients or any(
+                    not isinstance(pid, str) or not access.human(pid) or not access.allowed(self, pid)
+                    for pid in recipients):
+                raise ValueError("请选择有权查看本会话的外部成员")
+            raw = original.get("attachments") or []
+            if not isinstance(selection, list) or any(type(i) is not int or not 0 <= i < len(raw) for i in selection):
+                raise ValueError("附件选择无效")
+            selected = self.clean_attachments([raw[i] for i in dict.fromkeys(selection)])
+            if len(selected) != len(set(selection)):
+                raise ValueError("部分附件已不存在")
+            text = original["text"] if share_text else ""
+            if not text and not selected:
+                raise ValueError("请选择要分享的正文或附件")
+            copies = []
+            paths = []
+            try:
+                for item in selected:
+                    if item["size"] > MAX_UPLOAD:
+                        raise ValueError("附件超过可分享大小")
+                    full = os.path.join(ATT_BASE, item["path"])
+                    with open(full, "rb") as reader:
+                        copy_path = self.save_upload(item["name"], reader.read, item["size"])
+                    paths.append(copy_path)
+                    copies.append(dict(make_attachment(copy_path), name=item["name"]))
+                return self.add_message(original["speaker"], text, copies, origin="shared-result",
+                                        shared_with=list(dict.fromkeys(recipients)))
+            except (ValueError, OSError):
+                for path in paths:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        logger.warning("无法清理未发布的分享附件：%s", path)
+                raise
+
+    def shared_attachment(self, pid, message_id, index):
+        with self.lock:
+            if not access.allowed(self, pid) or not 0 <= message_id < len(self.messages):
+                return None
+            message = self.messages[message_id]
+            attachments = message.get("attachments", [])
+            if (message.get("origin") != "shared-result" or message.get("recalled")
+                    or not access.visible_message(self, pid, message) or not 0 <= index < len(attachments)):
+                return None
+            verified = self.clean_attachments([attachments[index]])
+            return verified[0] if verified else None
+
     def send_path(self, path):
         """AI 写的路径 → 本机完整路径（去引号、展开 ~ 和环境变量、相对路径按工作目录）。"""
         p = path.strip().strip("`'\"“”‘’<>").strip()
@@ -540,7 +600,7 @@ class Room:
             full = self.save_upload(os.path.basename(p), f.read, size)
         return make_attachment(full)
 
-    def apply_send_cmds(self, text):
+    def apply_send_cmds(self, text, ai=None):
         """把 AI 回复里的【发送】路径行收走、复制文件；正文里指向本机路径的 markdown 图片 ![](路径) 也当发送（它们习惯这么写，网页又显示不了本地路径）。
         返回 (剩下的正文, [附件], [没发成的原因])。代码块里的不算。"""
         keep: list[str] = []
@@ -557,6 +617,8 @@ class Room:
                 errs.append("一次最多发 %d 个，%s 没发" % (MAX_ATTACH, label))
                 return False
             try:
+                if ai is not None and not access.workspace_path_allowed(self, ai, "read", self.send_path(path)):
+                    raise ValueError("此附件不在获准读取的工作区范围内")
                 atts.append(self.send_file(path))
                 seen.add(key)
                 return True
@@ -874,7 +936,7 @@ class Room:
                     self.keys[a] = secrets.token_urlsafe(18)
                     KEYS[self.keys[a]] = (self.id, a)
 
-    def set_participants(self, ids, member_permissions=None):
+    def set_participants(self, ids, member_permissions=None, guest_discussion=None, dispatch_devices=None):
         """Change members and optional permissions in one metadata save; an empty room is valid."""
         ok_ids = registry.enabled_ids()
         if not isinstance(ids, list):
@@ -888,15 +950,31 @@ class Room:
             if self.busy_for():
                 return False, "AI 还在回复，等它们说完再改"
             old = list(self.ais)
-            if want == old and member_permissions is None:
+            if want == old and member_permissions is None and guest_discussion is None and dispatch_devices is None:
                 return True, ""
             previous = copy.deepcopy(self.meta)
             old_work = {pid: access.permissions(self, pid)["work"] for pid in old}
             self._ensure_meta_for(want)
             self.meta["participants"] = want
+            for pid in set(old) - set(want):
+                self.prune_contact_policies(pid)
+            if "revoked_users" in self.meta:
+                self.meta["revoked_users"] = [pid for pid in self.meta["revoked_users"] if pid not in want]
+            joined = self.meta.get("member_joined_at", {})
+            self.meta["member_joined_at"] = {
+                pid: joined.get(pid, 0) if pid in old else len(self.messages)
+                for pid in want if access.human(pid)
+            }
+            shared = self.meta.get("guest_discussion", {}) if guest_discussion is None else guest_discussion
+            self.meta["guest_discussion"] = {pid: True for pid in want if shared.get(pid) and access.guest_model(pid)}
+            if dispatch_devices is not None:
+                self.meta["dispatch_devices"] = list(dispatch_devices)
             self.meta["tools"] = {a: self.meta["tools"].get(a) or agents.default_tools(a) for a in AIS}
             if member_permissions is not None:
-                self.meta["permissions"] = {pid: dict(access.PERMISSIONS, **member_permissions.get(pid, {})) for pid in want}
+                self.meta["permissions"] = {
+                    pid: dict(access.HUMAN_PERMISSIONS if access.human(pid) else access.PERMISSIONS,
+                              **member_permissions.get(pid, {})) for pid in want
+                }
             try:
                 self.save_meta()
             except OSError:
@@ -924,16 +1002,117 @@ class Room:
             self.add_message("系统", "；".join(bits), quiet=True)
         return True, ""
 
-    def set_members(self, ids, permissions):
+    def set_members(self, ids, permissions, guest_discussion=None, dispatch_devices=None):
         if not isinstance(ids, list) or any(not isinstance(pid, str) for pid in ids):
             return False, "成员必须是联系人 ID 列表"
         if error := member_permissions_error(ids, permissions):
             return False, error
-        ok, msg = self.set_participants(ids, permissions)
+        if guest_discussion is not None and (not isinstance(guest_discussion, dict) or any(
+                pid not in ids or not access.guest_model(pid) or type(value) is not bool
+                for pid, value in guest_discussion.items())):
+            return False, "外部讨论只能开放给本房的直连模型"
+        ok, msg = self.set_participants(ids, permissions, guest_discussion, dispatch_devices)
         if not ok:
             return ok, msg
         agents.stop_codex(self)
         return True, ""
+
+    def remove_external_human(self, pid):
+        with self.lock:
+            if not access.human(pid) or pid not in self.ais:
+                return False
+            previous = copy.deepcopy(self.meta)
+            self.meta["participants"] = [member for member in self.ais if member != pid]
+            self.meta["revoked_users"] = list(dict.fromkeys([*self.meta.get("revoked_users", []), pid]))
+            for key in ("permissions", "member_joined_at"):
+                self.meta.get(key, {}).pop(pid, None)
+            self.prune_contact_policies(pid)
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta = previous
+                raise
+            self.pending[:] = [job for job in self.pending if job[3].root != pid]
+            self._retain_queued_replies(lambda job: job[3].root != pid)
+            return True
+
+    def prune_contact_policies(self, pid):
+        for key in ("user_policies", "agent_policies"):
+            policies = self.meta.get(key, {})
+            policies.pop(pid, None)
+            for row in policies.values():
+                for field in ("call_agents", "accept_users", "accept_agents", "handoff_targets"):
+                    if field in row:
+                        row[field] = [value for value in row[field] if value != pid]
+
+    def revoke_agent(self, pid):
+        with self.turn_ready:
+            if pid not in self.ais or access.human(pid):
+                return False
+            previous = copy.deepcopy(self.meta)
+            self.meta["participants"] = [member for member in self.ais if member != pid]
+            for key in ("permissions", "guest_discussion"):
+                self.meta.get(key, {}).pop(pid, None)
+            self.prune_contact_policies(pid)
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta = previous
+                raise
+            self.interrupting.add(pid)
+            self.state["epoch"][pid] = self.state["epoch"].get(pid, 0) + 1
+            self.state["force_work"].discard(pid)
+            self.pending[:] = [job for job in self.pending if job[0] != pid]
+            self._retain_queued_replies(lambda job: job[0] != pid)
+            if pid in self.state["running"]:
+                self.state["stopped"].add(pid)
+        try:
+            self._interrupt_turns([pid], [pid], revoked=True)
+            detached_jobs.cancel_jobs(self, [pid])
+        finally:
+            with self.turn_ready:
+                self.interrupting.discard(pid)
+                self.turn_ready.notify_all()
+        self.add_message("系统", "已撤销 @%s 的本会话授权" % pid)
+        return True
+
+    def revoke_dispatch_device(self, device_id):
+        with self.turn_ready:
+            running = [ai for ai, context in self.turn_dispatch.items() if context.device == device_id]
+            self.pending[:] = [job for job in self.pending if job[3].device != device_id]
+            self._retain_queued_replies(lambda job: job[3].device != device_id)
+            self.interrupting.update(running)
+            self.state["stopped"].update(running)
+        try:
+            self._interrupt_turns(running, running, revoked=True)
+            for ai in running:
+                detached_jobs.cancel_jobs(self, [ai])
+        finally:
+            with self.turn_ready:
+                self.interrupting.difference_update(running)
+                self.turn_ready.notify_all()
+
+    def set_contact_policies(self, users, agent_policies):
+        with self.lock:
+            if self.closed or self.busy_for():
+                raise ValueError("请先结束正在执行的任务，再调整共享权限")
+            users, agent_policies = access.normalize_policies(self, users, agent_policies)
+            previous = copy.deepcopy(self.meta)
+            self.meta.update(user_policies=users, agent_policies=agent_policies)
+            try:
+                self.save_meta()
+            except OSError:
+                self.meta = previous
+                raise
+
+    def set_contact_policy(self, pid, policy):
+        with self.lock:
+            if pid not in self.ais or not isinstance(policy, dict):
+                raise ValueError("请选择本会话的联系人与有效授权")
+            users = copy.deepcopy(self.meta.get("user_policies", {}))
+            agents = copy.deepcopy(self.meta.get("agent_policies", {}))
+            (users if access.human(pid) else agents)[pid] = policy
+            self.set_contact_policies(users, agents)
 
     def reset_session(self, ai):
         with self.lock:
@@ -990,6 +1169,10 @@ class Room:
             from .members import broker
             allowed = allowed and broker.status(ai)["allow_work"]
         return (requested or self.mode()) if allowed else "discuss"
+
+    def active_member_mode(self, ai):
+        context = self.turn_dispatch.get(ai)
+        return context.ceiling if context else self.member_mode(ai)
 
     def execution_workdir(self, ai):
         if (registry.get(ai) or {}).get("driver") == "external":
@@ -1082,16 +1265,18 @@ class Room:
             saved = self.meta["steps"].get(str(step), {})
             can_undo = bool(saved and not saved.get("commands") and not saved.get("outside")
                             and not any(f.get("nb") for f in saved["files"]))
+            context = self.turn_dispatch.get(ai) or self.dispatch_context(source, mode)
             self.add_message("系统", text or "%s 执行失败" % ai, source=source,
                              progress=self.live.get(ai, {}).get("details"),
                              failure={"ai": ai, "mode": mode, "step": step, "undo_possible": can_undo,
+                                      "dispatch": context.stored() if context else None,
                                       "changes": "recorded" if step is not None else "none" if mode == "discuss" else "unknown",
                                       "retryable": bool(retryable and source is not None)})
 
     def _approval_active(self, ai):
         return (not self.closed and ai in self.state["running"] and ai not in self.state["stopped"]
-                and not self.turn_recalled(ai)
-                and (self.mode() == "work" or self.live.get(ai, {}).get("forced_work"))
+                and not self.turn_recalled(ai) and not self.turn_revoked(ai)
+                and self.active_member_mode(ai) == "work"
                 and all(access.allowed(self, ai, perm) for perm in ("read", "post", "work")))
 
     def request_turn_approval(self, ai, title):
@@ -1146,6 +1331,9 @@ class Room:
             return None, None, "该成员现在无法重试"
         if self.member_mode(ai) != failure["mode"]:
             return None, None, "成员的工作模式已变化，请确认后重新发消息"
+        context = access.DispatchContext.restore(failure["dispatch"]) if failure.get("dispatch") else self.dispatch_context(source, failure["mode"])
+        if context is None or (error := access.can_dispatch(self, context, ai)):
+            return None, None, "原任务的派发权限已变更" if context is None else error
         return failure, source, ""
 
     def _retry_undo_plan(self, failure):
@@ -1198,7 +1386,8 @@ class Room:
                     guard.release_turn(owner)
             self.add_message("系统", "你让 %s 重试" % ai, source=source, retry_ai=ai)
             self.state["chain"] = 0
-            self.enqueue(ai, user=True, source=source)
+            context = access.DispatchContext.restore(failure["dispatch"]) if failure.get("dispatch") else self.dispatch_context(source, failure["mode"])
+            self.enqueue(ai, user=True, source=source, dispatch=context)
             return True, ""
 
     def undo_plan(self, seq):
@@ -1364,14 +1553,28 @@ class Room:
         """排着还没开始的：等着回话的 AI + 等着压缩的 AI。"""
         return len(self.pending) + len([a for a in self.state["compacting"] if "compact:" + a not in self.state["running"]])
 
-    def enqueue(self, ai, user=False, source=None):
+    def dispatch_context(self, source, ceiling=None):
+        if source is None:
+            post = {}
+        elif type(source) is int and 0 <= source < len(self.messages):
+            post = self.messages[source]
+        else:
+            return None
+        root = post.get("speaker", "你")
+        return access.DispatchContext(root, root, post.get("dispatch_device", ""),
+                                      (ceiling or self.mode()) if root == "你" else "discuss")
+
+    def enqueue(self, ai, user=False, source=None, dispatch=None):
         """排上一个 AI 的回复。已排上还没开始的不重复排（它开始时才取增量，自然会看到新消息）。
         user=True（用户发言触发）：立刻开线程，和另一个 AI 并行；
         user=False（AI 之间的对话）：进这场会议的串行队列，一个跑完下一个才开始。两种都要等自己 AI 的锁（同一个 AI 永远串行）。"""
         with self.lock:
             # 用户发话不能被串行队列挡住：它已经排在 AI 之间的队列里（前面可能是别人的长活）时，照样马上另开一个并行的。
             # 队列里那份轮到时发现该看的都看过了，会自己跳过。
-            job = (ai, self.job_tag(ai), source)
+            context = dispatch or self.dispatch_context(source)
+            if context is None:
+                return
+            job = (ai, self.job_tag(ai), source, context)
             if job in self.pending and not user:
                 return
             self.pending.append(job)
@@ -1402,29 +1605,35 @@ class Room:
             t = "（附件）" if m.get("attachments") else ""
         return {"id": mid, "speaker": m["speaker"], "text": t[:QUOTE_LEN] + ("…" if len(t) > QUOTE_LEN else "")}
 
-    def handle_message(self, speaker, text, attachments=None, origin="room", reply_to=None, source=None):
+    def handle_message(self, speaker, text, attachments=None, origin="room", reply_to=None, source=None,
+                       dispatch_errors=None, dispatch_device="", dispatch=None):
         """记录一条消息并按 @ 路由。origin：room = 用户或会议室自己叫起来的 AI；external = 会议室外的 claude/codex（/api/post、MCP）。"""
         external = origin == "external"
         with self.lock:
             if self.closed or source in self.recalled:
                 return False
+            allow_dispatch = not dispatch_device or self.device_can_dispatch(dispatch_device)
             if external and speaker in self.state.get("debate_blind_posts", {}):
                 return self.post_progress(speaker, text, attachments) is not None
             cmd = text.strip().lower().split()
-            if speaker == "你" and not attachments and cmd and cmd[0] == "/compact" and len(cmd) <= 2 and set(cmd[1:]) <= set(AIS):
+            if allow_dispatch and speaker == "你" and not attachments and cmd and cmd[0] == "/compact" and len(cmd) <= 2 and set(cmd[1:]) <= set(AIS):
                 self.request_compact(cmd[1:] or self.ais)
                 return True
-            human = speaker == "你" or (registry.get(speaker) or {}).get("kind") == "user"
+            outside_human = access.human(speaker)
+            human = speaker == "你" or outside_human
             if human:
                 names = mentions(text)
                 # 没 @ 人、引用的是某个 AI 的话：就是回它，只叫它
                 quoted = reply_to["speaker"] if reply_to and reply_to["speaker"] in self.ais else None
                 want = [n for n in names if n not in ("用户",)]
                 targets = [n for n in want if n in self.ais]
-                if not want:                      # 没 @ 任何 AI（只 @ 了用户或什么都没 @）：叫会里的全部
+                if not want and not outside_human:  # 外部真人必须明确点名，不由普通发言自动唤起
                     targets = [quoted] if quoted else list(self.ais)
-                elif not targets:                 # @ 了一个不在会里的 AI：别顺手把别人叫起来
-                    self.system_note("%s 不在这场会议里（现在有：%s）" % ("、".join(want), "、".join(self.ais)))
+                elif want and not targets:                 # @ 了一个不在会里的 AI：别顺手把别人叫起来
+                    if outside_human and dispatch_errors is not None:
+                        dispatch_errors.extend({"agent": name, "reason": "此 Agent 不在本会话"} for name in want)
+                    elif not outside_human:
+                        self.system_note("%s 不在这场会议里（现在有：%s）" % ("、".join(want), "、".join(self.ais)))
                 to_user = False
             elif speaker in self.ais:
                 # external 的 @自己 也要叫会议室里的同名 AI，所以不排除
@@ -1438,13 +1647,14 @@ class Room:
                 if access.permissions(self, speaker)["board"]:
                     text, changes = self.apply_board_cmds(speaker, text)
                 if access.permissions(self, speaker)["files"] and not execution.remote(self, speaker):
-                    text, sent, send_errs = self.apply_send_cmds(text)
+                    text, sent, send_errs = self.apply_send_cmds(text, speaker)
                     attachments = (attachments or []) + sent
-                if not access.permissions(self, speaker)["trigger"]:
+                if (external and not outside_human) or (not outside_human and not access.permissions(self, speaker)["trigger"]):
                     targets = []
             if text or attachments or not (changes or send_errs):
                 progress = self.live.get(speaker, {}).get("details") if not external else None
-                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None, reply_to=reply_to, progress=progress, source=source)
+                message = self.add_message(speaker, text, attachments, to_user, origin="external" if external else None,
+                                           reply_to=reply_to, progress=progress, source=source, dispatch_device=dispatch_device)
                 if human:
                     source = message["id"]
             self.board_note(speaker, changes, not_for=None if external else speaker)
@@ -1453,24 +1663,35 @@ class Room:
                 self.state["chain"] = 0
             if self.state.get("debate_active"):
                 return True  # 论道期间的发言仍进记录，调度权留给主持流程
+            if not allow_dispatch:
+                if targets:
+                    self.system_note("消息已发送。这台设备尚未获准在本会话派活，请在运行 AnY 的电脑上授权。")
+                return True
+            context = dispatch or self.turn_dispatch.get(speaker) or self.dispatch_context(source)
+            if context is None:
+                return True
+            if not human:
+                context = context.handoff(speaker)
             for t in targets:
-                if not access.allowed(self, t, "read") or not access.allowed(self, t, "post"):
+                if access.human(t):
                     continue
-                if t not in self.ais:
-                    continue
-                if self.is_guest(t) or (registry.get(t) or {}).get("kind") == "user":
+                if error := access.can_dispatch(self, context, t):
+                    if dispatch_errors is not None:
+                        dispatch_errors.append({"agent": t, "reason": error})
+                    elif speaker != "你" or want:
+                        self.system_note("@%s：%s" % (t, error))
                     continue
                 if self.meta["handed_off"][t]:
                     self.system_note("%s 现在在终端里，回来后会补看" % t)
                 else:
-                    self.enqueue(t, user=human, source=source)
+                    self.enqueue(t, user=human, source=source, dispatch=context)
         return True
 
     def post_progress(self, ai, text, atts):
         """AI 一轮中途经 bridge 发进来的一句进度 / 文件：照登，但里面的 @ 不叫人（它这一轮还没说完）。"""
         text = (text or "").strip()
         with self.lock:
-            if self.turn_recalled(ai) or (not text and not atts):
+            if self.turn_recalled(ai) or self.turn_revoked(ai) or ai in self.state["stopped"] or (not text and not atts):
                 return None
             blind_posts = self.state.get("debate_blind_posts", {})
             if ai in blind_posts:
@@ -1505,9 +1726,9 @@ class Room:
         entry["time"] = datetime.now().strftime("%H:%M:%S")
 
     def run_job(self, job, user):
-        ai, tag, source = job
+        ai, tag, source, context = job
         try:
-            self.process_job(ai, tag, user, job=job, source=source)
+            self.process_job(ai, tag, user, job=job, source=source, dispatch=context)
         except Exception as e:
             if source not in self.recalled:
                 self.add_message("系统", "内部错误：%s" % e)
@@ -1519,7 +1740,27 @@ class Room:
                 return
             self.run_job(item, False)
 
-    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False, debate_defer=False, job=None, source=None):
+    def device_can_dispatch(self, device_id):
+        return device_id in self.meta.get("dispatch_devices", []) and devices.active(device_id)
+
+    def guest_discussion_turn(self, ai, context, spec, source):
+        caller = context.root
+        with self.lock:
+            # End the prompt at the exact post that invoked the model. A queued request
+            # cannot pick up newer tasks or the owner's native session and attachments.
+            messages = [m for m in self.messages[:source + 1]
+                        if not m.get("recalled") and access.visible_message(self, caller, m) and m.get("text")]
+            body = "\n\n".join("[%s] %s" % (m["speaker"], m["text"]) for m in messages[-MAX_CONTEXT:])
+            model = self.effective_models(ai)[0]
+        try:
+            answer = direct_model.reply(spec, "仅根据下面公开的房间对话回答最后一条消息。\n\n" + body, model)
+        except ValueError:
+            answer = "直连模型暂时无法回复，请稍后重试。"
+        with self.lock:
+            if not self.turn_recalled(ai) and ai not in self.state["stopped"] and not access.can_dispatch(self, context, ai):
+                self.add_message(ai, answer, origin="guest-discussion", source=source)
+
+    def process_job(self, ai, tag, user=False, *, debate_prompt=None, debate_summary=False, debate_defer=False, job=None, source=None, dispatch=None):
         """叫一次 AI。整个过程持有这个 AI 自己的锁（同一个 AI 永远串行）；增量在拿到锁之后才取快照。"""
         with self.ai_lock(ai):
             with self.turn_ready:
@@ -1537,13 +1778,25 @@ class Room:
                 if execution.binding(self, ai)["phase"] != "ready":
                     self.system_note("%s 正在交接执行端，本条消息已保留；接管完成后再 @ 它处理" % ai)
                     return
+                context = dispatch or self.dispatch_context(source, "work" if forced else None)
+                if context is None:
+                    return
+                if error := access.can_dispatch(self, context, ai):
+                    self.system_note("@%s：%s" % (ai, error))
+                    return
+                guest_spec = access.guest_model(ai) if context.root != "你" else None
+                mode = access.effective_mode(self, context, ai, "discuss" if debate_prompt else "work" if forced else self.mode())
+                context = context.limited(mode)
                 if not user and not debate_prompt and self.meta.get(ai + "_session") and not self.delta_for(ai)[0]:
                     return   # AI 之间的对话排到它时，该看的它已经看过了，不白叫
                 self.state["running"].append(ai)
                 self.turn_sources[ai] = source
+                self.turn_dispatch[ai] = context
                 self.live[ai] = {"text": "", "time": "", "since": time.time()}
             try:
-                mode = self.member_mode(ai, "discuss" if debate_prompt else "work" if forced else self.mode())
+                if guest_spec is not None:
+                    self.guest_discussion_turn(ai, context, guest_spec, source)
+                    return
                 if forced and mode == "work":
                     self.live[ai]["forced_work"] = True
                 wd = self.workdir()
@@ -1564,7 +1817,7 @@ class Room:
                         self.add_turn_failure(ai, "存档点拍不出来：%s。干活模式下不叫 %s" % (e, ai), mode, source)
                         return
                 with self.lock:
-                    if self.turn_recalled(ai):
+                    if self.turn_recalled(ai) or self.turn_revoked(ai):
                         return
                     self._prepare_recall_context(ai)
                     prompt, upto, ver, imgs = self.build_prompt(ai, mode)
@@ -1574,11 +1827,12 @@ class Room:
                 model_revision = model_catalog.request_id(self, ai)
                 if not debate_prompt and detached_jobs.should_detach(self, ai, ai_caller):
                     with self.lock:
-                        if self.turn_recalled(ai):
+                        if self.turn_recalled(ai) or self.turn_revoked(ai):
                             return
                         job_path = detached_jobs.spawn_job(
                             self, ai, prompt, sid, imgs, mode,
                             upto=upto, ver=ver, pre_tree=pre, t0=t0, model_revision=model_revision, source=source,
+                            dispatch=context.stored(),
                         )
                     jstate, jdata = detached_jobs.wait_for_job(
                         job_path,
@@ -1603,7 +1857,7 @@ class Room:
                     self.add_turn_failure(ai, "%s 后台任务意外退出，未返回结果。" % ai, mode, source)
                     return
                 try:
-                    if self.turn_recalled(ai):
+                    if self.turn_recalled(ai) or self.turn_revoked(ai):
                         return
                     res = ai_caller(ai, prompt, sid, imgs, mode, self)   # 明着传：落盘那一轮是强制干活模式，跟会议的模式不一样
                 except Exception as error:
@@ -1612,7 +1866,7 @@ class Room:
                     return
                 ok, out, new_sid = res[0], res[1], res[2]
                 edits = res[3] if len(res) > 3 else []
-                if self.turn_recalled(ai):
+                if self.turn_recalled(ai) or self.turn_revoked(ai):
                     if pre is not None:
                         self.record_step(ai, pre, edits, t0, time.time())
                     return
@@ -1653,7 +1907,7 @@ class Room:
                         self.add_message(ai, out, to_user="用户" in mentions(out, exclude=ai), source=source)
                     elif was_stopped:   # 刚好在"停"的时候说完：话照登，但里面的 @ 不再叫人
                         rest, ch = self.apply_board_cmds(ai, out)
-                        rest, sent, errs = self.apply_send_cmds(rest)
+                        rest, sent, errs = self.apply_send_cmds(rest, ai)
                         if rest or sent or not (ch or errs):
                             self.add_message(ai, rest, sent, to_user="用户" in mentions(rest, exclude=ai), source=source)
                         self.board_note(ai, ch, not_for=ai)
@@ -1678,6 +1932,7 @@ class Room:
                     if ai in self.state["running"]:
                         self.state["running"].remove(ai)
                     self.turn_sources.pop(ai, None)
+                    self.turn_dispatch.pop(ai, None)
                     self.state["stopped"].discard(ai)
                     self.live.pop(ai, None)
                 guard.release_turn((self.id, ai))
@@ -1687,6 +1942,8 @@ class Room:
         spec = registry.get(ai) or {}
         if spec.get("kind") == "user":
             return False, "%s 是人工联系人，不用压" % ai
+        if error := access.can_dispatch(self, access.DispatchContext("你", "你"), ai):
+            return False, error
         bound = execution.binding(self, ai)
         if bound["endpoint"] == "desktop" or bound["phase"] != "ready":
             return False, "%s 当前不由 CLI 执行，请在当前执行端压缩" % ai
@@ -1889,17 +2146,21 @@ class Room:
             others = [a for a in self.ais if a != target]
             not_for = others[0] if len(others) == 1 else (others if others else None)
             self.add_message("系统", self.wrapup_text(target), not_for=not_for)
-            self.enqueue(target, user=True)
+            self.enqueue(target, user=True, dispatch=self.dispatch_context(None, "work"))
         return True, ""
 
     # ---------- 停 ----------
     def turn_recalled(self, ai):
         return self.turn_sources.get(ai) in self.recalled
 
+    def turn_revoked(self, ai):
+        context = self.turn_dispatch.get(ai)
+        return ai not in self.ais or bool(context and context.device and not self.device_can_dispatch(context.device))
+
     def register_process(self, ai, proc):
         with self.lock:
             self.procs[ai] = proc
-            cancelled = self.turn_recalled(ai)
+            cancelled = self.turn_recalled(ai) or ai in self.state["stopped"]
         if cancelled and proc.poll() is None:
             kill_tree(proc)
 
@@ -1915,10 +2176,10 @@ class Room:
         for job in retained:
             self.jobs.put(job)
 
-    def _interrupt_turns(self, running, targets):
+    def _interrupt_turns(self, running, targets, revoked=False):
         from . import acp
         from .members import broker
-        broker.cancel(self.id, targets)
+        broker.cancel(self.id, targets, revoked=revoked)
         for ai in running:
             proc = self.procs.get(ai)
             if proc is not None and proc.poll() is None:
@@ -1958,6 +2219,8 @@ class Room:
         """返回 (ok, 错误或提示)。"""
         if ai not in self.ais:
             return False, "未知 AI"
+        if on and (error := access.can_dispatch(self, access.DispatchContext("你", "你"), ai)):
+            return False, error
         with self.lock:
             if on == self.meta["handed_off"][ai]:
                 return True, ""
@@ -2043,6 +2306,11 @@ class Room:
                     "execution": {a: execution.describe(self, a) for a in self.ais if (registry.get(a) or {}).get("kind") != "user"},
                     "members": {a: dict(broker.status(a, self.id if execution.binding(self, a)["endpoint"] == "desktop" else None), transport="desktop" if execution.binding(self, a)["endpoint"] == "desktop" else "member") if execution.remote(self, a) and (registry.get(a) or {}).get("kind") != "user" else {"automatic": (registry.get(a) or {}).get("kind") != "user", "transport": "human" if (registry.get(a) or {}).get("kind") == "user" else "http" if (registry.get(a) or {}).get("driver") == "http" else "local"} for a in self.ais},
                     "project": self.meta.get("project", ""), "permissions": {a: access.permissions(self, a) for a in self.ais},
+                    "guest_discussion": dict(self.meta.get("guest_discussion", {})),
+                    "dispatch_devices": list(self.meta.get("dispatch_devices", [])),
+                    "revoked_tasks": broker.cancellation_status(self.id),
+                    "user_policies": self.meta.get("user_policies", {}),
+                    "agent_policies": self.meta.get("agent_policies", {}),
                     "archived": is_archived(self.meta["status"]),
                     "announcement": self.meta["announcement"], "ann_ver": self.meta["ann_ver"], "ais": ais,
                     "board": self.meta["board"], "workdir": self.workdir(), "default_workdir": PROJECT, "stop_each": True,
@@ -2056,11 +2324,19 @@ class Room:
                     "live": {a: {"text": v["text"], "details": v.get("details", ""), "time": v["time"], "secs": int(time.time() - v["since"])}
                              for a, v in list(self.live.items()) if a not in self.state.get("debate_blind_posts", {})}}
 
-    def messages_since(self, since):
+    def messages_since(self, since, external_pid=None):
         with self.lock:
-            return {"meeting": self.id, "messages": self.messages[since:], "next": len(self.messages),
-                    "recalled": sorted(self.recalled),
-                    "running": list(self.state["running"]), "queued": self.queued_count()}
+            messages = self.messages[since:]
+            recalled = sorted(self.recalled)
+            running, queued = list(self.state["running"]), self.queued_count()
+            if external_pid is not None:
+                messages = [m for m in messages if access.visible_message(self, external_pid, m)]
+                if access.human(external_pid):
+                    recalled = [mid for mid in recalled if 0 <= mid < len(self.messages)
+                                and access.visible_message(self, external_pid, self.messages[mid])]
+                    running, queued = [], 0
+            return {"meeting": self.id, "messages": messages, "next": len(self.messages),
+                    "recalled": recalled, "running": running, "queued": queued}
 
 
 # ===================== 会议目录的增删 =====================
@@ -2255,7 +2531,8 @@ class Rooms:
                 raise ValueError(error)
         defaults = {a: (registry.get(a) or {}).get("default_permissions") or {} for a in meta["participants"]}
         if participants is not None or permissions is not None or any(defaults.values()):
-            meta["permissions"] = {a: {**access.PERMISSIONS, **defaults[a], **(permissions or {}).get(a, {})}
+            meta["permissions"] = {a: {**(access.HUMAN_PERMISSIONS if access.human(a) else access.PERMISSIONS),
+                                       **defaults[a], **(permissions or {}).get(a, {})}
                                    for a in meta["participants"]}
         evicted = []
         with self.lock:

@@ -23,6 +23,7 @@ MAX_ACTIVE_TASKS = 100
 MAX_RETAINED_TASKS = 200
 MAX_MEMBER_REPLY_BYTES = 48 * 1024
 MAX_SESSION_ID_LEN = 200
+REVOCATION_STATES = ("revoked_pending_ack", "revoked")
 
 
 def ttl(pid: str) -> int:
@@ -55,15 +56,24 @@ class Broker:
         self.workers: dict[str | tuple[str, str], dict[str, Any]] = {}
         self.tasks: dict[str, dict[str, Any]] = {}
         self.standby_stopped: dict[str, float] = {}   # pid -> 点「停止待命」的时间；冷却期内不自动复活
+        saved = read_json(os.path.join(LOG_DIR, "member_tasks.json"))
+        self.revocations = {row["id"]: row for row in saved if isinstance(row, dict) and row.get("id")
+                            and row.get("state") in REVOCATION_STATES} if isinstance(saved, list) else {}
 
     def _journal(self) -> None:
         os.makedirs(LOG_DIR, exist_ok=True)
         rows = [{k: t[k] for k in ("id", "room", "member", "state", "created", "updated", "reason")}
-                for t in list(self.tasks.values())[-100:]]
-        write_json(os.path.join(LOG_DIR, "member_tasks.json"), rows)
+                for t in list(self.tasks.values())[-100:] if t["id"] not in self.revocations]
+        write_json(os.path.join(LOG_DIR, "member_tasks.json"), rows + list(self.revocations.values()))
 
     def _state(self, task: dict[str, Any], state: str, reason: str = "") -> None:
         task.update(state=state, reason=reason, updated=time.time())
+        if state in REVOCATION_STATES:
+            receipt = {key: task[key] for key in ("id", "room", "member", "state", "created", "updated", "reason", "worker", "digest")}
+            receipt["lease_digest"] = fingerprint(task["lease"]) if task.get("lease") else ""
+            self.revocations[task["id"]] = receipt
+            if len(self.revocations) > 100:
+                self.revocations.pop(next(iter(self.revocations)))
         self.condition.notify_all()
         self._journal()
 
@@ -148,6 +158,7 @@ class Broker:
             transport = live_worker.get("transport", "connector") if live_worker else ""
             standby = bool(live_worker and transport == "standby")
             return {"automatic": bool(live_worker), "standby": standby, "transport": transport,
+                    "worker": live_worker["id"] if live_worker else "",
                     "device": live_worker["device"] if live_worker else "", "workdir": live_worker["workdir"] if live_worker else "",
                     "allow_work": bool(live_worker and live_worker["allow_work"]),
                     "label": "MCP 待命中" if standby else ("自动响应已连接" if live_worker else "等待成员开启自动响应")}
@@ -158,6 +169,7 @@ class Broker:
         r = R.rooms.get(task["room"])
         from . import execution
         return bool(r and not r.closed and access.allowed(r, task["member"], "read") and access.allowed(r, task["member"], "post")
+                    and (not task.get("dispatch_device") or r.device_can_dispatch(task["dispatch_device"]))
                     and (task.get("binding_version") is None or (execution.version(r, task["member"]) == task["binding_version"]
                          and execution.binding(r, task["member"])["phase"] == "ready"))
                     and r.job_tag(task["member"]) == task["epoch"] and current_digest(task["member"]) == task["digest"])
@@ -177,10 +189,16 @@ class Broker:
         # 待命端默认只读：会话是干活模式，也要这个联系人自己允许改文件才真的进 work。
         if mode == "work" and not status.get("allow_work"):
             mode = "discuss"
+        workspace = room.meta.get("agent_policies", {}).get(pid, {}).get("workspace")
+        if workspace is not None:
+            if not all(workspace.get(action) for action in access.WORKSPACE_ACTIONS):
+                return False, "该执行端不支持强制落实选定的工作区限制", session, []
+            if workspace.get("worker") != status["worker"] or workspace.get("path") != status["workdir"]:
+                return False, "执行设备或目录已变更，请重新授权工作区", session, []
         digest = current_digest(pid)
         now = time.time()
         with self.condition:
-            if getattr(room, "turn_recalled", lambda _: False)(pid):
+            if getattr(room, "turn_recalled", lambda _: False)(pid) or getattr(room, "turn_revoked", lambda _: False)(pid):
                 return False, "", session, []
             # Bound both active jobs and retained completions.
             active = sum(t["state"] in ("queued", "claimed") for t in self.tasks.values())
@@ -200,6 +218,11 @@ class Broker:
                                 "permissions": access.permissions(room, pid), "model": room.effective_models(pid)[0] if not scope else "",
                                 "effort": room.effective_models(pid)[1] if not scope else "", "allow_work": bool(status.get("allow_work")),
                                 "execution": {"location": "member", "workdir": status["workdir"]}}}
+            context = getattr(room, "turn_dispatch", {}).get(pid)
+            if context is not None:
+                task["dispatch_device"] = context.device
+            if workspace is not None:
+                task["payload"]["workspace_binding"] = {"worker": workspace["worker"], "path": workspace["path"]}
             if scope:
                 task["binding_version"] = bound["version"]
                 task["payload"]["execution"].update(location="desktop", binding_version=bound["version"], worker=bound["worker"])
@@ -208,6 +231,7 @@ class Broker:
         end = now + timeout_for(mode, pid)[1]
         while True:
             valid = self._valid(task)
+            revoked = not valid and getattr(room, "turn_revoked", lambda _: False)(pid)
             online = self.status(pid, scope or None)["automatic"]
             with self.condition:
                 if task["state"] == "completed":
@@ -217,15 +241,18 @@ class Broker:
                     if result["ok"] and result.get("ctx_used") and hasattr(room, "note_ctx"):
                         room.note_ctx(pid, result)
                     return result["ok"], result["text"], result.get("session") or session, []
-                if task["state"] in ("cancelled", "failed"):
+                if task["state"] in ("cancelled", "failed", "revoked_pending_ack", "revoked"):
                     return False, task["reason"] or "成员任务已取消", session, []
                 if not valid or not online or time.time() >= end:
+                    if revoked:
+                        self._revoke(task)
+                        return False, task["reason"], session, []
                     reason = "成员权限或会话状态已变更" if not valid else "成员连接中断，任务已停止；不会自动重复执行" if not online else "成员任务超时"
                     self._state(task, "cancelled", reason)
                     return False, reason, session, []
                 self.condition.wait(.2)
 
-    def _task(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
+    def _leased_task(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
         with self.condition:
             task = self.tasks.get(str(data.get("task") or ""))
             if not task:
@@ -234,10 +261,13 @@ class Broker:
                 raise MemberError("不能访问其他成员或连接端的任务", 403)
             if not secrets.compare_digest(task.get("lease", "!"), str(data.get("lease") or "")):
                 raise MemberError("任务租约不匹配", 403)
+        return task
+
+    def _task(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
+        task = self._leased_task(pid, key, data)
+        if task["state"] in ("revoked_pending_ack", "revoked"):
+            raise MemberError("任务已撤权，请停止执行", 410)
         if not self._valid(task):
-            with self.condition:
-                if task["state"] != "completed":
-                    self._state(task, "cancelled", "成员权限或会话状态已变更")
             raise MemberError("任务已取消，禁止继续执行", 410)
         return task
 
@@ -270,11 +300,16 @@ class Broker:
                               (t["room"] == scope if scope else t.get("binding_version") is None) and t["state"] in ("queued", "claimed")]
             for task in candidates:
                 if not self._valid(task):
-                    with self.condition:
-                        self._state(task, "cancelled", "成员权限或会话状态已变更")
                     continue
                 with self.condition:
                     if task["state"] not in ("queued", "claimed"):
+                        continue
+                    workspace = task["payload"].get("workspace_binding")
+                    if workspace and (workspace["worker"] != w["id"] or workspace["path"] != w["workdir"]):
+                        self._state(task, "cancelled", "当前执行设备或工作目录不符合授权")
+                        continue
+                    if task["payload"]["mode"] == "work" and not w["allow_work"]:
+                        self._state(task, "cancelled", "执行端已关闭干活权限")
                         continue
                     if task["state"] == "claimed" and task["worker"] != w["id"]:
                         continue
@@ -357,11 +392,44 @@ class Broker:
         r.push_live(pid, {"live":str(data.get("text") or "")[:400]})
         return {"ok":True}
 
-    def cancel(self, room: str, members: Collection[str]) -> None:
+    def cancellation_status(self, room: str) -> list[dict[str, str]]:
+        with self.condition:
+            return [{"member": task["member"], "state": task["state"], "reason": task["reason"]}
+                    for task in self.revocations.values() if task["room"] == room]
+
+    def acknowledge_stop(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
+        with self.condition:
+            task_id = str(data.get("task") or "")
+            receipt = self.revocations.get(task_id)
+            if receipt is None:
+                task = self._leased_task(pid, key, data)
+                return {"ok": True, "state": task["state"]}
+            if (receipt["member"] != pid or receipt.get("worker") != data.get("worker")
+                    or not secrets.compare_digest(receipt.get("digest", ""), fingerprint(key))
+                    or not secrets.compare_digest(receipt.get("lease_digest", ""), fingerprint(str(data.get("lease") or "")))):
+                raise MemberError("不能确认其他任务的停止回执", 403)
+            if receipt["state"] == "revoked_pending_ack":
+                reason = "已撤权，执行端已确认停止"
+                if live_task := self.tasks.get(task_id):
+                    self._state(live_task, "revoked", reason)
+                else:
+                    receipt.update(state="revoked", reason=reason, updated=time.time())
+                    self._journal()
+            return {"ok": True, "state": self.revocations[task_id]["state"]}
+
+    def _revoke(self, task: dict[str, Any]) -> None:
+        claimed = task["state"] == "claimed"
+        self._state(task, "revoked_pending_ack" if claimed else "revoked",
+                    "已撤权，停止待确认" if claimed else "已撤权，任务尚未领取")
+
+    def cancel(self, room: str, members: Collection[str], revoked: bool = False) -> None:
         with self.condition:
             for task in self.tasks.values():
                 if task["room"] == room and task["member"] in members and task["state"] in ("queued", "claimed"):
-                    self._state(task, "cancelled", "用户已停止此成员的任务")
+                    if revoked:
+                        self._revoke(task)
+                    else:
+                        self._state(task, "cancelled", "用户已停止此成员的任务")
 
     def disconnect(self, pid: str, key: str, data: dict[str, Any]) -> dict[str, Any]:
         scope = str(data.get("room") or "")
@@ -495,6 +563,8 @@ def handle(pid: str, key: str, action: str, data: dict[str, Any]) -> dict[str, A
         return broker.receive(pid, key, data)
     if action == "heartbeat":
         return broker.heartbeat(pid, key, data)
+    if action == "stop-ack":
+        return broker.acknowledge_stop(pid, key, data)
     if action == "reply":
         return broker.complete(pid, key, data)
     if action == "progress":

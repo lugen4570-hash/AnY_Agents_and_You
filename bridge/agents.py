@@ -1572,12 +1572,17 @@ def guard_decide(kind, room, ai, data):
     """钩子带来的工具调用：要改哪些文件 → 问 guard。返回给钩子的回应。"""
     if room is None:
         return guard_allow(kind)
+    from .access import workspace_path_allowed
+    workspace_denied = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                               "permissionDecisionReason": "此文件不在获准写入的工作区范围内"}}
     if kind == "claude":
         inp = data.get("tool_input") or {}
         p = inp.get("file_path") or inp.get("notebook_path")
         if not p:
             return {}
         p = p if os.path.isabs(p) else os.path.join(data.get("cwd") or room.workdir(), p)
+        if not workspace_path_allowed(room, ai, "write", p):
+            return workspace_denied
         ok, hit = guard.touch((room.id, ai), p, room.title())
         if ok:
             return {}
@@ -1591,6 +1596,8 @@ def guard_decide(kind, room, ai, data):
             patch = "\n".join(str(x) for x in patch)
         paths = patch_paths(patch if isinstance(patch, str) else "", data.get("cwd") or room.workdir())
         for p in paths:
+            if not workspace_path_allowed(room, ai, "write", p):
+                return workspace_denied
             ok, hit = guard.touch((room.id, ai), p, room.title())
             if not ok:
                 room.add_message("系统", block_note(ai, p, hit), not_for=ai)

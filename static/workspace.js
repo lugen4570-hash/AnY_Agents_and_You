@@ -59,6 +59,11 @@ const PERM_GROUPS=[
   {id:'collab',label:'看板与附件',hint:'改看板、发文件',keys:['board','files'],defaults:false},
   {id:'work',label:'允许干活',hint:'改文件与跑命令（需干活模式）',keys:['work'],defaults:false},
 ];
+const HUMAN_ROOM_PERM_GROUPS=[
+  {id:'read',label:'读消息',hint:'查看本人有权看到的会话消息',keys:['read'],defaults:true},
+  {id:'post',label:'发言',hint:'在会话中发消息',keys:['post'],defaults:true},
+  {id:'trigger',label:'调用开放的 Agent',hint:'点名提问，限独立只读讨论',keys:['trigger'],defaults:false},
+];
 function groupPermValue(perms,group){
   if(!perms)return group.defaults;
   const defined=group.keys.filter(k=>perms[k]!==undefined);
@@ -220,33 +225,51 @@ async function openNew(first,projectId){
   };
   document.getElementById('nTitle').focus();
 }
-function memberPermissionRow(a,selected,p){
-  return '<section class="member-row" data-member="'+esc(a.id)+'" data-permissions="'+esc(JSON.stringify(p))+'"><label class="contact-pick"><input type="checkbox" data-member-check'+(selected?' checked':'')+'>'+esc(a.label)+' <small>@'+esc(a.id)+'</small></label><div class="perm-grid">'+PERM_GROUPS.map(g=>'<label><input type="checkbox" data-perm-group="'+g.id+'"'+(groupPermValue(p,g)?' checked':'')+'><span>'+esc(g.label)+'<small class="perm-sub">'+esc(g.hint)+'</small></span></label>').join('')+'</div></section>';
+function memberPermissionRow(a,selected,p,shared,editable=false){
+  const human=a.kind==='user',groups=human?HUMAN_ROOM_PERM_GROUPS:PERM_GROUPS;
+  const sharing=shared!==undefined&&a.http_protocol?'<label><input type="checkbox" data-guest-discussion'+(shared?' checked':'')+'><span>接受外部成员提问<small class="perm-sub">仅用可见对话，不读取电脑文件</small></span></label>':'';
+  const edit=editable?'<button type="button" data-contact-policy="'+esc(a.id)+'">'+(human?'调用与历史':'共享与工作区')+'</button>':'';
+  return '<section class="member-row" data-member="'+esc(a.id)+'" data-permissions="'+esc(JSON.stringify(p))+'"><label class="contact-pick"><input type="checkbox" data-member-check'+(selected?' checked':'')+'>'+esc(a.label)+' <small>'+(human?'用户':'Agent')+' · @'+esc(a.id)+'</small></label>'+edit+'<div class="perm-grid">'+groups.map(g=>'<label><input type="checkbox" data-perm-group="'+g.id+'"'+(groupPermValue(p,g)?' checked':'')+'><span>'+esc(g.label)+'<small class="perm-sub">'+esc(g.hint)+'</small></span></label>').join('')+sharing+'</div></section>';
 }
 function syncMemberPermissionRow(row){
   const on=row.querySelector('[data-member-check]').checked;
   row.querySelectorAll('[data-perm-group]').forEach(i=>i.disabled=!on);
+  row.querySelectorAll('[data-guest-discussion]').forEach(i=>i.disabled=!on);
 }
-function readMemberPermissions(rows){
-  const participants=[],permissions={};
+function readMemberPermissions(rows,withSharing=false){
+  const participants=[],permissions={},guest_discussion={};
   rows.forEach(row=>{
     if(!row.querySelector('[data-member-check]').checked)return;
     const id=row.dataset.member,state={},edited=new Set(),original=JSON.parse(row.dataset.permissions||'{}');
     participants.push(id);
     row.querySelectorAll('[data-perm-group]').forEach(i=>{state[i.dataset.permGroup]=i.checked;if(i.dataset.edited)edited.add(i.dataset.permGroup)});
-    permissions[id]=expandGroupedPerms(state);
-    PERM_GROUPS.forEach(group=>{
-      if(edited.has(group.id)||state[group.id]!==groupPermValue(original,group))return;
-      group.keys.forEach(key=>{permissions[id][key]=original[key]??group.defaults});
+    const human=CONTACTS.some(a=>a.id===id&&a.kind==='user');
+    const groups=human?HUMAN_ROOM_PERM_GROUPS:PERM_GROUPS;
+    if(row.querySelectorAll('[data-guest-discussion]')[0]?.checked)guest_discussion[id]=true;
+    permissions[id]={};
+    groups.forEach(group=>{
+      const unchanged=!edited.has(group.id)&&state[group.id]===groupPermValue(original,group);
+      group.keys.forEach(key=>{permissions[id][key]=unchanged?(original[key]??group.defaults):!!state[group.id]});
     });
   });
-  return {participants,permissions};
+  return withSharing?{participants,permissions,guest_discussion}:{participants,permissions};
 }
 async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;await refreshContacts();if(rid!==RID)return;const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
   const memberList=CONTACTS.filter(a=>a.enabled||ids.includes(a.id));
-  const rowHtml=a=>memberPermissionRow(a,ids.includes(a.id),perms[a.id]||a.default_permissions||{});
-  const bulkBar='<div class="perm-bulk-bar"><button type="button" class="perm-bulk-btn" id="mMembersAll"></button><div class="perm-bulk-perms">'+PERM_GROUPS.map(g=>'<button type="button" class="perm-bulk-btn" data-perm-all="'+g.id+'"></button>').join('')+'</div></div>';
-  showModal('<h3>会话成员与权限</h3><p class="hint">仅影响当前会话。同一联系人在其他会话中的权限独立配置。干活权限还需会话切到干活模式；CLI / 外部 Harness 必须自行遵守只读约定。</p>'+bulkBar+'<div id="memberRows">'+memberList.map(rowHtml).join('')+'</div><div class="btns"><button id="mClose">取消</button><button id="mSave" class="pri">保存成员和权限</button></div>');
+  const catalog=typeof agCat==='undefined'?null:agCat;
+  const withSharing=catalog?.local_workspace!==false;
+  const rowHtml=a=>memberPermissionRow(a,ids.includes(a.id),perms[a.id]||a.default_permissions||{},
+    withSharing&&!S?.agent_policies?.[a.id]?.accept_users?!!S?.guest_discussion?.[a.id]:undefined,withSharing&&ids.includes(a.id));
+  const devices=withSharing?(catalog?.owner_devices||[]):[];
+  const devicePermissions=devices.length?'<h4>允许派活的配对设备</h4><p class="hint">勾选后，这台设备可在本会话派活和审批。</p><div class="perm-grid">'+devices.map(d=>'<label><input type="checkbox" data-dispatch-device="'+esc(d.id)+'"'+(S?.dispatch_devices?.includes(d.id)?' checked':'')+'>'+esc(d.label||d.id)+'</label>').join('')+'</div>':'';
+  const bulkBar=withSharing?'<div class="perm-bulk-bar"><button type="button" class="perm-bulk-btn" id="mMembersAll"></button><div class="perm-bulk-perms">'+PERM_GROUPS.map(g=>'<button type="button" class="perm-bulk-btn" data-perm-all="'+g.id+'"></button>').join('')+'</div></div>':'';
+  const hint=withSharing?'外部用户点名提问时，用户的调用权限与模型的共享设置都要开启。实际读写和命令范围由执行端限制。':'请在运行 AnY 的电脑上管理本会话成员权限。';
+  const footer=withSharing?'<button id="mClose">取消</button><button id="mSave" class="pri">保存成员和权限</button>':'<button id="mClose">关闭</button>';
+  const revoked=(S?.revoked_tasks||[]).slice(-8).map(row=>'<p class="hint">@'+esc(row.member)+' · '+esc(row.reason)+'</p>').join('');
+  showModal('<h3>会话成员与权限</h3><p class="hint">'+hint+'</p>'+revoked+devicePermissions+bulkBar+'<div id="memberRows">'+memberList.map(rowHtml).join('')+'</div><div class="btns">'+footer+'</div>');
+  document.getElementById('mClose').onclick=hideModal;
+  if(!withSharing){mbox.querySelectorAll('#memberRows input').forEach(input=>input.disabled=true);return;}
+  mbox.querySelectorAll('[data-contact-policy]').forEach(button=>button.onclick=()=>openContactPolicy(button.dataset.contactPolicy));
   const rows=[...mbox.querySelectorAll('[data-member]')];
   const activeRows=()=>rows.filter(r=>r.querySelector('[data-member-check]').checked);
   const syncBulk=()=>{
@@ -261,9 +284,9 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
     }
     PERM_GROUPS.forEach(g=>{
       const b=mbox.querySelector('[data-perm-all="'+g.id+'"]');if(!b)return;
-      const onCount=active.filter(r=>r.querySelector('[data-perm-group="'+g.id+'"]').checked).length;
-      const allOn=active.length>0&&onCount===active.length;
-      b.disabled=!active.length;
+      const inputs=active.map(r=>r.querySelector('[data-perm-group="'+g.id+'"]')).filter(Boolean);
+      const allOn=inputs.length>0&&inputs.every(input=>input.checked);
+      b.disabled=!inputs.length;
       b.classList.toggle('on',allOn);
       b.setAttribute('aria-pressed',String(allOn));
       b.textContent=allOn?'✓ '+g.label+'（点此全关）':g.label+'（一键全开）';
@@ -283,15 +306,70 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
   };
   mbox.querySelectorAll('[data-perm-all]').forEach(btn=>{
     btn.onclick=()=>{
-      const gid=btn.dataset.permAll,active=activeRows();
-      if(!active.length)return;
-      const allOn=active.every(r=>r.querySelector('[data-perm-group="'+gid+'"]').checked);
-      active.forEach(r=>{const input=r.querySelector('[data-perm-group="'+gid+'"]');input.checked=!allOn;input.dataset.edited='true'});
+      const gid=btn.dataset.permAll,inputs=activeRows().map(r=>r.querySelector('[data-perm-group="'+gid+'"]')).filter(Boolean);
+      if(!inputs.length)return;
+      const allOn=inputs.every(input=>input.checked);
+      inputs.forEach(input=>{input.checked=!allOn;input.dataset.edited='true'});
       syncBulk();
     };
   });
   syncBulk();
-  document.getElementById('mClose').onclick=hideModal;document.getElementById('mSave').onclick=async()=>{const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/members',readMemberPermissions(rows));if(!ok)return alert(j.error||'保存失败');hideModal();await loadState()};
+  document.getElementById('mSave').onclick=async()=>{
+    const body=readMemberPermissions(rows,true);
+    body.dispatch_devices=[...mbox.querySelectorAll('[data-dispatch-device]:checked')].map(input=>input.dataset.dispatchDevice);
+    const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/members',body);
+    if(!ok)return alert(j.error||'保存失败');hideModal();await loadState();
+  };
+}
+function contactPolicyChoices(field,title,options,value){
+  const selected=value||[];
+  const rows=options.map(a=>'<label><input type="checkbox" value="'+esc(a.id)+'" data-policy-value="'+field+'"'+(selected.includes(a.id)?' checked':'')+'>'+esc(a.label||a.id)+'</label>').join('');
+  return '<label><input type="checkbox" data-policy-enabled="'+field+'"'+(value!==undefined?' checked':'')+'>'+title+'</label><div class="perm-grid">'+(rows||'<small>本会话暂无可选联系人</small>')+'</div>';
+}
+function openContactPolicy(id){
+  const rid=RID,contact=CONTACTS.find(a=>a.id===id);
+  if(!rid||!contact||!S?.participants?.includes(id))return;
+  const roster=CONTACTS.filter(a=>S.participants.includes(a.id));
+  const humans=roster.filter(a=>a.kind==='user'),others=roster.filter(a=>a.kind!=='user'&&a.id!==id);
+  const human=contact.kind==='user',policy=(human?S.user_policies?.[id]:S.agent_policies?.[id])||{};
+  const checks=human
+    ? '<label>历史消息<select id="contactHistory"><option value="since_join">从加入时开始</option><option value="all_room"'+(policy.history_scope==='all_room'?' selected':'')+'>允许看本房可公开的历史</option></select></label>'
+      +contactPolicyChoices('call_agents','只允许调用下列 Agent',others.filter(a=>a.http_protocol),policy.call_agents)
+    : (contact.http_protocol?contactPolicyChoices('accept_users','只接受下列外部成员提问',humans,policy.accept_users):'')
+      +'<label><input type="checkbox" id="policyHandoff"'+(policy.accept_handoff!==false?' checked':'')+'>接收其他 Agent 转派</label>'
+      +contactPolicyChoices('accept_agents','只接收这些 Agent 的转派',others,policy.accept_agents)
+      +contactPolicyChoices('handoff_targets','只允许转派给下列 Agent',others,policy.handoff_targets)
+      +(!contact.http_protocol?'<h4>工作区</h4><p class="hint">'+esc(S.members?.[id]?.workdir||S.workdir||'')+'。如果当前执行端无法强制落实所选限制，任务会被拦下。</p><label><input type="checkbox" id="policyWorkspace"'+(policy.workspace?' checked':'')+'>为此工作区单独授权</label><div class="perm-grid">'+[['read','读取'],['write','写入'],['exec','执行命令']].map(([key,label])=>'<label><input type="checkbox" data-policy-workspace="'+key+'"'+(policy.workspace?.[key]?' checked':'')+'>'+label+'</label>').join('')+'</div>':'');
+  const revoke='<button id="contactPolicyRevoke" type="button">立即撤权</button>';
+  showModal('<h3>'+esc(contact.label||id)+'</h3>'+checks+'<div class="btns">'+revoke+'<button id="contactPolicyBack">返回</button><button class="pri" id="contactPolicySave">保存授权</button></div>');
+  document.getElementById('contactPolicyBack').onclick=openAgents;
+  const revokeButton=document.getElementById('contactPolicyRevoke');
+  if(revokeButton)revokeButton.onclick=async()=>{
+    const prompt=human?'撤销此用户在本会话的权限？':'撤销此 Agent 在本会话的权限，并停止它正在执行的任务？';
+    if(rid!==RID||!confirm(prompt))return;
+    const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/contact/revoke',{contact:id});
+    if(!ok)return alert(j.error||'撤权失败');
+    if(rid===RID){await loadState();await openAgents();}
+  };
+  document.getElementById('contactPolicySave').onclick=async()=>{
+    if(rid!==RID)return;
+    const next={};
+    for(const field of ['call_agents','accept_users','accept_agents','handoff_targets']){
+      if(mbox.querySelector('[data-policy-enabled="'+field+'"]')?.checked){
+        next[field]=[...mbox.querySelectorAll('[data-policy-value="'+field+'"]:checked')].map(input=>input.value);
+      }
+    }
+    if(human){next.history_scope=document.getElementById('contactHistory').value;}
+    else{
+      next.accept_handoff=document.getElementById('policyHandoff').checked;
+      if(document.getElementById('policyWorkspace')?.checked){
+        next.workspace=Object.fromEntries([...mbox.querySelectorAll('[data-policy-workspace]')].map(input=>[input.dataset.policyWorkspace,input.checked]));
+      }
+    }
+    const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/contact/policies',{contact:id,policy:next});
+    if(!ok)return alert(j.error||'保存授权失败');
+    if(rid===RID){await loadState();await openAgents();}
+  };
 }
 document.getElementById('contactsAdd').onclick=()=>startConnectionWizard();
 if(document.getElementById('agentSettingsBtn'))document.getElementById('agentSettingsBtn').onclick=()=>openAgentManager();

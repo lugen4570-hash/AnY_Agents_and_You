@@ -59,10 +59,11 @@ def _save_guests(guests):
 
 
 def _permissions(value):
-    result = dict(access.PERMISSIONS)
+    result = dict(access.HUMAN_PERMISSIONS)
     if isinstance(value, dict):
-        for key, on in value.items():
-            if key in result and isinstance(on, bool):
+        for key in ("read", "post", "trigger"):
+            on = value.get(key)
+            if isinstance(on, bool):
                 result[key] = on
     return result
 
@@ -70,7 +71,7 @@ def _permissions(value):
 def public(row):
     return {"id": row["id"], "label": row.get("label") or "游客邀请",
             "room": row.get("room") or "",
-            "permissions": dict(row.get("permissions") or access.PERMISSIONS),
+            "permissions": _permissions(row.get("permissions")),
             "created": int(row.get("created") or 0),
             "expires": int(row.get("expires") or 0),
             "revoked": bool(row.get("revoked"))}
@@ -205,6 +206,8 @@ def redeem(invite_token, contact_token="", device_key="", name="", device=""):
         if not pid:
             pid = _recover_by_device(guests, device_hash)
             if pid:
+                if pid in r.meta.get("revoked_users", []):
+                    raise InviteError(403, "本会话的访问权限已被屋主撤销")
                 token = access.credential(pid)
 
         if not pid:
@@ -222,13 +225,16 @@ def redeem(invite_token, contact_token="", device_key="", name="", device=""):
             guests[pid] = {"invites": [], "device": _clean(device, "", 60),
                            "device_hash": device_hash, "created": int(time.time())}
 
-        if pid not in r.ais:
-            ids = list(r.ais) + [pid]
-            perms = {a: access.permissions(r, a) for a in r.ais}
-            perms[pid] = dict(row.get("permissions") or access.PERMISSIONS)
-            ok, msg = r.set_members(ids, perms)
-            if not ok:
-                raise InviteError(409, "会话暂时不可加入，请稍后重试：" + msg)
+        with r.lock:
+            if pid in r.meta.get("revoked_users", []):
+                raise InviteError(403, "本会话的访问权限已被屋主撤销")
+            if pid not in r.ais:
+                ids = list(r.ais) + [pid]
+                perms = {a: access.permissions(r, a) for a in r.ais}
+                perms[pid] = _permissions(row.get("permissions"))
+                ok, msg = r.set_members(ids, perms)
+                if not ok:
+                    raise InviteError(409, "会话暂时不可加入，请稍后重试：" + msg)
 
         grow = guests.get(pid)
         if grow is not None:
@@ -256,12 +262,10 @@ def remove_guest(pid):
             r = R.rooms.get(summary["id"])
             if r is None:
                 continue
-            with r.lock:
-                ids = [a for a in r.ais if a != pid]
-                perms = {a: access.permissions(r, a) for a in ids}
-                ok, msg = r.set_members(ids, perms)
-            if not ok:
-                raise InviteError(409, "暂时无法移除游客：" + summary.get("title", "") + "（" + msg + "）")
+            try:
+                r.remove_external_human(pid)
+            except OSError as error:
+                raise InviteError(500, "无法保存游客撤权：" + summary.get("title", "")) from error
         try:
             access.credential(pid, revoke=True)
         except ValueError as error:

@@ -189,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = f.read()
         self._send(200, body, ctype)
 
-    def _serve_file(self, rel):
+    def _serve_file(self, rel, private_share=False):
         rel = unquote(rel)
         if "\x00" in rel:
             return self._send(400, b"bad", "text/plain")
@@ -224,10 +224,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(end - start + 1))
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Cache-Control", "private, max-age=3600")
+        self.send_header("Cache-Control", "no-store" if private_share else "private, max-age=3600")
         if code == 206:
             self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, total))
-        if not safe:
+        if not safe or private_share:
             self.send_header("Content-Disposition", "attachment")
         self.end_headers()
         if self.command == "HEAD":
@@ -527,6 +527,9 @@ class Handler(BaseHTTPRequestHandler):
         data = self._read_json()
         if data is None:
             return
+        if path in {"/api/agents/config", "/api/agents/config/mcp", "/api/server/exit", "/api/server/stop", "/api/rooms/delete",
+                    "/api/devices/code", "/api/devices/link", "/api/devices/revoke"} and not self._is_host_owner():
+            return self._json(403, {"error": "请在运行 AnY 的电脑上进行此操作"})
         if path == "/api/cloud/account":
             if not self._is_host_owner():
                 return self._json(403, {"error": "请在运行 AnY 的电脑上管理云账号"})
@@ -660,9 +663,12 @@ class Handler(BaseHTTPRequestHandler):
                                     "url": base.rstrip("/") + "/enroll#device=" + quote(result["token"])})
         if path == "/api/devices/revoke":
             try:
-                devices.revoke(str(data.get("id") or ""))
+                device_id = str(data.get("id") or "")
+                devices.revoke(device_id)
             except devices.DeviceError as error:
                 return self._json(error.code, {"error": str(error)})
+            for room in R.rooms.all():
+                room.revoke_dispatch_device(device_id)
             return self._json(200, {"ok": True})
         if path == "/api/discovery/scan":
             return self._json(200, discovery.scan())
@@ -833,6 +839,15 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200 if ok else 409, {"ok": ok, "error": msg})
 
     def _room_post(self, r, act, qs):
+        device = getattr(self, "_device_id", "")
+        can_dispatch = not device or r.device_can_dispatch(device)
+        if not can_dispatch and act in {"mode", "turn/retry", "turn/approval", "wrapup", "compact", "undo",
+                                        "debate/start", "debate/continue", "debate/finish"}:
+            return self._json(403, {"error": "这台设备尚未获准在本会话派活，请在运行 AnY 的电脑上授权"})
+        if device and act in {"execution", "tools", "handoff", "session/reset"}:
+            return self._json(403, {"error": "请在运行 AnY 的电脑上管理执行环境"})
+        if device and act in {"members", "participants", "invite"}:
+            return self._json(403, {"error": "请在运行 AnY 的电脑上管理本会话成员权限"})
         if act in ('send', 'turn/retry', 'compact', 'wrapup', 'debate/start', 'debate/continue'):
             from . import updater
             if updater.status().get('state') == 'installing':
@@ -876,7 +891,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "empty"})
             reply = r.make_reply(data.get("reply_to"), data.get("reply_part")) if data.get("reply_to") is not None else None
             R.set_last(r.id)
-            r.handle_message("你", text, atts, reply_to=reply)
+            r.handle_message("你", text, atts, reply_to=reply, dispatch_device=device)
             return self._json(200, {"ok": True})
         if act == "recall":
             return self._recall(r, data.get("id"), "你")
@@ -996,10 +1011,51 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200 if ok else 409, {"ok": ok, "error": msg, "participants": list(r.ais)})
         if act == "members":
             try:
-                ok, msg = r.set_members(data.get("participants"), data.get("permissions"))
+                shared = data.get("guest_discussion")
+                dispatch_devices = data.get("dispatch_devices")
+                if shared is not None and shared != r.meta.get("guest_discussion", {}) and not self._is_host_owner():
+                    return self._json(403, {"error": "请在运行 AnY 的电脑上更改 Agent 共享"})
+                if dispatch_devices is not None:
+                    if not self._is_host_owner():
+                        return self._json(403, {"error": "请在运行 AnY 的电脑上管理设备派活权限"})
+                    paired = {row["id"] for row in devices.listing()}
+                    if not isinstance(dispatch_devices, list) or any(not isinstance(pid, str) or pid not in paired for pid in dispatch_devices):
+                        return self._json(400, {"error": "请选择有效的配对设备"})
+                    dispatch_devices = list(dict.fromkeys(dispatch_devices))
+                ok, msg = r.set_members(data.get("participants"), data.get("permissions"), shared, dispatch_devices)
             except OSError:
                 return self._json(500, {"error": "无法保存会话，请检查数据目录权限或文件是否被占用后重试"})
             return self._json(200 if ok else 409, {"ok": ok, "error": msg})
+        if act == "contact/policies":
+            if not self._is_host_owner():
+                return self._json(403, {"error": "请在运行 AnY 的电脑上管理联系人授权"})
+            try:
+                r.set_contact_policy(str(data.get("contact") or ""), data.get("policy"))
+            except ValueError as error:
+                return self._json(409, {"error": str(error)})
+            except OSError:
+                return self._json(500, {"error": "无法保存联系人授权"})
+            return self._json(200, {"ok": True})
+        if act == "contact/revoke":
+            if not self._is_host_owner():
+                return self._json(403, {"error": "请在运行 AnY 的电脑上撤销联系人授权"})
+            try:
+                pid = str(data.get("contact") or "")
+                revoked = r.remove_external_human(pid) if access.human(pid) else r.revoke_agent(pid)
+            except OSError:
+                return self._json(500, {"error": "撤权操作遇到本机文件或进程错误，请查看状态"})
+            return self._json(200 if revoked else 404, {"ok": revoked, "error": "" if revoked else "找不到本会话的联系人"})
+        if act == "contact/share":
+            if not self._is_host_owner():
+                return self._json(403, {"error": "请在运行 AnY 的电脑上确认外发"})
+            try:
+                message = r.share_result(data.get("id"), data.get("recipients"), data.get("attachments", []),
+                                         data.get("share_text", True) is True)
+            except ValueError as error:
+                return self._json(400, {"error": str(error)})
+            except OSError:
+                return self._json(500, {"error": "无法复制并发布所选附件"})
+            return self._json(200, {"ok": True, "id": message["id"]})
         if act == "invite":
             pid = str(data.get("contact") or "")
             value = data.get("permissions")
@@ -1073,9 +1129,11 @@ class Handler(BaseHTTPRequestHandler):
         text = str(data.get("text", "")).strip()
         if not text:
             return self._json(400, {"error": "empty"})
-        r.handle_message(speaker, text, origin="external")
+        dispatch_errors: list[dict[str, str]] = []
+        r.handle_message(speaker, text, origin="external", dispatch_errors=dispatch_errors)
         connections.seen(speaker, self._bearer(), "http")
-        return self._json(200, {"ok": True, "speaker": speaker, "origin": "external", "room": r.id})
+        return self._json(200, {"ok": True, "speaker": speaker, "origin": "external", "room": r.id,
+                                "dispatch_errors": dispatch_errors})
 
     def _external_get(self, path, q):
         pid = access.identify(self._bearer())
@@ -1094,12 +1152,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "没有此会话的读取权限"})
         if path == "/api/external/messages":
             connections.seen(pid, self._bearer(), "http")
-            result = r.messages_since(_int(q, "since"))
+            result = r.messages_since(_int(q, "since"), external_pid=pid)
             # External clients receive text and message metadata, never local file paths.
-            result["messages"] = [{k: m[k] for k in ("id", "time", "speaker", "text", "to_user", "recalled") if k in m} for m in result["messages"] if not m.get("quiet")]
+            public = []
+            for message in result["messages"]:
+                row = {k: message[k] for k in ("id", "time", "speaker", "text", "to_user", "recalled") if k in message}
+                if access.human(pid) and message.get("origin") == "shared-result":
+                    row["shared_attachments"] = [{"name": item["name"], "size": item["size"], "index": index}
+                                                 for index, item in enumerate(message.get("attachments", []))]
+                public.append(row)
+            result["messages"] = public
             result["self"] = pid if (registry.get(pid) or {}).get("kind") == "user" else ""
             result["permissions"] = access.permissions(r, pid)
+            if access.human(pid):
+                result["history_from"] = access.history_start(r, pid)
             return self._json(200, result)
+        if path == "/api/external/attachment" and access.human(pid):
+            try:
+                message, index = int(q["message"][0]), int(q["index"][0])
+            except (KeyError, ValueError):
+                return self._json(400, {"error": "缺少有效的附件编号"})
+            attachment = r.shared_attachment(pid, message, index)
+            if attachment and attachment["url"].startswith("/files/"):
+                return self._serve_file(attachment["url"][len("/files/"):], private_share=True)
+            return self._json(404, {"error": "附件不存在或未分享给你"})
         return self._json(404, {"error": "unknown endpoint"})
 
     def _mcp(self):
@@ -1132,7 +1208,9 @@ class Handler(BaseHTTPRequestHandler):
         if who is None:   # 钥匙对不上（会议室重启过之类）：不挡，免得 AI 白白卡住
             return self._json(200, agents.guard_allow(kind))
         r = R.rooms.get(who[0])
-        if r is not None and (execution.binding(r, who[1])["endpoint"] == "desktop" or execution.binding(r, who[1])["phase"] != "ready" or not access.allowed(r, who[1], "work") or who[1] not in r.ais):
+        if r is not None and (execution.binding(r, who[1])["endpoint"] == "desktop" or execution.binding(r, who[1])["phase"] != "ready"
+                              or not access.allowed(r, who[1], "work") or r.turn_revoked(who[1])
+                              or (who[1] in r.turn_dispatch and r.active_member_mode(who[1]) != "work")):
             return self._json(200, {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "此成员没有干活权限"}})
         return self._json(200, agents.guard_decide(kind, r, who[1], data))
 

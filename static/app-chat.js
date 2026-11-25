@@ -78,7 +78,8 @@ function add(m,existing){
   d.className='msg '+cls+(m.to_user?' touser':'')+(m.step!=null?' step':'');
   if(cls==='ai'){d.style.setProperty('--c',agentColor(m.speaker));d.dataset.l=agentLetter(m.speaker)}
   const tag=m.origin==='debate-summary'?'<span class="tag">论道总结</span>':m.to_user?'<span class="tag">→ 用户</span>':'';
-  const actions=m.recalled?'':'<span class="message-actions"><button type="button" class="mc" title="复制消息文字">复制</button><button type="button" class="rp" title="选中文字可引用片段">引用</button>'+(cls==='me'?'<button type="button" class="recall">撤回</button>':'')+'</span>';
+  const share=canShareRoomResult(m)?'<button type="button" class="share-result">确认分享</button>':'';
+  const actions=m.recalled?'':'<span class="message-actions"><button type="button" class="mc" title="复制消息文字">复制</button><button type="button" class="rp" title="选中文字可引用片段">引用</button>'+(cls==='me'?'<button type="button" class="recall">撤回</button>':'')+share+'</span>';
   const who=cls==='sys'?'':'<div class="who"><span class="nm">'+esc((agentMeta(m.speaker)||{}).label||m.speaker)+'</span><span class="tm">'+esc(m.time)+'</span>'+tag+actions+'</div>';
   const q=m.reply_to?'<div class="qt" data-to="'+m.reply_to.id+'">'+esc(m.reply_to.speaker)+'：'+(m.reply_to.part?'“'+esc(m.reply_to.text)+'”':esc(m.reply_to.text))+'</div>':'';
   d.dataset.id=m.id;msgById[m.id]=m;
@@ -92,7 +93,37 @@ function add(m,existing){
   const rb=d.querySelector('.rp');if(rb)rb.onclick=()=>{const selected=selIn();setQuote(m,selected&&selected.id===m.id?selected.text:'')};
   const cb=d.querySelector('.mc');if(cb)cb.onclick=()=>copyMessageText(m.text||'');
   const rc=d.querySelector('.recall');if(rc)rc.onclick=()=>recallMessage(m.id);
+  const sr=d.querySelector('.share-result');if(sr)sr.onclick=()=>openRoomResultShare(m);
   const qb=d.querySelector('.qt');if(qb)qb.onclick=()=>{const o=feed.querySelector('.msg[data-id="'+qb.dataset.to+'"]');if(o){o.scrollIntoView({block:'center',behavior:'smooth'});o.classList.add('flash');setTimeout(()=>o.classList.remove('flash'),1200)}};
+}
+function roomShareRecipients(){
+  if(typeof S==='undefined'||!S||typeof agCat==='undefined'||agCat?.local_workspace===false)return [];
+  return (S.agents||[]).filter(a=>a.kind==='user'&&(S.participants||[]).includes(a.id)&&S.permissions?.[a.id]?.read);
+}
+function canShareRoomResult(m){
+  return !m.recalled&&m.speaker!=='系统'&&m.origin!=='shared-result'&&!!(m.text||m.attachments?.length)&&roomShareRecipients().length>0;
+}
+function openRoomResultShare(m){
+  const rid=RID;
+  const recipients=roomShareRecipients().map(a=>'<label><input type="checkbox" data-share-user="'+esc(a.id)+'">'+esc(a.label||a.id)+'</label>').join('');
+  const files=(m.attachments||[]).map((a,i)=>'<label><input type="checkbox" data-share-file="'+i+'">'+esc(a.name)+'</label>').join('');
+  const text=m.text?'<label><input type="checkbox" id="shareResultText">分享下方正文</label><details><summary>查看正文</summary><pre class="message-text">'+esc(m.text)+'</pre></details>':'';
+  showModal('<h3>确认分享给外部成员</h3><p class="hint">请选择接收人和要发出的内容。</p><div class="perm-grid">'+recipients+'</div>'+text+'<div class="perm-grid">'+files+'</div><div class="btns"><button id="cancelResultShare">取消</button><button class="pri" id="submitResultShare">确认分享</button></div>');
+  document.getElementById('cancelResultShare').onclick=hideModal;
+  document.getElementById('submitResultShare').onclick=async e=>{
+    if(rid!==RID)return;
+    const button=e.currentTarget;
+    const recipients=[...mbox.querySelectorAll('[data-share-user]:checked')].map(i=>i.dataset.shareUser);
+    const attachments=[...mbox.querySelectorAll('[data-share-file]:checked')].map(i=>Number(i.dataset.shareFile));
+    const share_text=!!document.getElementById('shareResultText')?.checked;
+    if(!recipients.length||(!share_text&&!attachments.length))return alert('请选择接收人，以及要分享的正文或附件。');
+    button.disabled=true;
+    try{
+      const [ok,result]=await post('/api/r/'+encodeURIComponent(rid)+'/contact/share',{id:m.id,recipients,attachments,share_text});
+      if(!ok)return alert(result.error||'分享失败');
+      if(rid===RID){hideModal();await poll();}
+    }finally{button.disabled=false;}
+  };
 }
 function applyMessageRecalls(ids){
   if(!ids?.length)return;
@@ -480,6 +511,7 @@ feed.addEventListener('contextmenu',e=>{
   if(part){items.push(['复制选中文字',()=>copyMessageText(part)]);items.push(['引用选中片段',()=>setQuote(m,part)])}
   items.push(['复制整条消息',()=>copyMessageText(m.text||'')]);
   if(m.speaker==='你'||isAgent(m.speaker))items.push(['引用整条消息',()=>setQuote(m)]);
+  if(canShareRoomResult(m))items.push(['确认分享给外部成员',()=>openRoomResultShare(m)]);
   if(m.speaker==='你')items.push(['撤回消息',()=>recallMessage(m.id)]);
   cmenu.innerHTML='';
   items.forEach(([t,f])=>{const b=document.createElement('button');b.type='button';b.textContent=t;b.onclick=()=>{hideMenu();f()};cmenu.appendChild(b)});

@@ -177,6 +177,11 @@ def listing(current=""):
         return out
 
 
+def active(device_id):
+    with LOCK:
+        return any(row.get("id") == device_id and not row.get("revoked") for row in _devices())
+
+
 def revoke(device_id):
     with LOCK:
         rows = _devices()

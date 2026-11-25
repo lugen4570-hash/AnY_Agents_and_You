@@ -103,14 +103,18 @@ class Members(unittest.TestCase):
 
     def test_remote_members_can_mention_each_other_in_the_same_scheduler(self):
         r = self.room()
-        self.connect('member-a')
-        self.connect('member-b')
+        self.connect('member-a', allow_work=True)
+        self.connect('member-b', allow_work=True)
+        self.assertTrue(r.set_members(['member-a', 'member-b'], {'member-a': {'work': False}, 'member-b': {'work': True}})[0])
+        self.assertTrue(r.set_mode('work')[0])
         r.handle_message('你','@member-a 请讨论')
         a = self.receive('member-a')
         self.assertEqual(a['room'], r.id)
+        self.assertEqual(a['mode'], 'discuss')
         self.assertEqual(self.reply('member-a',a,'@member-b 请检查')[0], 200)
         b = self.receive('member-b')
         self.assertIn('请检查', b['prompt'])
+        self.assertEqual(b['mode'], 'discuss')
         self.assertEqual(self.reply('member-b',b,'@member-a 已检查')[0], 200)
         a2 = self.receive('member-a')
         self.assertEqual(a2['session'], 'member-session')
@@ -131,6 +135,21 @@ class Members(unittest.TestCase):
         self.assertEqual(self.reply('member-b', task, '朋友的 Codex 回复', worker='friend-device')[0], 200)
         wait_until(lambda:not r.busy_for())
         self.assertTrue(any(m['speaker']=='member-b' and m['text']=='朋友的 Codex 回复' for m in r.messages))
+
+    def test_workspace_grant_cannot_follow_a_new_worker(self):
+        r = self.room(['member-a'])
+        self.connect('member-a', worker='device-a')
+        r.set_contact_policies({}, {'member-a': {'workspace': {'read': True, 'write': True, 'exec': True}}})
+        r.handle_message('你', '@member-a authorized worker')
+        task = self.receive('member-a', worker='device-a')
+        self.assertEqual(task['workspace_binding'], {'worker': 'device-a', 'path': '/members/project'})
+        self.assertEqual(self.reply('member-a', task, 'done', worker='device-a')[0], 200)
+        wait_until(lambda: not r.busy_for())
+        self.assertEqual(self.op('member-a', 'disconnect', {'worker': 'device-a'})[0], 200)
+        self.connect('member-a', worker='device-b')
+        r.handle_message('你', '@member-a different worker')
+        self.assertIsNone(self.op('member-a', 'receive', {'worker': 'device-b', 'timeout': 0})[1]['task'])
+        self.assertIn('执行设备未连接', r.messages[-1]['text'])
 
     def test_duplicate_results_do_not_duplicate_messages(self):
         r = self.room(['member-a'])
@@ -155,6 +174,24 @@ class Members(unittest.TestCase):
         self.reply('member-a',task,'valid')
         wait_until(lambda:not r.busy_for())
 
+    def test_revoke_claimed_task_requires_stop_acknowledgement(self):
+        r = self.room()
+        self.connect('member-a')
+        r.handle_message('你', '@member-a start')
+        task = self.receive('member-a')
+        self.assertTrue(r.revoke_agent('member-a'))
+        self.assertEqual(r.api_state()['revoked_tasks'][-1]['state'], 'revoked_pending_ack')
+        self.assertEqual(self.reply('member-a', task, 'late')[0], 410)
+        lease = {'task': task['id'], 'lease': task['lease'], 'worker': 'worker'}
+        self.assertEqual(self.op('member-a', 'heartbeat', lease)[0], 410)
+        self.assertEqual(self.op('member-a', 'stop-ack', dict(lease, lease='invalid'))[0], 403)
+        restarted = members.Broker()
+        self.assertEqual(restarted.cancellation_status(r.id)[-1]['state'], 'revoked_pending_ack')
+        self.assertEqual(restarted.acknowledge_stop('member-a', self.keys['member-a'], lease)['state'], 'revoked')
+        self.assertEqual(self.op('member-a', 'stop-ack', lease)[0], 200)
+        self.assertEqual(r.api_state()['revoked_tasks'][-1]['state'], 'revoked')
+        self.assertFalse(any(m['text'] == 'late' for m in r.messages))
+
     def test_stopped_tasks_reject_late_replies_and_mentions(self):
         r = self.room()
         self.connect('member-a')
@@ -176,10 +213,17 @@ class Members(unittest.TestCase):
         self.assertFalse(r.busy_for())
 
     def test_offline_and_revoked_members_do_not_stall_the_room(self):
-        r = self.room(['member-a'])
+        r = self.room(['member-a', 'member-b'])
+        self.connect('member-b', worker='computer-b')
         r.handle_message('你','@member-a hi')
         wait_until(lambda:not r.busy_for())
         self.assertTrue(any('尚未开启自动响应' in m['text'] for m in r.messages))
+        r.handle_message('你', '@member-b finish while A is offline')
+        task_b = self.receive('member-b', worker='computer-b')
+        self.assertEqual(task_b['room'], r.id)
+        self.assertEqual(self.reply('member-b', task_b, 'B completed independently', worker='computer-b')[0], 200)
+        wait_until(lambda: not r.busy_for())
+        self.assertTrue(any(m['text'] == 'B completed independently' for m in r.messages))
         self.connect('member-a')
         r.handle_message('你','@member-a hi again')
         task=self.receive('member-a')
@@ -301,6 +345,7 @@ class Members(unittest.TestCase):
         process=subprocess.Popen([sys.executable,'-m','bridge.member','--server',support.BASE,'--agent','fake','--workdir',str(wd),'--state-dir',str(state)],env=env,stdout=log,stderr=log)
         try:
             wait_until(lambda:members.broker.status('member-a')['automatic'],timeout=12)
+            r.set_contact_policies({}, {'member-a': {'workspace': {'read': True, 'write': True, 'exec': True}}})
             for n in range(2):
                 r.handle_message('你','@member-a task %s' % n)
                 wait_until(lambda:not r.busy_for(),timeout=15)

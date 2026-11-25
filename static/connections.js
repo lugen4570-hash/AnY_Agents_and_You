@@ -7,7 +7,7 @@ async function checkConnectionBackend(signal) {
     if (!response.ok) throw Error();
     info = await response.json();
   } catch (e) { if (signal && signal.aborted) throw e; throw Error('无法连接 AnY 后台，请重新打开 AnY 后重试。'); }
-  if (info.app !== 'AI Bridge' || info.version !== '2.8.28' || info.api_revision !== 3)
+  if (info.app !== 'AI Bridge' || info.version !== '2.8.29' || info.api_revision !== 3)
     throw Error('界面与后台版本不一致。请重新打开最新的 AnY，再刷新此页面。');
   return info;
 }
@@ -276,7 +276,10 @@ function renderConnectionSetup(w) {
       + '<h4>已接入的设备</h4><div id="connDeviceList">正在读取…</div>';
   } else if (w.type === 'user') {
     w.target = w.target || ((ROOMS.find(r => !r.archived) || {}).id || '__new__');
-    w.permissions = w.permissions || {read:true,post:true,trigger:true,board:false,files:false,work:false};
+    if (!w.guestPermissionsReady) {
+      w.permissions = {read:true,post:true,trigger:false};
+      w.guestPermissionsReady = true;
+    }
     content += '<p class="hint">邀请票不会预先创建联系人。对方打开链接后领取身份，只加入你选择的会话。</p>'
       + '<label>会话<select id="connGuestRoom">' + ROOMS.filter(r => !r.archived).map(r => '<option value="' + esc(r.id) + '"' + (w.target === r.id ? ' selected' : '') + '>' + esc(r.title) + '</option>').join('') + '<option value="__new__"' + (w.target === '__new__' ? ' selected' : '') + '>＋ 新建会话</option></select></label>'
       + '<div id="connGuestNew"' + (w.target === '__new__' ? '' : ' hidden') + '><label>新会话标题<input id="connGuestTitle" maxlength="60" placeholder="例如：与朋友协作"></label></div>'
@@ -709,6 +712,9 @@ async function advanceConnection(w) {
   finally { if (wizardCurrent(w)) setConnectionBusy(w, false); }
 }
 function renderPermissionChoices(w) {
+  if (w.type === 'user') {
+    return HUMAN_ROOM_PERM_GROUPS.map(g => '<label><input type="checkbox" data-connection-permission="' + g.id + '"' + (w.permissions[g.id] ? ' checked' : '') + '><span>' + esc(g.label) + '<small class="perm-sub">' + esc(g.hint) + '</small></span></label>').join('');
+  }
   if (w.type === 'direct') return '<p class="hint">这个模型只参与房间文字讨论。</p>';
   if (typeof PERM_GROUPS !== 'undefined' && typeof groupPermValue === 'function') {
     return PERM_GROUPS.map(g => '<label><input type="checkbox" data-connection-permission-group="' + g.id + '"' + (groupPermValue(w.permissions, g) ? ' checked' : '') + '><span>' + esc(g.label) + '<small class="perm-sub">' + esc(g.hint) + '</small></span></label>').join('');

@@ -176,7 +176,10 @@ def call_room_tool(rid: str, ai: str, name: str, args: dict[str, Any]) -> str:
         atts, errs = [], []
         for p in (args.get("files") or [])[:MAX_ATTACH]:
             try:
-                atts.append(r.send_file(str(p)))
+                path = r.send_path(str(p))
+                if not access.workspace_path_allowed(r, ai, "read", path):
+                    raise ValueError("此附件不在获准读取的工作区范围内")
+                atts.append(r.send_file(path))
             except Exception as e:
                 errs.append(str(e))
         m = r.post_progress(ai, str(args.get("text") or ""), atts)
@@ -201,8 +204,10 @@ def call_room_tool(rid: str, ai: str, name: str, args: dict[str, Any]) -> str:
         paths = [r.send_path(str(p)) for p in args.get("paths") or [] if str(p).strip()]
         if not paths:
             raise ToolError("paths 不能为空")
-        if r.member_mode(ai) != "work":
+        if r.active_member_mode(ai) != "work":
             raise ToolError("讨论模式下不能改文件，用不着占")
+        if not all(access.workspace_path_allowed(r, ai, "write", p) for p in paths):
+            raise ToolError("所选路径超出获准写入的工作区范围")
         res = guard.claim(who, paths, args.get("minutes"), str(args.get("reason") or ""), r.title())
         ok = [p for p, good, _ in res if good]
         bad = [(p, hit) for p, good, hit in res if not good]
@@ -261,9 +266,11 @@ def call_ext_tool(name: str, args: dict[str, Any], pid: str | None = None, key: 
             since = max(0, int(args.get("since") or 0))
         except (TypeError, ValueError):
             raise ToolError("since / limit 要是整数")
-        with r.lock:
-            msgs = r.messages[since:]
-        msgs = [m for m in msgs if not m.get("quiet")][-limit:]
+        snapshot = r.messages_since(since, external_pid=pid)
+        msgs = snapshot["messages"][-limit:]
+        if access.human(pid):
+            body = "\n\n".join("#%d %s [%s] %s" % (m["id"], m["time"], m["speaker"], m["text"]) for m in msgs)
+            return "会议：%s（%s）\n下次从 since=%d 读起\n\n%s" % (r.title(), r.id, snapshot["next"], body or "（没有消息）")
         body = "\n\n".join("#%d %s %s" % (m["id"], m["time"], R.fmt_message(m)) for m in msgs) or "（没有消息）"
         return "会议：%s（%s）\n目标：\n%s\n\n看板：\n%s\n\n消息（共 %d 条，下次从 since=%d 读起）：\n%s" % (
             r.title(), r.id, r.goal_text(), r.board_text(), len(r.messages), len(r.messages), body)
@@ -280,8 +287,10 @@ def call_ext_tool(name: str, args: dict[str, Any], pid: str | None = None, key: 
         if not text:
             raise ToolError("text 不能为空")
         r = _room_for(str(args.get("room") or ""))
-        r.handle_message(sp, text, origin="external")
-        return "发到「%s」了（以 %s 的身份）" % (r.title(), sp)
+        errors: list[dict[str, str]] = []
+        r.handle_message(sp, text, origin="external", dispatch_errors=errors)
+        result = "发到「%s」了（以 %s 的身份）" % (r.title(), sp)
+        return "\n".join([result] + ["@%s：%s" % (row["agent"], row["reason"]) for row in errors])
     if name == "wait_for_message":
         r = _room_for(str(args.get("room") or ""))
         try:
@@ -293,13 +302,16 @@ def call_ext_tool(name: str, args: dict[str, Any], pid: str | None = None, key: 
         while True:
             if not access.external_allowed(r, pid, str(args.get("worker") or ""), str(args.get("binding_token") or "")):
                 raise ToolError("会话权限已撤销")
-            with r.lock:
-                msgs = [m for m in r.messages[since:] if not m.get("quiet")]
+            snapshot = r.messages_since(since, external_pid=pid)
+            msgs = snapshot["messages"]
             if msgs or time.time() >= end:
                 break
             time.sleep(0.5)
         if not msgs:
             return "（%d 秒内没有新消息，下次还是从 since=%d 读）" % (wait, since)
+        if access.human(pid):
+            body = "\n\n".join("#%d %s [%s] %s" % (m["id"], m["time"], m["speaker"], m["text"]) for m in msgs)
+            return "新消息 %d 条（下次从 since=%d 读）：\n%s" % (len(msgs), snapshot["next"], body)
         body = "\n\n".join("#%d %s %s" % (m["id"], m["time"], R.fmt_message(m)) for m in msgs)
         return "新消息 %d 条（下次从 since=%d 读）：\n%s" % (len(msgs), len(r.messages), body)
     raise ToolError("没有这个工具：%s" % name)

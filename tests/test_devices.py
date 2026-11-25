@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import quote
 
 DATA = tempfile.mkdtemp(prefix="cojam_devices_")
 os.environ["ROUNDTABLE_LOG_DIR"] = DATA
@@ -219,6 +220,19 @@ class DeviceHTTP(unittest.TestCase):
         self.assertEqual(call("/api/devices/revoke", {"id": device["id"]}, token=web.RT_TOKEN)[0], 200)
         self.assertEqual(call("/api/rooms", token=token)[0], 403)
         self.assertIsNone(devices.verify(token))
+
+    def test_paired_device_needs_room_dispatch_grant_and_cannot_grant_itself(self):
+        token, device, _ = self.make_device("派活手机")
+        room = web.R.rooms.create("配对设备派活", participants=[])
+        prefix = "/api/r/" + quote(room.id) + "/"
+        settings = {"participants": [], "permissions": {}, "dispatch_devices": [device["id"]]}
+        self.assertEqual(call(prefix + "mode", {"mode": "work"}, token=token)[0], 403)
+        self.assertEqual(call(prefix + "members", settings, token=token)[0], 403)
+        self.assertEqual(call(prefix + "members", settings, token=web.RT_TOKEN)[0], 200)
+        self.assertEqual(call(prefix + "mode", {"mode": "work"}, token=token)[0], 200)
+        self.assertEqual(call("/api/server/exit", {}, token=token)[0], 403)
+        self.assertEqual(call("/api/devices/revoke", {"id": device["id"]}, token=web.RT_TOKEN)[0], 200)
+        self.assertEqual(call(prefix + "mode", {"mode": "discuss"}, token=token)[0], 403)
 
     def test_root_routing_uses_credentials(self):
         owner = page()
