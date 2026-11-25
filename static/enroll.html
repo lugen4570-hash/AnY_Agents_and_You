@@ -1,14 +1,16 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>接入我的设备 · AnY</title>
-<link rel="icon" href="/static/icon-192.png?v=any-1"><link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
-<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/logo-collaboration.svg"><link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
+<meta name="theme-color" content="#f0f4f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#070a0f" media="(prefers-color-scheme: dark)">
 <style>
-:root{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color-scheme:light dark;--bg:#FAF9F5;--panel:#FFFFFF;--fg:#141413;--mut:#5E5B55;--line:#DFDAD0;--input:#FFFFFF;--btn:#141413;--btn-fg:#FAF9F5;--accent:#D94E28;--err:#B83227;background:var(--bg);color:var(--fg)}
-@media(prefers-color-scheme:dark){:root{--bg:#111214;--panel:#17181B;--fg:#EFECE6;--mut:#A3A09A;--line:#2B2D33;--input:#202226;--btn:#EFECE6;--btn-fg:#141413;--accent:#F17B59;--err:#F87171}}
+ :root{font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color-scheme:light dark;
+ --bg:light-dark(#f0f4f8,#0d131b);--panel:light-dark(#f9fbfd,#151d27);--fg:light-dark(#202b37,#e6eef6);
+ --mut:light-dark(#4d5d6f,#a6b6c7);--line:light-dark(#bac8d6,#354352);--input:light-dark(#f0f4f8,#101720);
+ --btn:light-dark(#25374a,#c0d5e4);--btn-fg:light-dark(#f7fbff,#0b0e13);--accent:light-dark(#315673,#b7d0dc);--err:light-dark(#a42e39,#ff7a85);background:var(--bg);color:var(--fg)}
 *{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--fg)}
-main{width:min(440px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px}
+main{width:min(440px,100%);background:var(--panel);border:1px solid var(--line);border-radius:5px 14px 14px 5px;padding:24px;box-shadow:0 20px 56px #080f161a}
 h1{font-size:22px;margin:0 0 8px}p{color:var(--mut);line-height:1.6}label{display:block;margin:18px 0 6px;font-size:14px}
 input{width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:inherit}
 input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -17,6 +19,7 @@ button:hover:not(:disabled){opacity:.9}
 button:disabled{opacity:.5;cursor:not-allowed}#error{color:var(--err);min-height:1.5em}#address{font-size:13px}
 </style>
 <main>
+  <img src="/static/logo-collaboration.svg" width="42" height="42" alt="AnY">
   <h1>接入我的设备</h1>
   <p>这台设备将获得与你相同的完整界面和「我」的身份。只接入你信任的设备。</p>
   <label for="name">设备名称</label>

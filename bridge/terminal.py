@@ -28,27 +28,28 @@ from .terminal_input import COMMANDS, Completion, Composer, plain
 
 
 CLI_VIAS = ("cli", "codex", "claude")
-PAPER = "#f4f2e6"
-LEAF = "#b4e197"
-WATER = "#7fd4e6"
-SUN = "#f4d98c"
-SIGNAL = "#f49e8a"
-MINT = "#88e5c3"
-MUTED_TEXT = "#8ea9a6"
-HOCKNEY_FALLBACKS = (WATER, SIGNAL, LEAF, SUN, MINT, "#c8b6ff")
+INK = "#0b0e13"
+PAPER = "#e6eef6"
+SILVER = "#b7d0dc"
+GOLD = "#e4a832"
+CORAL = "#ff977a"
+RED = "#ff7a85"
+MINT = "#88d3b8"
+MUTED_TEXT = "#a6b6c7"
+AGENT_FALLBACKS = ("#8ebdf4", "#e995b4", "#9ac986", "#c8b6ff", MINT)
 TERMINAL_THEME = Theme(
-    name="any", primary=WATER, accent=LEAF, success=LEAF,
-    warning=SUN, error="#ff9ca3", foreground=PAPER,
-    background="#101c20", surface="#17272c", panel="#2e4a52",
+    name="any", primary=SILVER, accent=SILVER, success=MINT,
+    warning=CORAL, error=RED, foreground=PAPER,
+    background=INK, surface="#12171f", panel="#283442",
 )
 
 
 class WelcomeMark(Static):
     FRAMES = (
-        "╲\n ╲\n  ╲",
-        "╲   ╱\n ╲ ╱\n  ╵",
-        "╲   ╱\n ╲─╱\n  ╵",
-        "∀ AnY",
+        " ╱       ╲\n╱         ╲",
+        " ╱╲     ╲ ╱\n╱──╲     ╵",
+        " ╱╲ ╲ ╱\n╱──╲ ╵",
+        "AnY",
     )
 
     def on_mount(self):
@@ -66,9 +67,10 @@ class WelcomeMark(Static):
         settled = self.frame == len(self.FRAMES) - 1
         self.set_class(settled, "settled")
         mark = Text(no_wrap=True, overflow="crop")
-        for glyph in self.FRAMES[self.frame]:
-            color = {"╲": LEAF, "╱": WATER, "─": SIGNAL, "∀": SIGNAL}.get(glyph, PAPER)
-            mark.append(glyph, style="bold" if self.app.no_color else f"bold {color}")
+        for line in self.FRAMES[self.frame].splitlines(keepends=True):
+            gold, silver = (line[:1], line[1:]) if settled else (line[:4], line[4:])
+            mark.append(gold, style="bold" if self.app.no_color else f"bold {GOLD}")
+            mark.append(silver, style="bold" if self.app.no_color else f"bold {SILVER}")
         self.update(mark)
 
 
@@ -79,10 +81,10 @@ def motion_enabled(app):
 def readable_agent_color(raw_color, index=0):
     if re.fullmatch(r"#[0-9a-fA-F]{6}", raw_color or ""):
         r, g, b = int(raw_color[1:3], 16), int(raw_color[3:5], 16), int(raw_color[5:7], 16)
-        # Keep colors with sufficient contrast on #101c20; brighten overly dark presets (e.g. #111827).
+        # Keep colors with sufficient contrast on #0b0e13; brighten overly dark presets (e.g. #111827).
         if (0.299 * r + 0.587 * g + 0.114 * b) >= 85:
             return raw_color
-    return HOCKNEY_FALLBACKS[index % len(HOCKNEY_FALLBACKS)]
+    return AGENT_FALLBACKS[index % len(AGENT_FALLBACKS)]
 
 
 def agent_colors(state):
@@ -101,7 +103,7 @@ def _message_body_items(message, *, markdown=False):
     elif text := message.get("text"):
         items.append(Markdown(plain(text), hyperlinks=False) if markdown else Text(plain(text), style=PAPER))
     for attachment in message.get("attachments", []):
-        items.append(Text("📎 " + plain(attachment.get("name", "文件")), style=f"bold {WATER}"))
+        items.append(Text("📎 " + plain(attachment.get("name", "文件")), style=f"bold {SILVER}"))
     return items
 
 
@@ -115,48 +117,40 @@ def transcript_entry(message, agents, colors, members):
         if "\n" not in text and len(text) <= 44 and not message.get("attachments") and not message.get("reply_to"):
             return Padding(Rule(f" ─ 系统 · {text} ", style=f"dim {MUTED_TEXT}", characters="─"), (0, 2, 1, 2))
         body_items = _message_body_items(message, markdown=False)
-        header = Text.assemble((" ─ 系统 ", f"bold #101c20 on {MUTED_TEXT}"), (f"  {time_str}" if time_str else "", f"dim {MUTED_TEXT}"))
+        header = Text.assemble((" ─ 系统 ", f"bold {INK} on {MUTED_TEXT}"), (f"  {time_str}" if time_str else "", f"dim {MUTED_TEXT}"))
         return Padding(Group(header, *(Padding(item, (0, 0, 0, 2)) for item in body_items)), (0, 2, 1, 2))
 
     is_human = agent.get("kind") == "user" or members.get(speaker, {}).get("transport") == "human"
     body_items = _message_body_items(message, markdown=(speaker != "你" and not is_human))
     content = Group(*body_items) if body_items else Text("")
 
+    accent = SILVER if speaker == "你" or is_human else GOLD
     if speaker == "你":
-        title = Text.assemble((" ◆ 你 ", f"bold #101c20 on {LEAF}"))
-        if time_str:
-            title.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
-        panel = Panel(content, title=title, title_align="left", box=box.ROUNDED,
-                      border_style=LEAF, style=f"{PAPER} on #182d2a", padding=(0, 1))
-        return Padding(panel, (0, 0, 1, 4))
-
-    if is_human:
-        accent = WATER
-        badge = f" ○ {name}  成员 "
-        card_bg = "#152830"
+        title = Text(" [你] ", style=f"bold {SILVER}")
+    elif is_human:
+        title = Text(f" [成员 · {name}] ", style=f"bold {SILVER}")
     else:
-        accent = colors.get(speaker) or HOCKNEY_FALLBACKS[sum(ord(ch) for ch in speaker) % len(HOCKNEY_FALLBACKS)]
-        badge = f" ● {name}  Agent "
-        card_bg = "#152429"
-
-    title = Text.assemble((badge, f"bold #101c20 on {accent}"))
+        title = Text.assemble((" [AI · ", f"bold {GOLD}"),
+                              (name, f"bold {colors.get(speaker) or GOLD}"),
+                              ("] ", f"bold {GOLD}"))
     if name.casefold() != speaker.casefold():
-        title.append(f"  @{plain(speaker)}", style=f"dim {MUTED_TEXT}")
+        title.append(f"  @{plain(speaker)}", style=MUTED_TEXT)
     if message.get("origin") == "debate-summary":
-        title.append("  论道总结", style=f"bold {SIGNAL}")
+        title.append("  论道总结", style=f"bold {accent}")
     elif message.get("to_user"):
-        title.append("  → 用户", style=f"bold {SUN}")
+        title.append("  → 用户", style=f"bold {SILVER}")
     if time_str:
-        title.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
-    panel = Panel(content, title=title, title_align="left", box=box.ROUNDED,
+        title.append(f"  {time_str}", style=MUTED_TEXT)
+    card_bg = "#191f27" if accent == SILVER else "#12171f"
+    panel = Panel(content, title=title, title_align="left", box=box.SQUARE,
                   border_style=accent, style=f"{PAPER} on {card_bg}", padding=(0, 1))
-    return Padding(panel, (0, 2, 1, 0))
+    return Padding(panel, (0, 0, 1, 4) if speaker == "你" else (0, 2, 1, 0))
 
 
 def append_details_header(details, title, bg_color, count=None, right_note="", *, first=False):
     if not first:
-        details.append("\n\n" + "─" * 28 + "\n", style="dim #3a5962")
-    details.append(f"▌ {title} ", style=f"bold #101c20 on {bg_color}")
+        details.append("\n\n" + "─" * 28 + "\n", style="dim #46576b")
+    details.append(f"▌ {title} ", style=f"bold {INK} on {bg_color}")
     if count is not None:
         details.append(f" {count}", style=f"bold {bg_color}")
     elif right_note:
@@ -227,7 +221,7 @@ class ReplyActivity(Static):
         status = Text()
         if self.lines and self.leading:
             beat = self.BEATS[self.beat] if self.color and motion_enabled(self.app) else "●"
-            status.append(beat + " ", style=self.color or SIGNAL)
+            status.append(beat + " ", style=self.color or GOLD)
         status.append(plain("\n".join(self.lines)))
         self.update(status)
 
@@ -236,9 +230,9 @@ def room_status(room):
     if room.get("archived"):
         return "已归档", "dim"
     if room.get("running"):
-        return "回复中", f"bold {SIGNAL}"
+        return "回复中", f"bold {GOLD}"
     if room.get("queued"):
-        return "排队中", f"bold {SUN}"
+        return "排队中", f"bold {SILVER}"
     return "空闲", MUTED_TEXT
 
 
@@ -793,7 +787,7 @@ class AnYTerminal(App):
                 continue
             name = groups.get(project, "独立会话")
             heading = name if rows else f"{name} · 暂无会话"
-            options.append(Option(Text(plain(heading), style=f"bold {WATER}"), disabled=True))
+            options.append(Option(Text(plain(heading), style=f"bold {SILVER}"), disabled=True))
             for row in rows:
                 state, color = room_status(row)
                 options.append(Option(Text.assemble(("  ● " if row.get("running") else "  ○ ", color),
@@ -809,15 +803,15 @@ class AnYTerminal(App):
         self.state = state
         title = plain(state["title"])
         mode = " 干活 " if state.get("mode") == "work" else " 讨论 "
-        mode_bg = SIGNAL if state.get("mode") == "work" else WATER
+        mode_bg = MUTED_TEXT if state.get("mode") == "work" else SILVER
         project_id = state.get("project") or next((r["project"] for r in self.rooms if r["id"] == self.room), "")
         project = next((p["name"] for p in self.projects if p["id"] == project_id), "")
         heading = Text.assemble((plain(project) + " / " if project else "", f"dim {MUTED_TEXT}"), (title, f"bold {PAPER}"))
         self.query_one("#title", Static).update(heading)
-        self.query_one("#meeting-mode", Static).update(Text(mode, style=f"bold #101c20 on {mode_bg}"))
+        self.query_one("#meeting-mode", Static).update(Text(mode, style=f"bold {INK} on {mode_bg}"))
         names = {a["id"]: a["label"] for a in state.get("agents", [])}
         colors = agent_colors(state)
-        roster = Text("◆ 你", style=f"bold {LEAF}", no_wrap=True, overflow="ignore")
+        roster = Text("◆ 你", style=f"bold {SILVER}", no_wrap=True, overflow="ignore")
         running = state.get("running", [])
         member_rows = []
         for member in state.get("participants", []):
@@ -825,17 +819,21 @@ class AnYTerminal(App):
             connection = state.get("members", {}).get(member, {})
             transport = connection.get("transport")
             tag = {"local": "本机", "desktop": "桌面", "member": "远端", "human": "人类", "http": "HTTP"}.get(transport, "")
-            member_color = WATER if transport == "human" else colors.get(member, MINT)
+            member_color = SILVER if transport == "human" else colors.get(member, MINT)
             if info.get("handed_off"):
-                status, status_color = "已交接", SIGNAL
+                status, status_color = "已交接", MUTED_TEXT
+            elif info.get("approval"):
+                status, status_color = "等你确认", CORAL
             elif member in running:
-                status, status_color = "回复中", f"bold {SIGNAL}"
+                status, status_color = "回复中", f"bold {GOLD}"
             elif info.get("busy"):
-                status, status_color = "排队", SUN
+                status, status_color = "排队", SILVER
+            elif info.get("failure") is not None:
+                status, status_color = "执行失败", RED
             elif transport in ("desktop", "member") and not connection.get("automatic"):
                 status, status_color = "未连接", "dim"
             elif transport == "human":
-                status, status_color = "在线", WATER
+                status, status_color = "在线", SILVER
             else:
                 status, status_color = "空闲", member_color
             name = names.get(member, member)
@@ -858,36 +856,36 @@ class AnYTerminal(App):
 
         details = Text()
         # 1. 会议目标
-        append_details_header(details, "会议目标", SUN, first=True)
+        append_details_header(details, "会议目标", SILVER, first=True)
         announcement = (state.get("announcement") or "").strip()
         if announcement:
-            _append_wrapped_row(details, "  ▌ ", f"bold {SUN}", announcement, f"bold {PAPER}", cont_indent="  ▌ ")
+            _append_wrapped_row(details, "  ▌ ", f"bold {SILVER}", announcement, f"bold {PAPER}", cont_indent="  ▌ ")
         else:
-            details.append("  ▌ ", style=f"dim {SUN}")
+            details.append("  ▌ ", style=f"dim {SILVER}")
             details.append("用 /announce 设置会议目标", style=f"dim {MUTED_TEXT}")
 
         # 2. 待办
-        append_details_header(details, "待办", LEAF, count=len(pending_todos))
+        append_details_header(details, "待办", SILVER, count=len(pending_todos))
         if pending_todos:
             for idx, item in enumerate(pending_todos):
                 if idx:
                     details.append("\n")
                 _append_wrapped_row(
-                    details, "  [ ] ", f"bold {LEAF}", item["text"], PAPER,
-                    id_prefix=f"#{item['id']} ", id_style=f"bold {WATER}", cont_indent="      ",
+                    details, "  [ ] ", f"bold {SILVER}", item["text"], PAPER,
+                    id_prefix=f"#{item['id']} ", id_style=f"bold {SILVER}", cont_indent="      ",
                 )
         else:
             details.append("  暂无", style=f"dim {MUTED_TEXT}")
 
         # 3. 公告
-        append_details_header(details, "公告", WATER, count=len(notes))
+        append_details_header(details, "公告", SILVER, count=len(notes))
         if notes:
             for idx, item in enumerate(notes):
                 if idx:
                     details.append("\n")
                 _append_wrapped_row(
-                    details, "  › ", f"bold {WATER}", item["text"], PAPER,
-                    id_prefix=f"#{item['id']} ", id_style=f"bold {WATER}", cont_indent="    ",
+                    details, "  › ", f"bold {SILVER}", item["text"], PAPER,
+                    id_prefix=f"#{item['id']} ", id_style=f"bold {SILVER}", cont_indent="    ",
                 )
         else:
             details.append("  暂无", style=f"dim {MUTED_TEXT}")
@@ -899,7 +897,7 @@ class AnYTerminal(App):
                 if idx:
                     details.append("\n")
                 _append_wrapped_row(
-                    details, "  [x] ", f"dim {LEAF}", f"#{item['id']} {item['text']}", f"dim strike {MUTED_TEXT}",
+                    details, "  [x] ", f"dim {SILVER}", f"#{item['id']} {item['text']}", f"dim strike {MUTED_TEXT}",
                     cont_indent="      ",
                 )
         else:
@@ -908,12 +906,12 @@ class AnYTerminal(App):
         # 5. 正在改的文件（仅在存在占锁时展示）
         claims = state.get("claims") or []
         if claims:
-            append_details_header(details, "正在改的文件", SIGNAL, count=len(claims))
+            append_details_header(details, "正在改的文件", MUTED_TEXT, count=len(claims))
             for idx, claim in enumerate(claims):
                 if idx:
                     details.append("\n")
                 _append_wrapped_row(
-                    details, "  ▸ ", f"bold {SIGNAL}", f"{claim['shown']} · {claim['who']}", PAPER,
+                    details, "  ▸ ", f"bold {MUTED_TEXT}", f"{claim['shown']} · {claim['who']}", PAPER,
                     cont_indent="    ",
                 )
 
@@ -923,13 +921,13 @@ class AnYTerminal(App):
         if debate.get("topic"):
             phase = {"running": "进行中", "summarizing": "总结中", "completed": "已完成", "interrupted": "已中断",
                      "cancelled": "已取消", "failed": "未完成"}.get(debate_state, "")
-            append_details_header(details, "论道", SIGNAL, right_note=phase)
-            _append_wrapped_row(details, "  ▌ ", f"bold {SIGNAL}", debate["topic"], f"bold {PAPER}", cont_indent="  ▌ ")
-            details.append(f"\n  已完成 {debate.get('completed_rounds', 0)} 轮", style=SIGNAL)
+            append_details_header(details, "论道", GOLD, right_note=phase)
+            _append_wrapped_row(details, "  ▌ ", f"bold {GOLD}", debate["topic"], f"bold {PAPER}", cont_indent="  ▌ ")
+            details.append(f"\n  已完成 {debate.get('completed_rounds', 0)} 轮", style=GOLD)
 
         # 7. 成员
         append_details_header(details, "成员", MINT, count=1 + len(member_rows))
-        details.append("  ◆ ", style=f"bold {LEAF}")
+        details.append("  ◆ ", style=f"bold {SILVER}")
         details.append("你", style=f"bold {PAPER}")
         details.append(" · 主持人", style=f"dim {MUTED_TEXT}")
         if member_rows:
@@ -961,7 +959,7 @@ class AnYTerminal(App):
                        if member in running and state["live"][member].get("text")),
                       running[0] if running else None)
         self.query_one(ReplyActivity).show(
-            live, color=colors.get(active, SIGNAL) if active else None,
+            live, color=GOLD if active else None,
             leading=bool(running or state.get("queued")),
         )
         self.composer.refresh_completion()
@@ -997,31 +995,42 @@ class AnYTerminal(App):
         clock = asyncio.get_running_loop().time
         lease_due = rooms_due = state_due = 0.0
         last_state_room = None
-        while True:
+        while self.is_running:
             room = self.room
             try:
                 now = clock()
                 if now >= lease_due:
                     self.lease_request = asyncio.create_task(self.request("/api/ui/session", {"tab": self.tab, "action": "open"}))
                     await asyncio.shield(self.lease_request)
+                    if not self.is_running:
+                        break
                     self.connected = True
                     lease_due = now + 30
                 if now >= rooms_due:
-                    self.render_rooms(await self.request("/api/rooms"))
+                    rooms_payload = await self.request("/api/rooms")
+                    if not self.is_running:
+                        break
+                    self.render_rooms(rooms_payload)
                     rooms_due = now + 5
                 room = self.room
                 pending, self.pending_open = self.pending_open, None
                 if pending is not None and pending == room:
                     await self.request(room_path(pending, "open"), {})
+                    if not self.is_running:
+                        break
                 if room is not None:
                     if room != last_state_room or now >= state_due:
                         state = await self.request(room_path(room, "state"))
+                        if not self.is_running:
+                            break
                         if self.room == room:
                             if state != self.state:
                                 self.render_state(state)
                             last_state_room, state_due = room, now + 2
                     if self.room == room:
                         batch = await self.request(room_path(room, f"messages?since={self.cursor}"))
+                        if not self.is_running:
+                            break
                         if self.room == room:
                             self.render_messages(batch)
                 if self.sending:
@@ -1029,6 +1038,8 @@ class AnYTerminal(App):
                 else:
                     self.status(self.state.get("workdir") or ("正在加载会话…" if room else ""))
             except CliError as error:
+                if not self.is_running:
+                    break
                 self.status(str(error))
                 lease_due = 0
                 if error.status == 404 and room is not None and room == self.room:

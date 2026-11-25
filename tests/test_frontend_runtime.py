@@ -1146,6 +1146,7 @@ class FrontendModularStructure(unittest.TestCase):
             self.assertTrue((root / 'static' / name).is_file(), href)
         scripts = re.findall(r'<script([^>]*)>([\s\S]*?)</script>', html)
         expected_scripts = [
+            '/static/theme-start.js',
             '/static/workspace.js',
             '/static/qrcode.min.js',
             '/static/connections.js',

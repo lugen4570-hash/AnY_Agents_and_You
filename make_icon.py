@@ -1,7 +1,4 @@
-"""Export the AnY ∀ identity to SVG, ICO, and web/app icon sizes.
-
-Vector geometry matches website/assets/logo.svg; no fonts or network required.
-"""
+"""Sync the AnY T2 identity and build app icons if the packaged kit is absent."""
 from pathlib import Path
 from PIL import Image, ImageDraw
 
@@ -63,6 +60,7 @@ def main() -> None:
     TAURI_ICON.parent.mkdir(parents=True, exist_ok=True)
 
     t2_master = T2_KIT / "any-logo-master.svg"
+    t2_emblem = T2_KIT / "any-logo-transparent.svg"
     t2_ico = T2_KIT / "icon.ico"
     t2_icns = T2_KIT / "icon.icns"
     t2_192 = T2_KIT / "png" / "any-logo-192.png"
@@ -71,6 +69,13 @@ def main() -> None:
         master_bytes = t2_master.read_bytes()
         (STATIC / "logo-collaboration.svg").write_bytes(master_bytes)
         (STATIC / "logo-app.svg").write_bytes(master_bytes)
+        # Match the checked-in aliases without carrying whitespace from the SVG masters.
+        master = "\n".join(line.rstrip() for line in t2_master.read_text(encoding="utf-8").splitlines()) + "\n"
+        for target in (STATIC / "logo.svg", STATIC / "logo-dark.svg", WEBSITE_ASSETS / "logo.svg"):
+            target.write_text(master, encoding="utf-8", newline="\n")
+        if t2_emblem.is_file():
+            emblem = "\n".join(line.rstrip() for line in t2_emblem.read_text(encoding="utf-8").splitlines()) + "\n"
+            (WEBSITE_ASSETS / "t2-emblem.svg").write_text(emblem, encoding="utf-8", newline="\n")
         ico_bytes = t2_ico.read_bytes()
         (ROOT / "roundtable.ico").write_bytes(ico_bytes)
         TAURI_ICON.write_bytes(ico_bytes)

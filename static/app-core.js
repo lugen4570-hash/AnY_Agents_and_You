@@ -44,7 +44,7 @@ function ownerInstance(){
     const [ok,j]=await post('/api/server/exit',{});
     if(!ok){alert(j.error||'退出失败');return}
     exiting=true;if(timer)clearInterval(timer);
-    document.body.innerHTML='<main class="closed-screen"><img src="/static/logo.svg" width="60" height="60" alt=""><h1>AnY 已退出</h1><p>本机服务已停止。需要时重新打开 AnY 即可。</p><button onclick="window.close()">关闭页面</button></main>';
+    document.body.innerHTML='<main class="closed-screen"><img src="/static/logo-collaboration.svg" width="60" height="60" alt=""><h1>AnY 已退出</h1><p>本机服务已停止。需要时重新打开 AnY 即可。</p><button onclick="window.close()">关闭页面</button></main>';
   };
 })();
 const feed=document.getElementById('feed'),ta=document.getElementById('ta'),st=document.getElementById('status');

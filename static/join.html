@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>加入会话 · AnY</title>
-<link rel="icon" href="/static/icon-192.png?v=any-1"><link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
-<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/logo-collaboration.svg"><link rel="apple-touch-icon" href="/static/icon-192.png?v=any-1">
+<meta name="theme-color" content="#f0f4f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#070a0f" media="(prefers-color-scheme: dark)">
 <style>
-:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:light dark;background:#111214;color:#efece6}*{box-sizing:border-box}body{margin:0;height:100dvh;display:grid;grid-template-columns:260px 1fr}aside{padding:24px 16px;background:#17181b;border-right:1px solid #2b2d33;overflow:auto}h2{font-size:18px}small{color:#a3a09a}button,input,textarea{font:inherit;padding:10px;border:1px solid #2b2d33;border-radius:8px;background:#202226;color:inherit}input{width:100%;margin:12px 0}button{cursor:pointer}#list button{display:block;width:100%;text-align:left;margin:8px 0}#list button.on{border-color:#efece6;background:#efece6;color:#141413}main{display:flex;flex-direction:column;min-width:0;padding:24px;overflow:hidden}#feed{flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.msg{padding:16px 0;border-bottom:1px solid #2b2d33}.who{font-size:12px;color:#a3a09a;margin-bottom:6px}form{display:flex;gap:8px;padding-top:16px}textarea{flex:1;resize:vertical}#error{color:#f87171;white-space:pre-wrap}#status{color:#a3a09a}#namePrompt{border:1px solid #2b2d33;border-radius:12px;padding:16px;margin-top:16px;background:#202226}#namePrompt[hidden]{display:none}@media(max-width:650px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{padding:12px;max-height:42vh}main{padding:16px}h2{margin:0}#list button{display:inline-block;width:auto}}
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color-scheme:light dark;--bg:light-dark(#f0f4f8,#0d131b);--ink:light-dark(#202b37,#e6eef6);--side:light-dark(#e2e9f0,#101720);--paper:light-dark(#f9fbfd,#151d27);--line:light-dark(#bac8d6,#354352);--muted:light-dark(#4d5d6f,#a6b6c7);--danger:light-dark(#a42e39,#ff7a85);background:var(--bg);color:var(--ink)}*{box-sizing:border-box}body{margin:0;height:100dvh;display:grid;grid-template-columns:260px 1fr}aside{padding:24px 16px;background:var(--side);border-right:1px solid var(--line);overflow:auto}h2{font-size:18px}small{color:var(--muted)}button,input,textarea{font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:inherit}input{width:100%;margin:12px 0}button{cursor:pointer}#list button{display:block;width:100%;text-align:left;margin:8px 0}#list button.on{border-color:var(--ink);background:var(--ink);color:var(--bg)}main{display:flex;flex-direction:column;min-width:0;padding:24px;overflow:hidden}#feed{flex:1;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.msg{padding:16px 0;border-bottom:1px solid var(--line)}.who{font-size:12px;color:var(--muted);margin-bottom:6px}form{display:flex;gap:8px;padding-top:16px}textarea{flex:1;resize:vertical}#error{color:var(--danger);white-space:pre-wrap}#status{color:var(--muted)}#namePrompt{border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px;background:var(--paper)}#namePrompt[hidden]{display:none}@media(max-width:650px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{padding:12px;max-height:42vh}main{padding:16px}h2{margin:0}#list button{display:inline-block;width:auto}}
 </style>
 <link rel="stylesheet" href="/static/guest.css">
-<aside><h2 class="guest-brand"><img src="/static/logo.svg" width="36" height="36" alt=""><span>AnY<small>Agents and You</small></span></h2><small>打开邀请，加入会话。</small><label class="key-label" for="key">邀请链接或联系人接入密钥</label><input id="key" type="password" placeholder="粘贴邀请链接或密钥" autocomplete="off"><button id="connect">加入会议室</button> <button id="logout">退出此设备</button><p id="identity"></p><div id="namePrompt" hidden><b>怎么称呼你？</b><p class="hint">只影响显示名称，不改变身份。</p><input id="guestName" maxlength="40" placeholder="访客" autocomplete="nickname"><button id="nameConfirm">继续加入</button></div><div id="list" aria-label="已受邀的会话"></div><p id="error" role="alert"></p></aside>
+<aside><h2 class="guest-brand"><img src="/static/logo-collaboration.svg" width="36" height="36" alt=""><span>AnY<small>Agents and You</small></span></h2><small>打开邀请，加入会话。</small><label class="key-label" for="key">邀请链接或联系人接入密钥</label><input id="key" type="password" placeholder="粘贴邀请链接或密钥" autocomplete="off"><button id="connect">加入会议室</button> <button id="logout">退出此设备</button><p id="identity"></p><div id="namePrompt" hidden><b>怎么称呼你？</b><p class="hint">只影响显示名称，不改变身份。</p><input id="guestName" maxlength="40" placeholder="访客" autocomplete="nickname"><button id="nameConfirm">继续加入</button></div><div id="list" aria-label="已受邀的会话"></div><p id="error" role="alert"></p></aside>
 <main><h2 id="title">选择一个会话</h2><p id="status">请向应用管理员索取联系人密钥。</p><div id="feed" aria-live="polite"></div><form id="send"><textarea id="text" placeholder="输入消息…" disabled></textarea><button id="submit" disabled>发送</button></form></main>
 <script>
 let token='',rid='',since=0,generation=0,historyFrom=null,permission=false,busy=false,autoOpen=false,presetRoom='',pendingInvite='';
@@ -81,6 +81,12 @@ async function poll(){
     for(const m of j.messages){
       const box=document.createElement('div');box.className='msg';box.dataset.id=m.id;box.dataset.recalled=!!m.recalled;
       const who=document.createElement('div');who.className='who';who.textContent=m.speaker+' · '+m.time;
+      box.dataset.role=m.role||'';
+      if(m.role==='ai'||m.role==='human'){
+        const badge=document.createElement('span');badge.className='speaker-kind';
+        badge.textContent=m.role==='ai'?'AI':m.speaker===j.self?'你':'成员';
+        who.prepend(badge);
+      }
       if(m.speaker===j.self&&!m.recalled){
         const button=document.createElement('button');button.type='button';button.className='recall';button.textContent='撤回';
         button.onclick=()=>recall(m.id);who.append(' ',button);

@@ -1,36 +1,5 @@
 /* AnY Harness UI: explicit themes, sidebar settings, composer bar, slash menu, 3-tab inspector, and settings center. */
 
-/* ===== Explicit Theme Overrides (light / dark — Sunlit Hockney Studio) ===== */
-html[data-theme="light"] {
-  color-scheme: light;
-  --bg: #FCFBF7; --bar: #FFFFFF; --side: #F2F7F4; --fg: #18302B; --mut: #526B65; --faint: #758C86;
-  --line: #DCE6E0; --soft: #EDF4F0; --hover: #E2EEE9; --btn: #1B5A48; --btn-fg: #FCFBF7;
-  --me: #E5F4F8; --me-line: #BCE0EB; --me-fg: #15353E; --me-mut: #4B727D; --accent: #1F849E; --code: #EEF5F2; --danger: #B83227; --chrome: #E6F0EC;
-  --side-fg: #18302B; --side-muted: #526B65;
-  --studio-note: #FFF5D6; --studio-note-line: #EED58C;
-  --studio-sky: #E4F4F9; --studio-leaf: #E8F5E2; --studio-coral: #FCEBE6;
-  --claude: #d97757; --codex: #10a37f; --work: #D95D44;
-  --shadow: 0 3px 14px rgba(24, 48, 43, .05), 0 1px 3px rgba(24, 48, 43, .04); --shadow-lg: 0 24px 72px rgba(16, 32, 36, .18);
-}
-html[data-theme="light"] .connection-symbol {
-  filter: none;
-}
-
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --bg: #101D21; --bar: #192C32; --side: #142328; --fg: #F3F2E7; --mut: #9BB6B4; --faint: #759291;
-  --line: #284148; --soft: #1B3137; --hover: #223D45; --btn: #7DD3E8; --btn-fg: #0D2026;
-  --me: #1A3A44; --me-line: #2E5D6B; --me-fg: #EEF8FA; --me-mut: #9CC7D4; --accent: #7DD3E8; --code: #132429; --danger: #FF9CA3; --chrome: #0A1417;
-  --side-fg: #F3F2E7; --side-muted: #9BB6B4;
-  --studio-note: #2E2A1C; --studio-note-line: #635733;
-  --studio-sky: #17343D; --studio-leaf: #1B3529; --studio-coral: #382321;
-  --claude: #e5896a; --codex: #2fbf94; --work: #F49E8A;
-  --shadow: 0 3px 14px rgba(0, 0, 0, .24), 0 1px 3px rgba(0, 0, 0, .18); --shadow-lg: 0 28px 90px rgba(0, 0, 0, .55);
-}
-html[data-theme="dark"] .connection-symbol {
-  filter: saturate(.75);
-}
-
 /* ===== Left Sidebar: Fixed Settings Entry ===== */
 .nav-settings-btn {
   flex-shrink: 0;
@@ -142,8 +111,20 @@ html[data-theme="dark"] .connection-symbol {
 .room-feedback-state { display: block; }
 .room-feedback-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .room-feedback-actions:not(:empty) { margin-top: 7px; }
-.room-feedback-actions button, .inspect-step { font-size: 12px; }
-.room-feedback-error { color: var(--err, #b83227); margin: 6px 0 0; }
+.room-feedback-actions button, .inspect-step {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bar);
+  color: var(--fg);
+  font-size: 12px;
+}
+.room-feedback-actions button:hover, .inspect-step:hover { background: var(--hover); }
+.awaiting-confirmation .room-feedback-actions button:first-child {
+  border-color: var(--work);
+  color: var(--work);
+}
+.room-feedback-error { color: var(--danger); margin: 6px 0 0; }
 .inspect-step { margin-inline-start: 6px; }
 #sideChangesPane { display: grid; gap: 10px; align-content: start; }
 .change-step-label { display: grid; gap: 5px; color: var(--mut); font-size: 12px; }
@@ -340,12 +321,12 @@ footer {
   background: var(--studio-sky, var(--soft));
 }
 .mode-chip.work {
-  border-color: color-mix(in srgb, var(--work) 55%, var(--line));
-  background: color-mix(in srgb, var(--work) 10%, var(--bar));
-  color: var(--work);
+  border-color: var(--line);
+  background: var(--soft);
+  color: var(--mut);
 }
 .mode-chip.work::before {
-  background: var(--work);
+  background: var(--mut);
 }
 .model-chip .chip-text {
   overflow: hidden;
@@ -1166,3 +1147,9 @@ footer {
 .cloud-qr img { padding:6px; background:white; border:1px solid var(--line); border-radius:8px; }
 .cloud-devices { display:grid; gap:6px; padding:0; list-style:none; }
 .cloud-devices li { justify-content:space-between; padding-block:5px; border-bottom:1px solid var(--line); }
+
+.msg.sys.awaiting-confirmation{border-inline-start:2px solid var(--work);background:var(--studio-coral);color:var(--fg)}
+.msg.sys.execution-failed{border-inline-start:2px solid var(--danger);color:var(--fg)}
+.awaiting-confirmation .room-feedback-state,.side-agent-activity.is-approval{color:var(--work)}
+.execution-failed .room-feedback-state,.side-agent-activity.is-failed{color:var(--danger)}
+.side-agent-activity.is-running{color:var(--ai)}

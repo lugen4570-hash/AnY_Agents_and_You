@@ -94,7 +94,7 @@ class CojamCliTest(unittest.TestCase):
                 mark = app.query_one(WelcomeMark)
                 activity = app.query_one(ReplyActivity)
                 activity.show(["Codex 正在回复"], color="#10a37f", leading=True)
-                self.assertEqual(str(mark.render()), "∀ AnY")
+                self.assertEqual(str(mark.render()), "AnY")
                 self.assertEqual(mark.size.height, 1)
                 self.assertEqual(str(activity.render()), "● Codex 正在回复")
                 await pilot.pause(.4)
@@ -140,7 +140,7 @@ class CojamCliTest(unittest.TestCase):
             console.print(transcript_entry({"speaker": speaker, "text": "**原文**", "time": "12:00"},
                                            agents, {}, {}))
         result = output.getvalue()
-        for marker in ("◆ 你", "● Claude  Agent", "● Codex  Agent", "○ Lee  成员", "─ 系统"):
+        for marker in ("[你]", "[AI · Claude]", "[AI · Codex]", "[成员 · Lee]", "─ 系统"):
             self.assertIn(marker, result)
         self.assertEqual(result.count("**原文**"), 3)
 
@@ -168,7 +168,7 @@ class CojamCliTest(unittest.TestCase):
                 mark = app.query_one(WelcomeMark)
                 await wait_for(pilot, lambda: mark.frame == len(mark.FRAMES) - 1)
                 self.assertEqual(mark.frame, len(mark.FRAMES) - 1)
-                self.assertEqual(str(mark.render()), "∀ AnY")
+                self.assertEqual(str(mark.render()), "AnY")
                 self.assertEqual(mark.size.height, 1)
                 self.assertIsNone(app.room)
                 self.assertFalse(app.query_one("#chat").display)

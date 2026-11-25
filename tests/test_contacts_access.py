@@ -244,6 +244,9 @@ class Contacts(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((data["self"], data["recalled"]), ("alice", [guest_id]))
         self.assertEqual(data["messages"][-1]["text"], "消息已撤回")
+        roles = {message["id"]: message["role"] for message in data["messages"]}
+        self.assertEqual((roles[owner_id], roles[guest_id]), ("human", "human"))
+        self.assertNotIn(bot_id, roles)
 
     def test_rotation_revocation_and_hash_storage(self):
         self.assertNotIn(self.key, Path(DATA, "contact_keys.json").read_text(encoding="utf-8"))
@@ -350,7 +353,8 @@ class Contacts(unittest.TestCase):
             status, messages = call(endpoint, key=self.key)
             self.assertEqual(status, 200)
             visible = [entry["text"] for entry in messages["messages"]]
-            self.assertIn("公开讨论的回复", visible)
+            reply = next(entry for entry in messages["messages"] if entry["text"] == "公开讨论的回复")
+            self.assertEqual(reply["role"], "ai")
             self.assertNotIn("入房之前的内容", visible)
             self.assertNotIn("本机 Agent 的私有输出", visible)
         finally:

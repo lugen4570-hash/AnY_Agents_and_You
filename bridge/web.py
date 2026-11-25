@@ -1158,10 +1158,17 @@ class Handler(BaseHTTPRequestHandler):
             connections.seen(pid, self._bearer(), "http")
             result = r.messages_since(_int(q, "since"), external_pid=pid)
             # External clients receive text and message metadata, never local file paths.
+            is_guest = access.human(pid)
             public = []
             for message in result["messages"]:
                 row = {k: message[k] for k in ("id", "time", "speaker", "text", "to_user", "recalled") if k in message}
-                if access.human(pid) and message.get("origin") == "shared-result":
+                if is_guest:
+                    speaker = message["speaker"]
+                    if speaker == "系统":
+                        row["role"] = "system"
+                    else:
+                        row["role"] = "human" if speaker == "你" or access.human(speaker) else "ai"
+                if is_guest and message.get("origin") == "shared-result":
                     row["shared_attachments"] = [{"name": item["name"], "size": item["size"], "index": index}
                                                  for index, item in enumerate(message.get("attachments", []))]
                 public.append(row)

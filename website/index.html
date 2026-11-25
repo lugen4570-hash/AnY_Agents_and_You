@@ -3,24 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fffdf2">
+  <meta name="theme-color" content="#070A0F">
   <meta name="page-type" content="software">
   <meta name="site-kind" content="software">
   <meta name="description" content="AnY — 多 Agent 与多人的本地协作空间。让 Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode 与伙伴同席讨论、论道与协作。">
   <meta property="og:title" content="AnY · 和 Agent 在本地开会">
   <meta property="og:description" content="在同一个本地项目里，邀请多个 Agent 和你的伙伴一起讨论、分工。">
-  <meta property="og:image" content="https://lugen4570-hash.github.io/AnY_Agents_and_You/assets/collaboration-park.webp">
+  <meta property="og:image" content="https://lugen4570-hash.github.io/AnY_Agents_and_You/assets/workspace.png">
   <meta name="twitter:card" content="summary_large_image">
   <title>AnY — 多 Agent 与多人的本地协作空间</title>
-  <link rel="icon" href="assets/logo.svg?v=garden-2">
-  <link rel="stylesheet" href="style.css?v=2.8.33">
-  <script src="site.js?v=2.8.33" defer></script>
+  <link rel="icon" href="assets/logo.svg?v=t2">
+  <link rel="stylesheet" href="style.css?v=2.8.33-t2">
+  <script src="site.js?v=2.8.33-t2" defer></script>
 </head>
 <body class="page-home">
   <header class="topbar">
     <a class="skip-link" href="#top">跳到正文</a>
-    <a class="brand" href="index.html" aria-label="AnY 首页">
-      <img class="brand-ink" src="assets/wordmark.svg" alt="" width="92" height="41">
+    <a class="brand" href="index.html" aria-label="AnY · Agents and You 首页">
+      <img class="brand-ink" src="assets/wordmark.svg?v=t2-sig" alt="AnY" width="106" height="38">
+      <span class="brand-tagline"><b>Agents</b> <i>and</i> <strong>You</strong></span>
     </a>
     <nav aria-label="主导航">
       <a href="index.html" aria-current="page">首页</a>
@@ -30,27 +31,33 @@
     <a class="nav-cta" href="download.html">下载 AnY <i aria-hidden="true">↗</i></a>
   </header>
 
-  <main id="top">
-    <section class="hero-stage-band" data-poster data-scene="discuss">
+  <main id="top" tabindex="-1">
+    <section class="hero-stage-band" data-poster data-scene="work">
       <div class="hero wrap">
         <div class="hero-copy">
-          <p class="hero-name">Agents <i>and</i> You</p>
-          <h1><span>和 Agent</span><br><span>在本地开会。</span></h1>
+          <div class="hero-brand-row">
+            <div class="hero-emblem-rig" aria-hidden="true">
+              <span class="rig-ring rig-ring-outer"></span>
+              <span class="rig-ring rig-ring-inner"></span>
+              <img class="hero-emblem" src="assets/t2-emblem.svg" width="72" height="72" alt="">
+            </div>
+          </div>
+          <h1><span>和多个 Agent</span><br><span>在本地协作</span></h1>
           <p class="lead">把 Claude Code、Codex 和伙伴请进同一场会话。<code>@</code> 点名分工，在 Windows、macOS 和终端一起接着聊。</p>
           <div class="hero-actions">
-            <a class="button primary" href="download.html">下载 AnY <span aria-hidden="true">↗</span></a>
-            <a class="hero-secondary" href="#start">看看怎么上手 <span aria-hidden="true">↓</span></a>
+            <a class="button primary" href="downloads/AnY-Setup-2.8.33.exe" download data-dl-target="win-setup">下载 Windows 安装版 <span aria-hidden="true">↗</span></a>
+            <a class="hero-secondary" href="download.html">其他下载方式 <span aria-hidden="true">↗</span></a>
           </div>
         </div>
 
         <section class="hero-art" data-stage aria-label="多 Agent 协作界面示例">
-          <div class="park-landscape" aria-hidden="true">
-            <img src="assets/collaboration-park.webp" alt="" fetchpriority="high">
-            <div class="park-light"></div>
+          <div class="stage-optics" aria-hidden="true">
+            <div class="stage-light"></div>
           </div>
           <div class="signal-map" aria-hidden="true">
             <span class="signal-node">你</span>
             <svg viewBox="0 0 280 48" preserveAspectRatio="none" aria-hidden="true">
+              <defs><linearGradient id="signal-gradient"><stop stop-color="#B7D0DC"/><stop offset="1" stop-color="#E4A832"/></linearGradient></defs>
               <path class="signal-line" data-signal="discuss" pathLength="1" d="M0 24C42 42 58 7 113 13S218 39 280 24M104 13C156 -2 198 11 228 18M125 15C148 39 191 43 226 33"/>
               <path class="signal-line" data-signal="debate" pathLength="1" d="M0 24C31 29 38 4 69 6S118 43 145 41 192 6 217 9 249 33 280 24"/>
               <path class="signal-line" data-signal="work" pathLength="1" d="M0 24C33 24 44 17 69 18 108 18 124 2 159 7 208 14 224 23 280 24M69 18C101 20 126 42 163 41 199 40 218 26 250 24"/>
@@ -58,11 +65,11 @@
                 <animateMotion data-signal-travel dur=".86s" begin="indefinite"/>
               </circle>
             </svg>
-            <span class="signal-node" data-signal-target>多个 Agent</span>
+            <span class="signal-node" data-signal-target>两个 Agent</span>
           </div>
           <article class="stage-window">
             <div class="stage-top">
-              <div class="stage-title">项目会客厅</div>
+              <div class="stage-title">AnY 会话演示</div>
               <div class="stage-tabs" role="group" aria-label="演示控制">
                 <button type="button" aria-pressed="true" data-stage-view="desktop">桌面</button>
                 <button type="button" aria-pressed="false" data-stage-view="terminal">终端</button>
@@ -72,9 +79,9 @@
 
             <div class="stage-controls">
               <div class="stage-tabs scenario-tabs" role="group" aria-label="协作模式">
-                <button type="button" aria-pressed="true" data-scenario="discuss">多方讨论</button>
+                <button type="button" aria-pressed="false" data-scenario="discuss">多方讨论</button>
                 <button type="button" aria-pressed="false" data-scenario="debate">轮流论道</button>
-                <button type="button" aria-pressed="false" data-scenario="work">干活接力</button>
+                <button type="button" aria-pressed="true" data-scenario="work">干活接力</button>
               </div>
               <div class="stage-caps" aria-label="演示成员">
                 <span class="cap-chip" data-agent-cap="antigravity" style="--dot:#8056dd"><i aria-hidden="true"></i>Antigravity</span>
@@ -84,13 +91,13 @@
               </div>
             </div>
 
-            <div class="stage-description" data-poster-caption>两位 Agent 在同一场会话里接上彼此的思路。</div>
+            <div class="stage-description" data-poster-caption>两位 Agent 并行核查，最后一步由你确认。</div>
             <div class="stage-feed" data-stage-feed aria-live="polite">
               <noscript><p>一场会话可以在桌面和终端同时打开，成员、发言与看板由同一后台同步。</p></noscript>
             </div>
 
             <div class="stage-input">
-              <span data-stage-prompt>@Claude 帮忙补充跨设备测试。</span>
+              <span data-stage-prompt>确认后继续…</span>
               <i aria-hidden="true">↑</i>
             </div>
           </article>
@@ -99,8 +106,8 @@
     </section>
     <section class="wrap quick-start" id="start" aria-labelledby="start-title">
       <h2 id="start-title">第一次开会</h2>
-      <img class="workspace-preview" src="assets/workspace.png?v=garden-2" width="1440" height="940" loading="lazy"
-        alt="AnY 桌面实景，左边是项目和会话列表，右边是共同目标、对话与输入栏">
+      <img class="workspace-preview" src="assets/workspace.png?v=t2" width="1440" height="940" loading="lazy"
+        alt="AnY 桌面实景，左边是项目和会话列表，右边是 AI 协作消息、权限确认与输入栏">
       <div class="start-links">
         <a href="capabilities.html#collab">
           <strong>开一场多人会话 <span aria-hidden="true">↗</span></strong>

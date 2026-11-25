@@ -11,12 +11,14 @@ function attachAgentProgress(message,element){
   if(!message.progress){settleAgentProgress(message.speaker);return}
   const card=active||newAgentProgress(message.speaker);
   liveCards.delete(message.speaker);
+  card.node.classList.remove('is-running');
   card.label.textContent='过程';card.text.textContent=message.progress;
   element.appendChild(card.node);
 }
 function settleAgentProgress(ai){
   const card=liveCards.get(ai);if(!card)return;
   liveCards.delete(ai);
+  card.node.classList.remove('is-running');
   if(!card.text.textContent)card.node.remove();else card.label.textContent='过程';
 }
 function drawLiveCards(running,live){
@@ -25,7 +27,7 @@ function drawLiveCards(running,live){
   for(const id of running){
     let card=liveCards.get(id);
     if(!card){
-      card=newAgentProgress(id);liveCards.set(id,card);feed.appendChild(card.node);
+      card=newAgentProgress(id);card.node.classList.add('is-running');liveCards.set(id,card);feed.appendChild(card.node);
     }
     const entry=live[id]||{};
     card.label.textContent=entry.secs>=60?'思考中 · '+fmtDur(entry.secs):'思考中';

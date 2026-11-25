@@ -150,7 +150,10 @@ def open_window(url, on_closing, module=None):
     if isinstance(settings, dict) and "OPEN_EXTERNAL_LINKS_IN_BROWSER" in settings:
         settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     api = DesktopApi(webview)
-    window = webview.create_window(TITLE, url, width=1280, height=860, min_size=(960, 640), js_api=api, text_select=True)
+    window = webview.create_window(
+        TITLE, url, width=1280, height=860, min_size=(960, 640),
+        js_api=api, background_color="#070a0f", text_select=True,
+    )
     api._window = window
     window.events.closing += on_closing
     window.events.shown += tint_title_bar

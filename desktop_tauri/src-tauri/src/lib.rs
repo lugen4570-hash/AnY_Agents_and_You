@@ -138,6 +138,7 @@ pub fn run() -> i32 {
             let dl_dir = downloads_dir(app.handle());
             let mut builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(app_url))
                 .title(platform::TITLE)
+                .background_color(tauri::window::Color(7, 10, 15, 255))
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(960.0, 640.0)
                 .on_document_title_changed(|window, _title| {

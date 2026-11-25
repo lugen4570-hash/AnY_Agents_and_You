@@ -74,16 +74,19 @@ function attHtml(list){
 }
 function add(m,existing){
   const d=existing||document.createElement('div');
-  const cls=m.speaker==='你'?'me':isAgent(m.speaker)?'ai':'sys';
+  const speaker=agentMeta(m.speaker);
+  const cls=m.speaker==='你'?'me':isAgent(m.speaker)?(speaker?.kind==='user'?'human':'ai'):'sys';
   d.className='msg '+cls+(m.to_user?' touser':'')+(m.step!=null?' step':'');
-  if(cls==='ai'){d.style.setProperty('--c',agentColor(m.speaker));d.dataset.l=agentLetter(m.speaker)}
-  const tag=m.origin==='debate-summary'?'<span class="tag">论道总结</span>':m.to_user?'<span class="tag">→ 用户</span>':'';
+  if(cls==='ai')d.style.setProperty('--c',agentColor(m.speaker));
+  else d.style.removeProperty('--c');
+  if(cls==='ai'||cls==='human')d.dataset.l=agentLetter(m.speaker);
+  const tag=m.origin==='debate-summary'?'<span class="tag debate-summary">论道总结</span>':m.to_user?'<span class="tag">→ 用户</span>':'';
   const share=canShareRoomResult(m)?'<button type="button" class="share-result">确认分享</button>':'';
   const actions=m.recalled?'':'<span class="message-actions"><button type="button" class="mc" title="复制消息文字">复制</button><button type="button" class="rp" title="选中文字可引用片段">引用</button>'+(cls==='me'?'<button type="button" class="recall">撤回</button>':'')+share+'</span>';
-  const who=cls==='sys'?'':'<div class="who"><span class="nm">'+esc((agentMeta(m.speaker)||{}).label||m.speaker)+'</span><span class="tm">'+esc(m.time)+'</span>'+tag+actions+'</div>';
+  const who=cls==='sys'?'':'<div class="who"><span class="nm">'+esc(speaker?.label||m.speaker)+'</span>'+(cls==='ai'?'<span class="speaker-kind">AI</span>':cls==='human'?'<span class="speaker-kind">成员</span>':'')+'<span class="tm">'+esc(m.time)+'</span>'+tag+actions+'</div>';
   const q=m.reply_to?'<div class="qt" data-to="'+m.reply_to.id+'">'+esc(m.reply_to.speaker)+'：'+(m.reply_to.part?'“'+esc(m.reply_to.text)+'”':esc(m.reply_to.text))+'</div>':'';
   d.dataset.id=m.id;msgById[m.id]=m;
-  const md=cls==='ai';
+  const md=cls==='ai'||cls==='human';
   d.innerHTML=who+q+(m.text?'<div class="body'+(md?' md':'')+'">'+render(m.text,md)+'</div>':'')+attHtml(m.attachments)+(m.step!=null?'<button type="button" class="undo" data-step="'+m.step+'">撤回这一步</button>':'');
   if(typeof attachAgentProgress==='function')attachAgentProgress(m,d);
   if(typeof attachRoomFeedback==='function')attachRoomFeedback(m,d);

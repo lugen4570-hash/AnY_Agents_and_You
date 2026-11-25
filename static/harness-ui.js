@@ -199,8 +199,8 @@
   }
 
   function getThemePref() {
-    const v = safeStorageGet(THEME_KEY, 'system');
-    return (v === 'light' || v === 'dark' || v === 'system') ? v : 'system';
+    const v = safeStorageGet(THEME_KEY, 'dark');
+    return (v === 'light' || v === 'dark' || v === 'system') ? v : 'dark';
   }
 
   function applyTheme(pref) {
@@ -212,6 +212,10 @@
     else el.dataset.theme = value;
     const meta = document.querySelector('meta[name="color-scheme"]');
     if (meta) meta.content = value === 'system' ? 'light dark' : value;
+    document.querySelectorAll('meta[name="theme-color"][data-system-media]').forEach(tag => {
+      const theme = tag.dataset.theme;
+      tag.media = value === 'system' ? tag.dataset.systemMedia : value === theme ? 'all' : 'not all';
+    });
     return value;
   }
 
@@ -1224,6 +1228,8 @@
       const signature = JSON.stringify([active, S.mode, S.running, S.queued, S.steps_undone, (S.claims || []).map(claim => claim.key)]);
       if (card.dataset.state === signature) return;
       card.dataset.state = signature;
+      card.closest('.msg').classList.toggle('awaiting-confirmation', Boolean(approval && active));
+      card.closest('.msg').classList.toggle('execution-failed', Boolean(failure));
       const note = card.querySelector('.room-feedback-state');
       const actions = card.querySelector('.room-feedback-actions');
       const error = card.querySelector('.room-feedback-error');
@@ -1331,12 +1337,13 @@
       const ctxDesc = typeof ctxTitle === 'function' ? ctxTitle(x) : '';
       const isDirectModel = state.agents?.some(agent => agent.id === id && agent.http_protocol === 'openai_chat');
       const permBlocked = !isDirectModel && state.mode === 'work' && state.permissions && state.permissions[id] && state.permissions[id].work === false;
-      const activity = x.approval ? '等你确认' : x.busy ? '运行中' : x.failure != null ? '执行失败' : '';
+      const [activity, activityClass] = x.approval ? ['等你确认', 'is-approval']
+        : x.busy ? ['运行中', 'is-running'] : x.failure != null ? ['执行失败', 'is-failed'] : [];
       return '<div class="side-agent-card" data-side-agent="' + esc(id) + '">'
         + '<div class="side-agent-head"><span class="side-agent-dot" style="--c:' + esc(color) + '"></span>'
         + '<span class="side-agent-name">' + esc(name) + '</span>'
         + '<span class="side-agent-badge' + (desktop ? ' desktop' : '') + '">' + esc(endpointLabel) + '</span></div>'
-        + (activity ? '<p class="side-agent-meta side-agent-activity">' + esc(activity) + '</p>' : '')
+        + (activity ? '<p class="side-agent-meta side-agent-activity ' + activityClass + '">' + esc(activity) + '</p>' : '')
         + (permBlocked ? '<p class="side-agent-meta" style="color:var(--work)">当前会议已切到干活模式，但此成员未开启「允许干活」权限，仍将只读。</p>' : '')
         + '<p class="side-agent-meta">' + esc(modelDesc) + (isDirectModel ? '<br>仅参与文字讨论' : ctxDesc ? '<br>' + esc(ctxDesc) : '') + '</p>'
         + '<div class="side-agent-actions">'
@@ -1357,6 +1364,9 @@
     const targetHint = document.getElementById('composerTargetHint');
     const has = !!(state && state.meeting);
     const work = !!(has && state.mode === 'work');
+
+    const modeTag = document.getElementById('modeTag');
+    if (modeTag) modeTag.textContent = work ? t('mode.work') : '';
 
     if (modeBtn) {
       modeBtn.disabled = !has;
