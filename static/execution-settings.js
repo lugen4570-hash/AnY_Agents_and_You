@@ -33,7 +33,7 @@ function bindExecutionSettings(ai, owner, busy) {
       await loadState();if(current() && state.phase==='ready')openAi(ai);
     }catch(error){message(error.message);}finally{working=false;}
   };
-  box.querySelector('#executionAgentSettings').onclick=()=>openAgentSettings(ai);
+  box.querySelector('#executionAgentSettings').onclick=()=>{if(typeof pushModalBack==='function')pushModalBack(()=>openAi(ai));openAgentSettings(ai);};
   render();
   const poll=async()=>{
     if(!current()){controller.abort();clearTimeout(timer);return;}

@@ -694,6 +694,8 @@ footer {
 .settings-head h3 {
   margin: 0 !important;
   font-size: 18px !important;
+  flex: 1;
+  min-width: 0;
 }
 .settings-close {
   border: 0 !important;

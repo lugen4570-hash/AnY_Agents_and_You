@@ -59,8 +59,13 @@ if(window.caches&&caches.keys)caches.keys().then(ks=>ks.forEach(k=>{if(k.startsW
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 const modal=document.getElementById('modal'),mbox=document.getElementById('mbox');
 let modalReturnFocus=null;
+const modalBackStack=[];
+function pushModalBack(restore){if(typeof restore==='function')modalBackStack.push(restore)}
+function hasModalBack(){return modalBackStack.length>0}
+function popModalBack(){const restore=modalBackStack.pop();if(typeof restore==='function')return restore();return null}
+function clearModalBack(){modalBackStack.length=0}
 function showModal(html){if(typeof stopAttachmentPreview==='function')stopAttachmentPreview();mbox.classList.remove('file-preview');if(!modal.classList.contains('show'))modalReturnFocus=document.activeElement;mbox.innerHTML=html;modal.classList.add('show');mbox.setAttribute('aria-label',(mbox.querySelector('h3')||mbox.querySelector('.eyebrow')||{textContent:'会话设置'}).textContent);mbox.focus({preventScroll:true});if(typeof connectionModalChanged==='function')connectionModalChanged()}
-function hideModal(){const shown=modal.classList.contains('show');modal.classList.remove('show');if(typeof stopAttachmentPreview==='function')stopAttachmentPreview();if(typeof stopConnectionWizard==='function')stopConnectionWizard();if(shown&&modalReturnFocus&&modalReturnFocus.isConnected)modalReturnFocus.focus({preventScroll:true})}
+function hideModal(){const shown=modal.classList.contains('show');clearModalBack();modal.classList.remove('show');if(typeof stopAttachmentPreview==='function')stopAttachmentPreview();if(typeof stopConnectionWizard==='function')stopConnectionWizard();if(shown&&modalReturnFocus&&modalReturnFocus.isConnected)modalReturnFocus.focus({preventScroll:true})}
 document.addEventListener('keydown',e=>{if(!modal.classList.contains('show'))return;if(e.key==='Escape'){e.preventDefault();hideModal();return}if(e.key!=='Tab')return;const nodes=[...mbox.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]')].filter(n=>n.getClientRects().length);if(!nodes.length){e.preventDefault();mbox.focus();return}const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&(document.activeElement===first||document.activeElement===mbox)){e.preventDefault();last.focus()}else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===mbox)){e.preventDefault();first.focus()}});
 let modalBackdropPress=null,modalBackdropClick=false;
 modal.addEventListener('pointerdown',e=>{modalBackdropClick=false;modalBackdropPress=e.target===modal&&e.button===0&&e.isPrimary!==false?{id:e.pointerId,x:e.clientX,y:e.clientY,moved:false}:null});

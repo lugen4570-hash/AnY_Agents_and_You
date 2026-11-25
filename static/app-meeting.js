@@ -210,17 +210,23 @@ function drawMeetingDetails(){
 }
 function openRename(rid,title,after=loadState){
   setMeetingSide(false);
-  showModal('<h3>修改会话名称</h3><form id="renameForm"><label>会话名称<input id="renameTitle" maxlength="60" required></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="renameCancel">取消</button><button class="pri" type="submit">保存</button></div></form>');
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const finish=()=>{if(canBack)popModalBack();else hideModal();};
+  showModal((canBack?'<div class="connection-heading"><button type="button" class="modal-back" id="renameBack">← 返回</button><h3>修改会话名称</h3><button type="button" id="renameClose" aria-label="关闭">×</button></div>':'<h3>修改会话名称</h3>')+'<form id="renameForm"><label>会话名称<input id="renameTitle" maxlength="60" required></label><p class="form-error" role="alert"></p><div class="btns"><button type="button" id="renameCancel">取消</button><button class="pri" type="submit">保存</button></div></form>');
   const form=document.getElementById('renameForm'),input=document.getElementById('renameTitle'),submit=form.querySelector('[type=submit]');
   input.value=title;input.focus();input.select();
-  document.getElementById('renameCancel').onclick=hideModal;
+  if(canBack&&document.getElementById('renameBack'))document.getElementById('renameBack').onclick=()=>popModalBack();
+  if(document.getElementById('renameClose'))document.getElementById('renameClose').onclick=hideModal;
+  document.getElementById('renameCancel').onclick=finish;
   form.onsubmit=async e=>{
     e.preventDefault();if(submit.disabled)return;submit.disabled=true;
     const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/rename',{title:input.value});
     submit.disabled=false;
     if(!ok){form.querySelector('.form-error').textContent=j.error||'保存失败';return}
     if(document.getElementById('renameForm')!==form)return pollRooms();
-    hideModal();if(rid===RID)await loadState();await pollRooms();if(after!==loadState)await after();
+    if(rid===RID)await loadState();await pollRooms();
+    if(canBack)popModalBack();
+    else{hideModal();if(after!==loadState)await after();}
   };
 }
 document.getElementById('bRename').onclick=()=>{if(S&&S.meeting===RID)openRename(RID,S.title)};
@@ -336,15 +342,18 @@ async function toggleMode(){
 }
 function openMoveRoom(room,projects){
   const destinations=projects.filter(p=>p.id!==room.project);
-  showModal('<h3>移动会话</h3><p class="hint">「'+esc(room.title)+'」的聊天记录、附件和工作目录会保留。</p><label>目标项目<select id="moveProject">'+destinations.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'</select></label><p id="moveError" role="alert"></p><div class="btns"><button type="button" id="moveBack">返回</button><button type="button" id="moveSave" class="pri">移动会话</button></div>');
-  document.getElementById('moveBack').onclick=()=>openList();
+  const goBack=()=>typeof hasModalBack==='function'&&hasModalBack()?popModalBack():openList();
+  showModal('<div class="connection-heading"><button type="button" class="modal-back" id="moveTopBack">← 返回</button><h3>移动会话</h3><button type="button" id="moveClose" aria-label="关闭">×</button></div><p class="hint">「'+esc(room.title)+'」的聊天记录、附件和工作目录会保留。</p><label>目标项目<select id="moveProject">'+destinations.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'</select></label><p id="moveError" role="alert"></p><div class="btns"><button type="button" id="moveBack">返回</button><button type="button" id="moveSave" class="pri">移动会话</button></div>');
+  document.getElementById('moveClose').onclick=hideModal;
+  document.getElementById('moveTopBack').onclick=goBack;
+  document.getElementById('moveBack').onclick=goBack;
   document.getElementById('moveSave').onclick=async e=>{
     const button=e.currentTarget,project=document.getElementById('moveProject').value;
     button.disabled=true;
     const [ok,result]=await post('/api/rooms/move',{id:room.id,project});
     if(ok)await pollRooms();
     if(document.getElementById('moveSave')!==button)return;
-    if(ok)return openList();
+    if(ok)return goBack();
     button.disabled=false;
     document.getElementById('moveError').textContent=result.error||'移动失败';
   };
@@ -368,7 +377,10 @@ async function openList(showTrash){
   const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
     '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
   const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button><button type="button" class="pb">彻底删除</button></span></div>').join('');
-  showModal('<h3>项目与会话管理</h3><h4>项目</h4>'+(projectRows||'<p class="hint">还没有项目</p>')+
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const isTrashOpen=()=>document.getElementById('trashBox')?.style.display==='block';
+  const pushListBack=()=>{if(typeof pushModalBack==='function'){const trash=isTrashOpen();pushModalBack(()=>openList(trash));}};
+  showModal((canBack?'<div class="connection-heading"><button type="button" class="modal-back" id="lBack">← 返回</button><h3>项目与会话管理</h3><button type="button" id="lHeaderClose" aria-label="关闭">×</button></div>':'<h3>项目与会话管理</h3>')+'<h4>项目</h4>'+(projectRows||'<p class="hint">还没有项目</p>')+
     (projectRows?'<p class="hint">删除项目会将该项目下的会话（含已归档）移入回收站，磁盘上的工作文件夹会保留。</p>':'')+
     '<h4>会话</h4>'+(rows||'<div class="hint">还没有会议</div>')+
     '<div class="btns" style="margin-top:10px"><button type="button" id="lTrash">回收站（'+tj.trash.length+'）</button><button type="button" id="lClose">关闭</button></div>'+
@@ -376,13 +388,15 @@ async function openList(showTrash){
     (tj.trash.length?'<div class="btns" style="margin-top:8px"><button type="button" id="lPurge">清空回收站</button></div>':'')+
     '<div class="hint">彻底删除会尝试清理各 Agent 的对应会话，仍被其他会议使用的会话会保留。</div></div>'+
     '<div class="hint" style="margin-top:12px">几场会议可以同时跑。想并排看：在会议上按 Ctrl 点（或鼠标中键）在新标签页打开。</div>');
+  if(canBack&&document.getElementById('lBack'))document.getElementById('lBack').onclick=()=>popModalBack();
+  if(document.getElementById('lHeaderClose'))document.getElementById('lHeaderClose').onclick=hideModal;
   document.getElementById('lClose').onclick=hideModal;
   document.getElementById('lTrash').onclick=()=>{const b=document.getElementById('trashBox');b.style.display=b.style.display==='none'?'block':'none'};
   const act=async(url,body)=>{const [ok,jj]=await post(url,body);if(!ok){alert(jj.error||'失败');return false}return true};
   mbox.querySelectorAll('[data-project-edit]').forEach(button=>{
     button.onclick=()=>{
       const project=projects.find(p=>p.id===button.dataset.projectEdit);
-      if(project&&typeof openProject==='function')openProject(project);
+      if(project&&typeof openProject==='function'){pushListBack();openProject(project);}
     };
   });
   mbox.querySelectorAll('[data-project-delete]').forEach(button=>{
@@ -413,7 +427,9 @@ async function openList(showTrash){
     pollRooms();
     if(document.getElementById('trashBox')!==owner)return;
     const rows=(result.cleanup||[]).map(x=>'<li><b>'+esc(x.room)+' · '+esc(x.ai)+'</b><p>'+esc(x.message)+'</p><code>'+esc(x.session)+'</code></li>').join('');
-    showModal('<h3>回收站清理结果</h3>'+(ok?'':'<p role="alert">'+esc(result.error||'清理失败')+'</p>')+(rows?'<ul class="cleanup-results">'+rows+'</ul>':'<p class="hint">没有需要报告的 Agent 会话。</p>')+'<div class="btns"><button class="pri" type="button" id="cleanupDone">返回回收站</button></div>');
+    showModal('<div class="connection-heading"><button type="button" class="modal-back" id="cleanupBack">← 返回</button><h3>回收站清理结果</h3><button type="button" id="cleanupClose" aria-label="关闭">×</button></div>'+(ok?'':'<p role="alert">'+esc(result.error||'清理失败')+'</p>')+(rows?'<ul class="cleanup-results">'+rows+'</ul>':'<p class="hint">没有需要报告的 Agent 会话。</p>')+'<div class="btns"><button class="pri" type="button" id="cleanupDone">返回回收站</button></div>');
+    document.getElementById('cleanupClose').onclick=hideModal;
+    document.getElementById('cleanupBack').onclick=()=>openList(true);
     document.getElementById('cleanupDone').onclick=()=>openList(true);
   }
   mbox.querySelectorAll('#trashBox .item').forEach(el=>{
@@ -425,8 +441,8 @@ async function openList(showTrash){
   mbox.querySelectorAll('.item[data-id]').forEach(el=>{
     if(el.closest('#trashBox'))return;
     const room=j.rooms.find(room=>room.id===el.dataset.id);
-    el.querySelector('.rn').onclick=e=>{e.stopPropagation();openRename(room.id,room.title,openList)};
-    el.querySelector('.mv').onclick=e=>{e.stopPropagation();openMoveRoom(room,projects)};
+    el.querySelector('.rn').onclick=e=>{e.stopPropagation();pushListBack();openRename(room.id,room.title,openList)};
+    el.querySelector('.mv').onclick=e=>{e.stopPropagation();pushListBack();openMoveRoom(room,projects)};
     el.querySelector('.ab').onclick=async e=>{e.stopPropagation();if(await act('/api/rooms/archive',{id:el.dataset.id,on:el.querySelector('.ab').dataset.on==='1'})){await loadState();pollRooms();openList()}};
     el.querySelector('.db').onclick=async e=>{e.stopPropagation();
       if(!confirm('把「'+el.querySelector('.tt').textContent+'」移到回收站？（可以恢复）'))return;
@@ -439,7 +455,9 @@ async function openList(showTrash){
 }
 function openAi(a){
   const x=S&&S.ais&&S.ais[a];if(!x)return;
-  let h='<h3>'+esc((CONTACTS.find(c=>c.id===a)||{}).label||a)+'</h3>';
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const title=esc((CONTACTS.find(c=>c.id===a)||{}).label||a);
+  let h=canBack?'<div class="connection-heading"><button type="button" class="modal-back" id="aBack">← 返回</button><h3>'+title+'</h3><button type="button" id="aHeaderClose" aria-label="关闭">×</button></div>':'<h3>'+title+'</h3>';
   const mo=x.model||{models:[],efforts:[],model:'',effort:''};
   const aiBusy=!!(x.busy||(S&&((S.running||[]).includes(a)||(S.running||[]).includes('compact:'+a))));
   h+=modelSettingsMarkup(mo,aiBusy);
@@ -460,6 +478,8 @@ function openAi(a){
   showModal(h);
   bindModelSettings(a,mo,aiBusy);
   bindExecutionSettings(a,(S.execution||{})[a],aiBusy);
+  if(canBack&&document.getElementById('aBack'))document.getElementById('aBack').onclick=()=>popModalBack();
+  if(document.getElementById('aHeaderClose'))document.getElementById('aHeaderClose').onclick=hideModal;
   document.getElementById('aClose').onclick=hideModal;
   const reset=document.getElementById('aReset');if(reset)reset.onclick=async()=>{
     if(!confirm('下次 @ '+a+' 时开启新会话？此会议的聊天记录仍会保留。'))return;

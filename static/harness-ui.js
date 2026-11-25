@@ -992,9 +992,15 @@
       if (actionBtn) {
         const act = actionBtn.dataset.onboardAction;
         if (act === 'connect') {
+          if (typeof pushModalBack === 'function' && card.closest('#appSettingsModal')) {
+            pushModalBack(() => openAppSettings('tutorial'));
+          }
           if (typeof startConnectionWizard === 'function') startConnectionWizard('', 'ai');
           else if (typeof openConnection === 'function') openConnection();
         } else if (act === 'manage') {
+          if (typeof pushModalBack === 'function' && card.closest('#appSettingsModal')) {
+            pushModalBack(() => openAppSettings('tutorial'));
+          }
           if (typeof openAgents === 'function') openAgents();
         } else if (act === 'fill-test') {
           hideModal();
@@ -1465,7 +1471,9 @@
     const configurable = aiIds.filter(isToolConfigurable);
     const desktopIds = aiIds.filter(id => isDesktopManaged(S, id));
     const activeAi = (preferredAi && configurable.includes(preferredAi)) ? preferredAi : (configurable[0] || '');
-    let html = '<div id="slashSkillsModal"><h3>技能与工具配置（当前会话）</h3>';
+    const canBack = typeof hasModalBack === 'function' && hasModalBack();
+    let html = '<div id="slashSkillsModal">'
+      + (canBack ? '<div class="connection-heading"><button type="button" class="modal-back" id="skillsBackBtn">← 返回</button><h3>技能与工具配置（当前会话）</h3><button type="button" id="skillsHeaderClose" aria-label="关闭">×</button></div>' : '<h3>技能与工具配置（当前会话）</h3>');
     if (preferredAi && isDesktopManaged(S, preferredAi)) {
       html += '<p class="hint">' + esc(agentDisplayName(S, CONTACTS, preferredAi)) + ' 为桌面端接入，技能与扩展由原软件管理，请在原软件中使用。</p>';
     }
@@ -1481,10 +1489,17 @@
     }
     html += '<div class="btns" style="margin-top:14px"><button type="button" id="skillsOpenExt">全局扩展与导入</button><button type="button" id="skillsCloseBtn">关闭</button></div></div>';
     showModal(html);
+    const backBtn = canBack && document.getElementById('skillsBackBtn');
+    if (backBtn) backBtn.onclick = () => popModalBack();
+    const headerClose = document.getElementById('skillsHeaderClose');
+    if (headerClose) headerClose.onclick = hideModal;
     const closeBtn = document.getElementById('skillsCloseBtn');
     if (closeBtn) closeBtn.onclick = hideModal;
     const extBtn = document.getElementById('skillsOpenExt');
-    if (extBtn) extBtn.onclick = () => openAppSettings('extensions');
+    if (extBtn) extBtn.onclick = () => {
+      if (typeof pushModalBack === 'function') pushModalBack(() => openSlashSkillsModal(activeAi));
+      openAppSettings('extensions');
+    };
     mbox.querySelectorAll('[data-skills-ai]').forEach(btn => {
       btn.onclick = () => openSlashSkillsModal(btn.dataset.skillsAi);
     });
@@ -1888,6 +1903,7 @@
   }
 
   function renderSettingsShell(activeTab, bodyHtml, heading) {
+    const canBack = typeof hasModalBack === 'function' && hasModalBack();
     const tabs = [
       ['general', t('settings.general')],
       ['cloud', t('settings.cloud')],
@@ -1901,7 +1917,9 @@
       + '<div class="settings-nav-title">' + esc(t('settings.title')) + '</div>'
       + tabs.map(([id, label]) => '<button type="button" data-settings-tab="' + id + '" aria-selected="' + String(id === activeTab) + '">' + esc(label) + '</button>').join('')
       + '</nav>'
-      + '<div class="settings-main"><div class="settings-head"><h3>' + esc(heading) + '</h3>'
+      + '<div class="settings-main"><div class="settings-head">'
+      + (canBack ? '<button type="button" class="modal-back" id="settingsBackBtn">← 返回</button>' : '')
+      + '<h3>' + esc(heading) + '</h3>'
       + '<button type="button" class="settings-close" id="settingsCloseBtn" aria-label="关闭">&times;</button></div>'
       + '<div class="settings-body" id="settingsBody">' + bodyHtml + '</div></div></div>';
   }
@@ -2034,12 +2052,15 @@
     } else if (tab === 'tutorial') {
       renderOnboarding(body);
     } else if (tab === 'agents') {
+      const pushSettingsAgentsBack = () => {
+        if (typeof pushModalBack === 'function') pushModalBack(() => openAppSettings('agents'));
+      };
       const mgr = document.getElementById('settingsOpenManager');
-      if (mgr) mgr.onclick = () => { if (typeof openAgentManager === 'function') openAgentManager(); };
+      if (mgr) mgr.onclick = () => { if (typeof openAgentManager === 'function') { pushSettingsAgentsBack(); openAgentManager(); } };
       const add = document.getElementById('settingsAddAgent');
-      if (add) add.onclick = () => { if (typeof startConnectionWizard === 'function') startConnectionWizard(); };
+      if (add) add.onclick = () => { if (typeof startConnectionWizard === 'function') { pushSettingsAgentsBack(); startConnectionWizard(); } };
       body.querySelectorAll('[data-settings-agent]').forEach(btn => {
-        btn.onclick = () => { if (typeof openAgentSettings === 'function') openAgentSettings(btn.dataset.settingsAgent); };
+        btn.onclick = () => { if (typeof openAgentSettings === 'function') { pushSettingsAgentsBack(); openAgentSettings(btn.dataset.settingsAgent); } };
       });
     } else if (tab === 'extensions') {
       const loadAndPaint = async (refresh) => {
@@ -2166,6 +2187,9 @@
       : '<p class="hint">正在加载…</p>';
     showModal(renderSettingsShell(settingsTab, bodyHtml, headings[settingsTab] || t('settings.title')));
     document.body.classList.remove('nav-open');
+    const canBack = typeof hasModalBack === 'function' && hasModalBack();
+    const backBtn = canBack && document.getElementById('settingsBackBtn');
+    if (backBtn && typeof popModalBack === 'function') backBtn.onclick = () => popModalBack();
     const closeBtn = document.getElementById('settingsCloseBtn');
     if (closeBtn) closeBtn.onclick = hideModal;
     mbox.querySelectorAll('[data-settings-tab]').forEach(btn => {

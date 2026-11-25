@@ -156,15 +156,19 @@ function attachWorkspaceFolderPicker(inputId){
   };
 }
 async function openProject(project){document.body.classList.remove('nav-open');
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const finish=()=>{if(canBack)popModalBack();else hideModal();};
   if(!agCat){
     try{await refreshContacts()}catch(e){alert('无法读取本机项目设置，请重试。');return}
   }
-  if(agCat.local_workspace===false){showModal('<h3>项目设置</h3><p class="hint">请在运行 AnY 的设备上管理项目工作目录。</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');return}
+  if(agCat.local_workspace===false){showModal('<div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="pBack">← 返回</button>':'')+'<h3>项目设置</h3><button type="button" id="pClose" aria-label="关闭">×</button></div><p class="hint">请在运行 AnY 的设备上管理项目工作目录。</p><div class="btns">'+(canBack?'<button type="button" id="pCancel">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div>');if(canBack&&document.getElementById('pBack'))document.getElementById('pBack').onclick=()=>popModalBack();if(canBack&&document.getElementById('pCancel'))document.getElementById('pCancel').onclick=()=>popModalBack();if(document.getElementById('pClose'))document.getElementById('pClose').onclick=hideModal;return}
   const paths=project?(project.workdirs||[project.workdir]):[];
-  showModal('<h3>'+(project?'项目设置':'新建项目')+'</h3><form id="projectForm"><label>项目名称<input id="pName" maxlength="60" required value="'+esc(project?.name||'')+'" placeholder="例如：我的应用"></label><label>工作文件夹<textarea id="pWd" rows="4" required data-append-folders placeholder="每行一个完整路径">'+esc(paths.join('\n'))+'</textarea></label><p class="hint">每行填一个完整路径。第一行是新会话的默认目录，已有会话保留各自的目录。</p><p id="pErr" class="form-error" role="alert"></p><div class="btns"><button type="button" id="pCancel">取消</button><button id="pSave" class="pri" type="submit">'+(project?'保存设置':'创建项目')+'</button></div></form>');
+  showModal((canBack?'<div class="connection-heading"><button type="button" class="modal-back" id="pBack">← 返回</button><h3>'+(project?'项目设置':'新建项目')+'</h3><button type="button" id="pClose" aria-label="关闭">×</button></div>':'<h3>'+(project?'项目设置':'新建项目')+'</h3>')+'<form id="projectForm"><label>项目名称<input id="pName" maxlength="60" required value="'+esc(project?.name||'')+'" placeholder="例如：我的应用"></label><label>工作文件夹<textarea id="pWd" rows="4" required data-append-folders placeholder="每行一个完整路径">'+esc(paths.join('\n'))+'</textarea></label><p class="hint">每行填一个完整路径。第一行是新会话的默认目录，已有会话保留各自的目录。</p><p id="pErr" class="form-error" role="alert"></p><div class="btns"><button type="button" id="pCancel">取消</button><button id="pSave" class="pri" type="submit">'+(project?'保存设置':'创建项目')+'</button></div></form>');
   attachWorkspaceFolderPicker('pWd');
   const form=document.getElementById('projectForm'),button=document.getElementById('pSave');
-  document.getElementById('pCancel').onclick=hideModal;
+  if(canBack&&document.getElementById('pBack'))document.getElementById('pBack').onclick=()=>popModalBack();
+  if(document.getElementById('pClose'))document.getElementById('pClose').onclick=hideModal;
+  document.getElementById('pCancel').onclick=finish;
   form.onsubmit=async e=>{
     e.preventDefault();if(button.disabled)return;
     const name=document.getElementById('pName').value;
@@ -176,7 +180,8 @@ async function openProject(project){document.body.classList.remove('nav-open');
       if(!ok){error.textContent=j.error||'保存失败';return}
       await pollRooms();
       if(document.getElementById('projectForm')!==form||!modal.classList.contains('show'))return;
-      hideModal();if(!project)openNew(false,j.project.id);
+      if(canBack&&project)popModalBack();
+      else{hideModal();if(!project)openNew(false,j.project.id);}
     }finally{button.disabled=false}
   };
   document.getElementById('pName').focus();
@@ -254,7 +259,7 @@ function readMemberPermissions(rows,withSharing=false){
   });
   return withSharing?{participants,permissions,guest_discussion}:{participants,permissions};
 }
-async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;await refreshContacts();if(rid!==RID)return;const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
+async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;const canBack=typeof hasModalBack==='function'&&hasModalBack();await refreshContacts();if(rid!==RID)return;const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
   const memberList=CONTACTS.filter(a=>a.enabled||ids.includes(a.id));
   const catalog=typeof agCat==='undefined'?null:agCat;
   const withSharing=catalog?.local_workspace!==false;
@@ -266,10 +271,12 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
   const hint=withSharing?'外部用户点名提问时，用户的调用权限与模型的共享设置都要开启。实际读写和命令范围由执行端限制。':'请在运行 AnY 的电脑上管理本会话成员权限。';
   const footer=withSharing?'<button id="mClose">取消</button><button id="mSave" class="pri">保存成员和权限</button>':'<button id="mClose">关闭</button>';
   const revoked=(S?.revoked_tasks||[]).slice(-8).map(row=>'<p class="hint">@'+esc(row.member)+' · '+esc(row.reason)+'</p>').join('');
-  showModal('<h3>会话成员与权限</h3><p class="hint">'+hint+'</p>'+revoked+devicePermissions+bulkBar+'<div id="memberRows">'+memberList.map(rowHtml).join('')+'</div><div class="btns">'+footer+'</div>');
-  document.getElementById('mClose').onclick=hideModal;
+  showModal((canBack?'<div class="connection-heading"><button type="button" class="modal-back" id="mHeaderBack">← 返回</button><h3>会话成员与权限</h3><button type="button" id="mHeaderClose" aria-label="关闭">×</button></div>':'<h3>会话成员与权限</h3>')+'<p class="hint">'+hint+'</p>'+revoked+devicePermissions+bulkBar+'<div id="memberRows">'+memberList.map(rowHtml).join('')+'</div><div class="btns">'+footer+'</div>');
+  if(canBack&&document.getElementById('mHeaderBack'))document.getElementById('mHeaderBack').onclick=()=>popModalBack();
+  if(document.getElementById('mHeaderClose'))document.getElementById('mHeaderClose').onclick=hideModal;
+  document.getElementById('mClose').onclick=()=>canBack?popModalBack():hideModal();
   if(!withSharing){mbox.querySelectorAll('#memberRows input').forEach(input=>input.disabled=true);return;}
-  mbox.querySelectorAll('[data-contact-policy]').forEach(button=>button.onclick=()=>openContactPolicy(button.dataset.contactPolicy));
+  mbox.querySelectorAll('[data-contact-policy]').forEach(button=>button.onclick=()=>{if(typeof pushModalBack==='function')pushModalBack(()=>openAgents());openContactPolicy(button.dataset.contactPolicy);});
   const rows=[...mbox.querySelectorAll('[data-member]')];
   const activeRows=()=>rows.filter(r=>r.querySelector('[data-member-check]').checked);
   const syncBulk=()=>{
@@ -318,7 +325,7 @@ async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;a
     const body=readMemberPermissions(rows,true);
     body.dispatch_devices=[...mbox.querySelectorAll('[data-dispatch-device]:checked')].map(input=>input.dataset.dispatchDevice);
     const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/members',body);
-    if(!ok)return alert(j.error||'保存失败');hideModal();await loadState();
+    if(!ok)return alert(j.error||'保存失败');await loadState();if(canBack)popModalBack();else hideModal();
   };
 }
 function contactPolicyChoices(field,title,options,value){
@@ -341,15 +348,18 @@ function openContactPolicy(id){
       +contactPolicyChoices('handoff_targets','只允许转派给下列 Agent',others,policy.handoff_targets)
       +(!contact.http_protocol?'<h4>工作区</h4><p class="hint">'+esc(S.members?.[id]?.workdir||S.workdir||'')+'。如果当前执行端无法强制落实所选限制，任务会被拦下。</p><label><input type="checkbox" id="policyWorkspace"'+(policy.workspace?' checked':'')+'>为此工作区单独授权</label><div class="perm-grid">'+[['read','读取'],['write','写入'],['exec','执行命令']].map(([key,label])=>'<label><input type="checkbox" data-policy-workspace="'+key+'"'+(policy.workspace?.[key]?' checked':'')+'>'+label+'</label>').join('')+'</div>':'');
   const revoke='<button id="contactPolicyRevoke" type="button">立即撤权</button>';
-  showModal('<h3>'+esc(contact.label||id)+'</h3>'+checks+'<div class="btns">'+revoke+'<button id="contactPolicyBack">返回</button><button class="pri" id="contactPolicySave">保存授权</button></div>');
-  document.getElementById('contactPolicyBack').onclick=openAgents;
+  const goBack=()=>typeof hasModalBack==='function'&&hasModalBack()?popModalBack():openAgents();
+  showModal('<div class="connection-heading"><button type="button" class="modal-back" id="contactPolicyTopBack">← 返回</button><h3>'+esc(contact.label||id)+'</h3><button type="button" id="contactPolicyClose" aria-label="关闭">×</button></div>'+checks+'<div class="btns">'+revoke+'<button id="contactPolicyBack">返回</button><button class="pri" id="contactPolicySave">保存授权</button></div>');
+  document.getElementById('contactPolicyClose').onclick=hideModal;
+  document.getElementById('contactPolicyTopBack').onclick=goBack;
+  document.getElementById('contactPolicyBack').onclick=goBack;
   const revokeButton=document.getElementById('contactPolicyRevoke');
   if(revokeButton)revokeButton.onclick=async()=>{
     const prompt=human?'撤销此用户在本会话的权限？':'撤销此 Agent 在本会话的权限，并停止它正在执行的任务？';
     if(rid!==RID||!confirm(prompt))return;
     const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/contact/revoke',{contact:id});
     if(!ok)return alert(j.error||'撤权失败');
-    if(rid===RID){await loadState();await openAgents();}
+    if(rid===RID){await loadState();await goBack();}
   };
   document.getElementById('contactPolicySave').onclick=async()=>{
     if(rid!==RID)return;
@@ -368,7 +378,7 @@ function openContactPolicy(id){
     }
     const [ok,j]=await post('/api/r/'+encodeURIComponent(rid)+'/contact/policies',{contact:id,policy:next});
     if(!ok)return alert(j.error||'保存授权失败');
-    if(rid===RID){await loadState();await openAgents();}
+    if(rid===RID){await loadState();await goBack();}
   };
 }
 document.getElementById('contactsAdd').onclick=()=>startConnectionWizard();

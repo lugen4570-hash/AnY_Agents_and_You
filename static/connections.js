@@ -52,6 +52,42 @@ function connectionModalChanged() {
   const box = document.getElementById('connectionWizard');
   if (connectionWizard && (!box || box.dataset.flow !== String(connectionWizard.seq))) stopConnectionWizard();
 }
+function snapshotConnectionWizard(w) {
+  captureConnectionForm(w);
+  return {
+    step: w.step,
+    type: w.type,
+    chooseAI: w.chooseAI,
+    id: w.id,
+    base: w.base,
+    localChoice: w.localChoice,
+    saved: w.saved,
+    memberMode: w.memberMode,
+    host: w.host,
+    target: w.target,
+    project: w.project,
+    info: w.info,
+    status: w.status,
+    member: w.member,
+    token: w.token,
+    form: {...w.form, serviceKey: ''},
+    permissions: {...w.permissions},
+    directSaved: w.directSaved ? {...w.directSaved} : undefined,
+  };
+}
+function restoreConnectionWizard(snapshot) {
+  stopConnectionWizard();
+  const w = {
+    ...snapshot,
+    seq: ++connectionSequence,
+    form: {...(snapshot.form || {})},
+    permissions: {...(snapshot.permissions || {})},
+    controller: new AbortController(),
+    busy: false,
+  };
+  connectionWizard = w;
+  renderConnectionWizard();
+}
 async function connectionGet(url) {
   const response = await fetch(url);
   let data = {};
@@ -197,7 +233,10 @@ async function startConnectionWizard(id, type) {
     form: {}, status: null, busy: false, permissions: {read: true, post: true, trigger: true, board: false, files: false, work: false}};
   connectionWizard = w;
   w.controller = new AbortController();
-  showModal('<div id="connectionWizard" data-flow="' + w.seq + '"><h3>正在准备接入…</h3><p class="hint" role="status">正在读取联系人和连接信息。</p><div class="btns"><button onclick="hideModal()">取消</button></div></div>');
+  const canBack = typeof hasModalBack === 'function' && hasModalBack();
+  showModal('<div id="connectionWizard" data-flow="' + w.seq + '"><h3>正在准备接入…</h3><p class="hint" role="status">正在读取联系人和连接信息。</p><div class="btns">' + (canBack ? '<button type="button" id="connLoadingBack">返回</button>' : '') + '<button onclick="hideModal()">取消</button></div></div>');
+  const loadingBack = canBack && document.getElementById('connLoadingBack');
+  if (loadingBack) loadingBack.onclick = () => { stopConnectionWizard(); popModalBack(); };
   const timeout = setTimeout(() => w.controller.abort(), 15000);
   try {
     const [info] = await Promise.all([checkConnectionBackend(w.controller.signal), refreshContacts(w.controller.signal, true)]);
@@ -222,7 +261,11 @@ async function startConnectionWizard(id, type) {
   } catch (e) {
     if (connectionWizard !== w) return;
     const message = w.controller.signal.aborted ? '读取接入信息超时，请检查后台是否仍在运行后重试。' : (e.message || '无法读取联系人');
-    stopConnectionWizard(); showModal('<h3>接入暂不可用</h3><p role="alert">' + esc(message) + '</p><div class="btns"><button onclick="startConnectionWizard()">重试</button><button onclick="hideModal()">关闭</button></div>');
+    stopConnectionWizard(); showModal('<h3>接入暂不可用</h3><p role="alert">' + esc(message) + '</p><div class="btns">' + (canBack ? '<button type="button" id="connErrBack">返回</button>' : '') + '<button id="connErrRetry">重试</button><button onclick="hideModal()">关闭</button></div>');
+    const errBack = canBack && document.getElementById('connErrBack');
+    if (errBack) errBack.onclick = () => popModalBack();
+    const errRetry = document.getElementById('connErrRetry');
+    if (errRetry) errRetry.onclick = () => startConnectionWizard(id, type);
   } finally { clearTimeout(timeout); }
 }
 function addContact() { return startConnectionWizard(); }
@@ -235,7 +278,11 @@ function wizardCurrent(w) { return connectionWizard === w && !!document.getEleme
 function wizardError(message) { const e = document.getElementById('connError'); if (e) e.textContent = message || ''; }
 function wizardFrame(w, content) {
   const steps = ['选择方式', '配置与验证', '会话与权限', '完成'];
-  showModal('<div id="connectionWizard" data-flow="' + w.seq + '"><div class="connection-heading"><span class="eyebrow">添加联系人 / 接入</span><button id="connClose" aria-label="关闭接入引导">×</button></div><ol class="connection-steps">' + steps.map((s, i) => '<li class="' + (i + 1 === w.step ? 'active' : i + 1 < w.step ? 'done' : '') + '"><span>' + (i + 1) + '</span>' + s + '</li>').join('') + '</ol>' + content + '<p id="connError" role="alert"></p></div>');
+  const canBack = typeof hasModalBack === 'function' && hasModalBack();
+  showModal('<div id="connectionWizard" data-flow="' + w.seq + '"><div class="connection-heading">' + (canBack ? '<button type="button" class="modal-back" id="connWizardBack">← 返回</button>' : '') + '<span class="eyebrow">添加联系人 / 接入</span><button id="connClose" aria-label="关闭接入引导">×</button></div><ol class="connection-steps">' + steps.map((s, i) => '<li class="' + (i + 1 === w.step ? 'active' : i + 1 < w.step ? 'done' : '') + '"><span>' + (i + 1) + '</span>' + s + '</li>').join('') + '</ol>' + content + '<p id="connError" role="alert"></p></div>');
+  if (canBack && document.getElementById('connWizardBack')) {
+    document.getElementById('connWizardBack').onclick = () => { stopConnectionWizard(); popModalBack(); };
+  }
   document.getElementById('connClose').onclick = hideModal;
 }
 function renderConnectionWizard() {
@@ -337,7 +384,11 @@ function renderConnectionSetup(w) {
     };
     const driverChoice = document.getElementById('connLocalDriver');
     if (driverChoice) driverChoice.onchange = () => { captureConnectionForm(w); w.form.args = driverChoice.value === 'acp' ? ['acp'] : ['-p','{prompt}']; renderConnectionWizard(); };
-    if (document.getElementById('connOpenScan')) document.getElementById('connOpenScan').onclick = () => openDiscoveryModal(true);
+    if (document.getElementById('connOpenScan')) document.getElementById('connOpenScan').onclick = () => {
+      const snapshot = snapshotConnectionWizard(w);
+      if (typeof pushModalBack === 'function') pushModalBack(() => restoreConnectionWizard(snapshot));
+      openDiscoveryModal(true);
+    };
     document.querySelectorAll('[data-external-agent]').forEach(button => { button.onclick = async () => {
       const id = button.dataset.externalAgent;
       if ((agCat.discovered_presets || []).some(a => a.id === id)) {
@@ -524,7 +575,11 @@ function updateConnectionEvidence(w) {
     updateConnectionEvidence(w);
   };
   const hbBtn = document.getElementById('connCustomHb');
-  if (hbBtn) hbBtn.onclick = () => openConnectionSettingsModal(w.id);
+  if (hbBtn) hbBtn.onclick = () => {
+    const snapshot = snapshotConnectionWizard(w);
+    if (typeof pushModalBack === 'function') pushModalBack(() => restoreConnectionWizard(snapshot));
+    openConnectionSettingsModal(w.id);
+  };
   const next = document.getElementById('connNext');
   if (next) next.disabled = w.busy || (!['user', 'mydevice'].includes(w.type) && !good);
 }
@@ -778,12 +833,24 @@ async function assignConnection(w) {
   finally { if (wizardCurrent(w)) setConnectionBusy(w, false); }
 }
 function renderConnectionComplete(w) {
+  const finishWizard = async () => {
+    if (typeof hasModalBack === 'function' && hasModalBack()) {
+      stopConnectionWizard();
+      await refreshContacts();
+      if (typeof loadState === 'function') loadState();
+      popModalBack();
+    } else {
+      hideModal();
+      refreshContacts();
+      loadState();
+    }
+  };
   if (w.type === 'mydevice') {
     wizardFrame(w, '<div class="connection-complete"><span class="connection-symbol">✓</span><h3>我的设备</h3>'
       + '<p class="hint">在要接入的设备上打开个人链接，即可使用完整界面并以「我」的身份参与会话。</p>'
       + ((w.devices || []).length ? '<p class="hint">已接入 ' + w.devices.length + ' 台设备。可随时在接入页撤销。</p>' : '')
       + '</div><div class="btns"><button id="connDone">完成</button></div>');
-    document.getElementById('connDone').onclick = () => { hideModal(); refreshContacts(); loadState(); };
+    document.getElementById('connDone').onclick = finishWizard;
     return;
   }
   const contact = connectionContact(w) || {label:w.id}, room = ROOMS.find(r => r.id === w.target);
@@ -794,17 +861,22 @@ function renderConnectionComplete(w) {
     ? PERM_GROUPS.filter(g => groupPermValue(w.permissions, g)).map(g => esc(g.label)).join('、')
     : Object.entries(PERM_LABELS).filter(([k]) => w.permissions[k]).map(([,label]) => esc(label)).join('、');
   wizardFrame(w, '<div class="connection-complete"><span class="connection-symbol">✓</span><h3>' + (w.assigned ? '已加入会话' : '联系人已添加') + '</h3><p><b>' + esc(contact.label) + '</b>' + (w.assigned ? ' · ' + esc((room || {}).title || '') : '') + '</p><p class="hint">' + esc(connectionLabel) + '</p>' + (w.assigned ? '<p class="hint">权限：' + (permSummary || '仅查看') + '</p>' : '') + '</div><div class="btns"><button id="connDone">完成</button>' + (w.assigned ? '<button id="connEnter" class="pri">进入会话</button>' : '') + '</div>');
-  document.getElementById('connDone').onclick = () => { hideModal(); refreshContacts(); loadState(); };
+  document.getElementById('connDone').onclick = finishWizard;
   const enter = document.getElementById('connEnter'); if (enter) enter.onclick = () => { const rid = w.target; hideModal(); switchRoom(rid); };
 }
 
 async function openDiscoveryModal(forceRescan = false) {
   stopConnectionWizard();
   document.body.classList.remove('nav-open');
-  showModal('<div id="discoveryModal"><h3>正在扫描本机 Agent…</h3><p class="hint" role="status">正在检索命令行、ACP 程序、桌面软件与 MCP 配置。</p><div class="btns"><button onclick="hideModal()">关闭</button></div></div>');
+  const canBack = typeof hasModalBack === 'function' && hasModalBack();
+  showModal('<div id="discoveryModal"><h3>正在扫描本机 Agent…</h3><p class="hint" role="status">正在检索命令行、ACP 程序、桌面软件与 MCP 配置。</p><div class="btns">' + (canBack ? '<button type="button" id="discLoadingBack">返回</button>' : '') + '<button onclick="hideModal()">关闭</button></div></div>');
+  const loadingBack = canBack && document.getElementById('discLoadingBack');
+  if (loadingBack) loadingBack.onclick = () => popModalBack();
   const [ok, disc] = forceRescan ? await post('/api/discovery/scan', {}) : await connectionGet('/api/discovery');
   if (!ok || !disc) {
-    showModal('<h3>扫描失败</h3><p role="alert">' + esc((disc && disc.error) || '无法读取本机扫描结果') + '</p><div class="btns"><button onclick="hideModal()">关闭</button></div>');
+    showModal('<h3>扫描失败</h3><p role="alert">' + esc((disc && disc.error) || '无法读取本机扫描结果') + '</p><div class="btns">' + (canBack ? '<button type="button" id="discErrBack">返回</button>' : '') + '<button onclick="hideModal()">关闭</button></div>');
+    const errBack = canBack && document.getElementById('discErrBack');
+    if (errBack) errBack.onclick = () => popModalBack();
     return;
   }
   await refreshContacts();
@@ -812,6 +884,7 @@ async function openDiscoveryModal(forceRescan = false) {
 }
 
 function renderDiscoveryModal(disc) {
+  const canBack = typeof hasModalBack === 'function' && hasModalBack();
   const detected = (disc && disc.detected) || [];
   const rows = detected.map(item => {
     const member = ((agCat || {}).members || {})[item.id] || {};
@@ -823,12 +896,13 @@ function renderDiscoveryModal(disc) {
       + (item.level === 'unsupported' ? '<span class="hint">暂不支持接入</span>' : '');
     return '<div class="disc-row agent-room-row"><div><b>'+esc(item.label)+'</b> <small>@'+esc(item.id)+'</small><p class="hint">'+esc(label)+'</p><small>'+esc(item.exe || item.desktop_path || '')+'</small></div><div class="btns">'+actions+'</div></div>';
   }).join('');
-  showModal('<div id="discoveryModal"><div class="connection-heading"><span class="eyebrow">本机 Agent 自动发现</span><button id="discClose" aria-label="关闭">×</button></div><h3>在这台电脑上发现 '+detected.length+' 个 Agent</h3><p class="hint">CLI 走直连；桌面配置 MCP 后开启 /any_standby，以真实心跳保持接入。扫描只提供候选程序，所有修改均进入同一个 Agent 设置页。</p>'+rows+'<p id="discError" role="alert"></p><div class="btns"><button id="discRescan">重新扫描</button><button id="discManual">手动添加</button><button id="discDone" class="pri">完成</button></div></div>');
+  showModal('<div id="discoveryModal"><div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="discBack">← 返回</button>':'')+'<span class="eyebrow">本机 Agent 自动发现</span><button id="discClose" aria-label="关闭">×</button></div><h3>在这台电脑上发现 '+detected.length+' 个 Agent</h3><p class="hint">CLI 走直连；桌面配置 MCP 后开启 /any_standby，以真实心跳保持接入。扫描只提供候选程序，所有修改均进入同一个 Agent 设置页。</p>'+rows+'<p id="discError" role="alert"></p><div class="btns"><button id="discRescan">重新扫描</button><button id="discManual">手动添加</button><button id="discDone" class="pri">完成</button></div></div>');
   const current = document.getElementById('discoveryModal');
+  if (canBack && document.getElementById('discBack')) document.getElementById('discBack').onclick = () => popModalBack();
   document.getElementById('discClose').onclick = hideModal;
-  document.getElementById('discDone').onclick = hideModal;
+  document.getElementById('discDone').onclick = () => { if (canBack) popModalBack(); else hideModal(); };
   document.getElementById('discRescan').onclick = () => openDiscoveryModal(true);
-  document.getElementById('discManual').onclick = () => startConnectionWizard();
+  document.getElementById('discManual').onclick = () => { if (typeof pushModalBack === 'function') pushModalBack(() => openDiscoveryModal(false)); startConnectionWizard(); };
   mbox.querySelectorAll('[data-disc-config]').forEach(button => button.onclick = async () => {
     button.disabled = true;
     try {
@@ -836,7 +910,10 @@ function renderDiscoveryModal(disc) {
       if(document.getElementById('discoveryModal')!==current)return;
       if(!ok)throw Error(result.error || '无法准备 Agent 设置');
       await refreshContacts();
-      if(document.getElementById('discoveryModal')===current)openAgentSettings(result.id,result.tab);
+      if(document.getElementById('discoveryModal')===current){
+        if (typeof pushModalBack === 'function') pushModalBack(() => openDiscoveryModal(false));
+        openAgentSettings(result.id,result.tab);
+      }
     } catch(error) { if(document.getElementById('discoveryModal')===current)document.getElementById('discError').textContent=error.message; }
     finally { button.disabled=false; }
   });
@@ -845,9 +922,13 @@ function renderDiscoveryModal(disc) {
 async function openConnectionSettingsModal(contactId = '') {
   stopConnectionWizard();
   document.body.classList.remove('nav-open');
+  const canBack = typeof hasModalBack === 'function' && hasModalBack();
+  const finish = () => { if (canBack) popModalBack(); else hideModal(); };
   const [ok, snap] = await connectionGet('/api/settings/connection');
   if (!ok || !snap) {
-    showModal('<h3>无法读取连接与心跳设置</h3><div class="btns"><button onclick="hideModal()">关闭</button></div>');
+    showModal('<h3>无法读取连接与心跳设置</h3><div class="btns">' + (canBack ? '<button type="button" id="hbErrBack">返回</button>' : '') + '<button onclick="hideModal()">关闭</button></div>');
+    const errBack = canBack && document.getElementById('hbErrBack');
+    if (errBack) errBack.onclick = () => popModalBack();
     return;
   }
   const pid = contactId || '';
@@ -862,7 +943,7 @@ async function openConnectionSettingsModal(contactId = '') {
     }
     return '<label>' + esc(f.label) + ' <small class="hint">(' + f.min + '–' + f.max + '，默认 ' + f.default + ')</small><input type="number" data-hb-field="' + k + '" min="' + f.min + '" max="' + f.max + '" value="' + esc(current[k]) + '"></label>';
   }).join('');
-  showModal('<div id="connSettingsModal"><div class="connection-heading"><span class="eyebrow">AnY 统一管控</span><button id="hbClose" aria-label="关闭">×</button></div>'
+  showModal('<div id="connSettingsModal"><div class="connection-heading">' + (canBack ? '<button type="button" class="modal-back" id="hbBack">← 返回</button>' : '') + '<span class="eyebrow">AnY 统一管控</span><button id="hbClose" aria-label="关闭">×</button></div>'
     + '<h3>' + (pid ? '联系人心跳与超时设置（@' + esc(pid) + '）' : '全局连接与心跳设置') + '</h3>'
     + '<p class="hint">所有参数保存在 AnY 端并自动下发给成员连接端、MCP 待命端和本机常驻进程，正在运行的连接端会在下一次心跳时自动同步。</p>'
     + (pid ? '<p class="hint">' + (hasOverride ? '当前使用此联系人的独立覆盖配置。' : '当前继承全局默认设置；保存后将仅对此联系人单独生效。') + '</p>' : '')
@@ -871,13 +952,14 @@ async function openConnectionSettingsModal(contactId = '') {
     + '<div class="btns"><button type="button" id="hbCancel">取消</button>'
     + (pid && hasOverride ? '<button type="button" id="hbReset">恢复继承全局设置</button>' : '')
     + '<button type="button" id="hbSave" class="pri">保存设置</button></div></div>');
+  if (canBack && document.getElementById('hbBack')) document.getElementById('hbBack').onclick = () => popModalBack();
   document.getElementById('hbClose').onclick = hideModal;
-  document.getElementById('hbCancel').onclick = hideModal;
+  document.getElementById('hbCancel').onclick = finish;
   const resetBtn = document.getElementById('hbReset');
   if (resetBtn) resetBtn.onclick = async () => {
     await post('/api/settings/connection', {id: pid, clear_contact: true});
     await refreshContacts();
-    hideModal();
+    finish();
   };
   document.getElementById('hbSave').onclick = async e => {
     const btn = e.currentTarget;
@@ -894,6 +976,6 @@ async function openConnectionSettingsModal(contactId = '') {
       return;
     }
     await refreshContacts();
-    hideModal();
+    finish();
   };
 }

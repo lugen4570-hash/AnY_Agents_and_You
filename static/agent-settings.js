@@ -35,7 +35,7 @@ function agentSettingsMarkup(config) {
   const local = ['cli','acp','claude','codex'].includes(config.driver), builtin = ['claude','codex'].includes(config.driver);
   const defaultModel = agentDefaultModelOptions(caps, v.models || [], v.default[0]);
   const modelMap = v.model_efforts || {};
-  let html = '<div id="agentSettings" class="agent-settings"><div class="connection-heading"><button type="button" id="agentSettingsBack">返回</button><span class="eyebrow">高级设置</span><button type="button" id="agentSettingsClose" aria-label="关闭设置">×</button></div>'
+  let html = '<div id="agentSettings" class="agent-settings"><div class="connection-heading"><button type="button" class="modal-back" id="agentSettingsBack">← 返回</button><span class="eyebrow">高级设置</span><button type="button" id="agentSettingsClose" aria-label="关闭设置">×</button></div>'
     +'<h3>'+esc(v.label)+'</h3><p class="hint">@'+esc(config.id)+' · '+esc(AG_DRV[config.driver] || config.driver)+' · '+(config.enabled?'已检测到':'程序未找到或未启用')+'</p>'
     +'<nav class="agent-settings-tabs" aria-label="Agent 设置分组">'+[['general','基本'],['cli','CLI'],['desktop','桌面 / MCP'],['models','模型'],['joining','加入会话']].map(([id,label])=>'<button type="button" data-agent-tab="'+id+'" aria-pressed="'+(id==='general')+'">'+label+'</button>').join('')+'</nav>'
     +'<section data-agent-panel="general">'+agentInput('agentLabel','名称',v.label,'maxlength="40"')+'<p class="hint">联系人 ID 保持不变，已有会话和 @ 引用继续使用。默认模型和加入规则只作为默认值；各会议的单独设置优先。</p>'
@@ -101,41 +101,46 @@ function collectAgentSettings(root, config) {
 }
 async function openAgentSettings(id) {
   const seq=++agentSettingsSequence;
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
   document.body.classList.remove('nav-open');stopConnectionWizard();
-  showModal('<div id="agentSummaryLoading"><h3>正在读取联系人…</h3></div>');
+  showModal('<div id="agentSummaryLoading"><h3>正在读取联系人…</h3>'+(canBack?'<div class="btns"><button type="button" id="agentSummaryLoadingBack">返回</button><button onclick="hideModal()">关闭</button></div>':'')+'</div>');
+  const loadingBack=canBack&&document.getElementById('agentSummaryLoadingBack');if(loadingBack)loadingBack.onclick=()=>popModalBack();
   const loading=document.getElementById('agentSummaryLoading');
   try{
     const [ok,config]=await connectionGet('/api/agents/config?id='+encodeURIComponent(id));
     if(seq!==agentSettingsSequence||document.getElementById('agentSummaryLoading')!==loading)return;
     if(!ok)throw Error(config.error||'读取失败');
     const status=config.connection||{};
-    showModal('<div id="agentSummary"><div class="connection-heading"><h3>'+esc(config.values.label)+'</h3><button id="agentSummaryClose" aria-label="关闭">×</button></div>'
+    showModal('<div id="agentSummary"><div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="agentSummaryBack">← 返回</button>':'')+'<h3>'+esc(config.values.label)+'</h3><button id="agentSummaryClose" aria-label="关闭">×</button></div>'
       +agentInput('agentSummaryName','名称',config.values.label,'maxlength="40"')
       +'<p id="agentSummaryStatus" class="hint" role="status">'+esc(status.label||'尚未连接')+'</p>'
       +'<div class="btns"><button id="agentSummaryConnect">'+(['external','http'].includes(config.driver)?'连接设置':'检查连接')+'</button><button id="agentSummarySave" class="pri">完成</button></div>'
       +'<button id="agentSummaryAdvanced" class="agent-advanced-entry">高级设置…</button></div>');
     const root=document.getElementById('agentSummary'),get=name=>root.querySelector('#'+name);
+    if(canBack&&get('agentSummaryBack'))get('agentSummaryBack').onclick=()=>popModalBack();
     get('agentSummaryClose').onclick=hideModal;
-    get('agentSummaryAdvanced').onclick=()=>openAgentAdvancedSettings(id);
+    get('agentSummaryAdvanced').onclick=()=>{if(typeof pushModalBack==='function')pushModalBack(()=>openAgentSettings(id));openAgentAdvancedSettings(id);};
     get('agentSummarySave').onclick=async()=>{
       const label=get('agentSummaryName').value.trim();if(!label){get('agentSummaryStatus').textContent='请输入名称。';return}
       if(label!==config.values.label){const [saved,result]=await post('/api/agents/config',{id,revision:config.revision,changes:{label}});if(!saved){get('agentSummaryStatus').textContent=result.error||'保存失败';return}await refreshContacts()}
-      if(document.getElementById('agentSummary')===root)hideModal();
+      if(document.getElementById('agentSummary')===root){if(canBack)popModalBack();else hideModal();}
     };
     get('agentSummaryConnect').onclick=async()=>{
-      if(['external','http'].includes(config.driver)){startConnectionWizard(id);return}
+      if(['external','http'].includes(config.driver)){if(typeof pushModalBack==='function')pushModalBack(()=>openAgentSettings(id));startConnectionWizard(id);return}
       const button=get('agentSummaryConnect');button.disabled=true;
       try{const [connected,result]=await post('/api/contacts/check',{id});if(document.getElementById('agentSummary')===root)get('agentSummaryStatus').textContent=connected?(result.connection.label||'检查完成'):(result.error||'连接失败');await refreshContacts()}
       catch(error){if(document.getElementById('agentSummary')===root)get('agentSummaryStatus').textContent=error.message||'检查失败，请重试。'}
       finally{button.disabled=false}
     };
-  }catch(error){if(seq===agentSettingsSequence&&document.getElementById('agentSummaryLoading')===loading)showModal('<h3>无法打开联系人</h3><p role="alert">'+esc(error.message)+'</p><button onclick="hideModal()">关闭</button>')}
+  }catch(error){if(seq===agentSettingsSequence&&document.getElementById('agentSummaryLoading')===loading){showModal('<h3>无法打开联系人</h3><p role="alert">'+esc(error.message)+'</p><div class="btns">'+(canBack?'<button type="button" id="agentSummaryErrBack">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div>');const eb=canBack&&document.getElementById('agentSummaryErrBack');if(eb)eb.onclick=()=>popModalBack();}}
 }
 async function openAgentAdvancedSettings(id, tab = 'general') {
   const seq=++agentSettingsSequence;
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
   document.body.classList.remove('nav-open');
   stopConnectionWizard();
-  showModal('<div id="agentSettingsLoading"><h3>正在读取 Agent 设置…</h3><div class="btns"><button onclick="hideModal()">关闭</button></div></div>');
+  showModal('<div id="agentSettingsLoading"><h3>正在读取 Agent 设置…</h3><div class="btns">'+(canBack?'<button type="button" id="agentSettingsLoadingBack">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div></div>');
+  const loadingBack=canBack&&document.getElementById('agentSettingsLoadingBack');if(loadingBack)loadingBack.onclick=()=>popModalBack();
   const loading=document.getElementById('agentSettingsLoading');
   try{
     const [ok,config]=await connectionGet('/api/agents/config?id='+encodeURIComponent(id));
@@ -143,7 +148,7 @@ async function openAgentAdvancedSettings(id, tab = 'general') {
     if(!ok)throw Error(config.error || '读取 Agent 设置失败');
     showModal(agentSettingsMarkup(config));bindAgentSettings(config);
     const choice = document.querySelector('[data-agent-tab="'+tab+'"]');if(choice)choice.click();
-  }catch(error){if(seq===agentSettingsSequence && document.getElementById('agentSettingsLoading')===loading)showModal('<h3>无法打开设置</h3><p role="alert">'+esc(error.message)+'</p><button onclick="hideModal()">关闭</button>');}
+  }catch(error){if(seq===agentSettingsSequence && document.getElementById('agentSettingsLoading')===loading){showModal('<h3>无法打开设置</h3><p role="alert">'+esc(error.message)+'</p><div class="btns">'+(canBack?'<button type="button" id="agentSettingsErrBack">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div>');const eb=canBack&&document.getElementById('agentSettingsErrBack');if(eb)eb.onclick=()=>popModalBack();}}
 }
 function bindAgentSettings(config) {
   const root=document.getElementById('agentSettings'),get=id=>root.querySelector('#'+id);
@@ -155,7 +160,7 @@ function bindAgentSettings(config) {
     root.querySelectorAll('[data-agent-panel]').forEach(panel=>panel.hidden=panel.dataset.agentPanel!==button.dataset.agentTab);
   });
   const close=()=>{if(saving)return;if(Object.keys(collectAgentSettings(root,config)).length && !confirm('尚有未保存的 Agent 设置，关闭并放弃这些修改？'))return;hideModal();};
-  get('agentSettingsBack').onclick=()=>{if(saving)return;if(Object.keys(collectAgentSettings(root,config)).length&&!confirm('放弃未保存的高级设置并返回？'))return;openAgentSettings(config.id);};
+  get('agentSettingsBack').onclick=()=>{if(saving)return;if(Object.keys(collectAgentSettings(root,config)).length&&!confirm('放弃未保存的高级设置并返回？'))return;if(typeof hasModalBack==='function'&&hasModalBack())popModalBack();else openAgentSettings(config.id);};
   get('agentSettingsClose').onclick=close;get('agentSettingsCancel').onclick=close;
   root.onclick=event=>{
     const remove=event.target.closest('[data-agent-remove]');if(remove)remove.closest('.agent-value-row').remove();
@@ -227,11 +232,11 @@ function bindAgentSettings(config) {
     try{const [ok,result]=await post('/api/agents/config/mcp',{id:config.id,revision:config.revision,replace_key:!!(replace && replace.checked)});if(!ok)throw Error(result.error || '应用失败');config.connection.has_key=true;message(result.message);if(!get('agentReplaceKey'))button.insertAdjacentHTML('beforebegin','<label class="agent-check"><input type="checkbox" id="agentReplaceKey">应用时更换已有接入密钥（旧客户端需重新接入）</label>');await refreshContacts();}catch(error){message(error.message);}finally{if(current())button.disabled=false;}
   };
   get('agentStopStandby').onclick=async()=>{const [ok,result]=await post('/api/members/standby/stop',{id:config.id});message(ok?'待命已停止。':result.error || '停止失败');await refreshContacts();};
-  get('agentConnectionGuide').onclick=async()=>{if(Object.keys(collectAgentSettings(root,config)).length && !await save())return;if(current())startConnectionWizard(config.id);};
+  get('agentConnectionGuide').onclick=async()=>{if(Object.keys(collectAgentSettings(root,config)).length && !await save())return;if(current()){const activeTab=root.querySelector('[data-agent-tab][aria-pressed="true"]')?.dataset.agentTab||'general';if(typeof pushModalBack==='function')pushModalBack(()=>openAgentAdvancedSettings(config.id,activeTab));startConnectionWizard(config.id);}};
   const membership=async()=>{
     await pollRooms();if(!current())return;
     get('agentJoinedRooms').innerHTML=ROOMS.filter(r=>!r.archived).map(r=>'<div class="agent-room-row"><span>'+esc(r.title)+'<small>'+((r.participants || []).includes(config.id)?'已加入':'未加入')+'</small></span><button type="button" data-agent-room="'+esc(r.id)+'">设置成员与权限</button></div>').join('') || '<p class="hint">暂无会话，创建后可在这里设置。</p>';
-    root.querySelectorAll('[data-agent-room]').forEach(button=>button.onclick=async()=>{if(Object.keys(collectAgentSettings(root,config)).length && !await save())return;if(current())openAgentMembership(config.id,button.dataset.agentRoom);});
+    root.querySelectorAll('[data-agent-room]').forEach(button=>button.onclick=async()=>{if(Object.keys(collectAgentSettings(root,config)).length && !await save())return;if(current()){if(typeof pushModalBack==='function')pushModalBack(()=>openAgentAdvancedSettings(config.id,'joining'));openAgentMembership(config.id,button.dataset.agentRoom);}});
   };membership().catch(error=>message(error.message));
 }
 function groupAgentSettings(contacts, catalog){
@@ -247,38 +252,47 @@ function groupAgentSettings(contacts, catalog){
 }
 async function openAgentManager() {
   document.body.classList.remove('nav-open');
-  showModal('<div id="agentManagerLoading"><h3>正在读取 Agent 与连接…</h3><div class="btns"><button onclick="hideModal()">关闭</button></div></div>');
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const pushBack=fn=>{if(typeof pushModalBack==='function')pushModalBack(fn);};
+  showModal('<div id="agentManagerLoading"><h3>正在读取 Agent 与连接…</h3><div class="btns">'+(canBack?'<button type="button" id="agentManagerLoadingBack">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div></div>');
+  const loadingBack=canBack&&document.getElementById('agentManagerLoadingBack');if(loadingBack)loadingBack.onclick=()=>popModalBack();
   const loading=document.getElementById('agentManagerLoading');
-  try{await refreshContacts(null,true)}catch(error){if(document.getElementById('agentManagerLoading')===loading)loading.innerHTML='<h3>暂时无法读取</h3><p role="alert">'+esc(error.message)+'</p><div class="btns"><button onclick="openAgentManager()">重试</button><button onclick="hideModal()">关闭</button></div>';return;}
+  try{await refreshContacts(null,true)}catch(error){if(document.getElementById('agentManagerLoading')===loading){loading.innerHTML='<h3>暂时无法读取</h3><p role="alert">'+esc(error.message)+'</p><div class="btns">'+(canBack?'<button type="button" id="agentManagerErrBack">返回</button>':'')+'<button onclick="openAgentManager()">重试</button><button onclick="hideModal()">关闭</button></div>';const eb=canBack&&document.getElementById('agentManagerErrBack');if(eb)eb.onclick=()=>popModalBack();}return;}
   if(document.getElementById('agentManagerLoading')!==loading)return;
   const local=agCat.local_workspace!==false;
   const {active,presets}=groupAgentSettings(CONTACTS,agCat);
   const agentRows=agents=>agents.map(a=>'<div class="agent-room-row"><span><b>'+esc(a.label)+'</b><small>'+esc(a.enabled?contactStatusLabel(a):'未找到程序，可修改路径')+'</small></span><button type="button" data-agent-settings="'+esc(a.id)+'">详情</button></div>').join('');
-  showModal('<div id="agentManager"><div class="connection-heading"><div><span class="eyebrow">应用设置</span><h3>Agent 与连接</h3></div><button id="agentManagerClose" aria-label="关闭设置">×</button></div>'
+  showModal('<div id="agentManager"><div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="agentManagerBack">← 返回</button>':'')+'<div><span class="eyebrow">应用设置</span><h3>Agent 与连接</h3></div><button id="agentManagerClose" aria-label="关闭设置">×</button></div>'
     +'<p class="hint">选择联系人查看状态，或添加新的 AI。</p>'
     +'<div class="agent-manager-tools">'+(local?'<button id="contactsScan">查找已安装的 AI</button>':'')+'<details><summary>高级设置</summary><button id="connSettingsBtn">连接与心跳</button></details><button id="managerDevices">我的设备</button></div>'
     +'<h4>我的 Agent <span class="badge">'+active.length+'</span></h4>'
     +(agentRows(active)||'<p class="nav-empty">还没有接入 Agent。</p>')
     +(presets.length?'<details class="connection-advanced"><summary>其他预置 Agent（'+presets.length+'）</summary>'+agentRows(presets)+'</details>':'')
     +'<div class="btns agent-settings-actions"><button id="agentManagerDone">完成</button><button id="agentManagerAdd" class="pri">添加 Agent</button></div></div>');
-  mbox.querySelectorAll('[data-agent-settings]').forEach(b=>b.onclick=()=>openAgentSettings(b.dataset.agentSettings));
-  document.getElementById('agentManagerAdd').onclick=()=>startConnectionWizard('','local');
+  if(canBack&&document.getElementById('agentManagerBack'))document.getElementById('agentManagerBack').onclick=()=>popModalBack();
+  mbox.querySelectorAll('[data-agent-settings]').forEach(b=>b.onclick=()=>{pushBack(()=>openAgentManager());openAgentSettings(b.dataset.agentSettings)});
+  document.getElementById('agentManagerAdd').onclick=()=>{pushBack(()=>openAgentManager());startConnectionWizard('','local')};
   document.getElementById('agentManagerClose').onclick=hideModal;
-  document.getElementById('agentManagerDone').onclick=hideModal;
-  document.getElementById('connSettingsBtn').onclick=()=>openConnectionSettingsModal();
-  document.getElementById('managerDevices').onclick=()=>startConnectionWizard('','mydevice');
-  if(local)document.getElementById('contactsScan').onclick=()=>openDiscoveryModal(true);
+  document.getElementById('agentManagerDone').onclick=()=>{if(canBack)popModalBack();else hideModal();};
+  document.getElementById('connSettingsBtn').onclick=()=>{pushBack(()=>openAgentManager());openConnectionSettingsModal()};
+  document.getElementById('managerDevices').onclick=()=>{pushBack(()=>openAgentManager());startConnectionWizard('','mydevice')};
+  if(local)document.getElementById('contactsScan').onclick=()=>{pushBack(()=>openAgentManager());openDiscoveryModal(true)};
 }
 async function openAgentMembership(id, roomId) {
   document.body.classList.remove('nav-open');
-  showModal('<div id="agentMembershipLoading"><h3>正在读取会话权限…</h3><button onclick="hideModal()">关闭</button></div>');
+  const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  const goBack=()=>{if(canBack)popModalBack();else openAgentSettings(id);};
+  showModal('<div id="agentMembershipLoading"><h3>正在读取会话权限…</h3><div class="btns"><button type="button" id="agentMembershipLoadingBack">返回</button><button onclick="hideModal()">关闭</button></div></div>');
+  document.getElementById('agentMembershipLoadingBack').onclick=goBack;
   const loading=document.getElementById('agentMembershipLoading');
   const [ok,state]=await connectionGet('/api/r/'+encodeURIComponent(roomId)+'/state');
   if(document.getElementById('agentMembershipLoading')!==loading)return;
-  if(!ok){showModal('<h3>读取失败</h3><p>'+esc(state.error || '会话不可用')+'</p><button onclick="hideModal()">关闭</button>');return;}
+  if(!ok){showModal('<h3>读取失败</h3><p>'+esc(state.error || '会话不可用')+'</p><div class="btns"><button type="button" id="agentMembershipErrBack">返回</button><button onclick="hideModal()">关闭</button></div>');document.getElementById('agentMembershipErrBack').onclick=goBack;return;}
   const contact=CONTACTS.find(a=>a.id===id),perms=(state.permissions || {})[id] || (contact && contact.default_permissions) || {};
-  showModal('<div id="agentMembership"><h3>'+esc(contact?contact.label:id)+' · '+esc(state.title)+'</h3><label class="agent-check"><input id="agentRoomJoined" type="checkbox"'+(state.participants.includes(id)?' checked':'')+'>加入此会话</label><h4>此会话内的权限</h4>'+agentPermissionFields(perms,'data-agent-room-permission')+'<p class="hint">只修改此联系人；其他成员和权限保持不变。</p><p id="agentMembershipMessage" role="status"></p><div class="btns"><button id="agentMembershipBack">返回 Agent 设置</button><button id="agentMembershipSave" class="pri">保存</button></div></div>');
+  showModal('<div id="agentMembership"><div class="connection-heading"><button type="button" class="modal-back" id="agentMembershipTopBack">← 返回</button><h3>'+esc(contact?contact.label:id)+' · '+esc(state.title)+'</h3><button type="button" id="agentMembershipClose" aria-label="关闭">×</button></div><label class="agent-check"><input id="agentRoomJoined" type="checkbox"'+(state.participants.includes(id)?' checked':'')+'>加入此会话</label><h4>此会话内的权限</h4>'+agentPermissionFields(perms,'data-agent-room-permission')+'<p class="hint">只修改此联系人；其他成员和权限保持不变。</p><p id="agentMembershipMessage" role="status"></p><div class="btns"><button id="agentMembershipBack">返回 Agent 设置</button><button id="agentMembershipSave" class="pri">保存</button></div></div>');
   const root=document.getElementById('agentMembership');
-  document.getElementById('agentMembershipBack').onclick=()=>openAgentSettings(id);
+  document.getElementById('agentMembershipClose').onclick=hideModal;
+  document.getElementById('agentMembershipTopBack').onclick=goBack;
+  document.getElementById('agentMembershipBack').onclick=goBack;
   document.getElementById('agentMembershipSave').onclick=async event=>{const button=event.currentTarget;button.disabled=true;try{const permissions=Object.fromEntries([...root.querySelectorAll('[data-agent-room-permission]')].map(i=>[i.dataset.agentRoomPermission,i.checked]));const [ok,result]=await post('/api/r/'+encodeURIComponent(roomId)+'/invite',{contact:id,joined:root.querySelector('#agentRoomJoined').checked,permissions});if(document.getElementById('agentMembership')!==root)return;root.querySelector('#agentMembershipMessage').textContent=ok?'成员和权限已保存。':result.error || '保存失败';if(ok){await pollRooms();if(RID===roomId)await loadState();}}catch(error){if(document.getElementById('agentMembership')===root)root.querySelector('#agentMembershipMessage').textContent=error.message;}finally{button.disabled=false;}};
 }
