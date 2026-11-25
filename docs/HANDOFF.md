@@ -2,6 +2,26 @@
 
 最近更新：2026-11-25。
 
+## AnY 2.8.31 正式发布（2026-11-25）
+
+- 本版包含 `2.8.30` 新增的二级/多级弹窗返回导航（[app-core.js](../static/app-core.js) 弹窗返回栈、`← 返回` 顶部按钮及保存/取消回退，覆盖设置、Agent 管理与详情、自动发现、接入引导、心跳设置、模型与执行端跳转、项目设置与改名等路径，并在 [test_simplified_frontend.py](../tests/test_simplified_frontend.py) 补齐回归用例），以及 `7a274cc` 更新的新版 T2 蓝宝石图标资源。
+- 发布源码为 `b2b8a8ddc96cd0fced311ed0409c8bf5585d7812`。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45573428751)首次运行时 Windows 任务在 `tests/test_members.py` 出现 1 次并发轮询时机失败，重跑失败任务后通过 Windows Rust 8 项、Python 全量回归 569 项、静态检查、安装与运行保护、卸载保留数据、双架构 macOS 安装包和三种系统的 CLI 安装测试；`build-report-2.8.31.json` 标记 `source_dirty: false`。Windows 构建未签名，Tauri 桌面窗口及 macOS 实体机原生启动待真机验收。
+- [v2.8.31 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.31) 的 12 个附件均已实际下载，大小与 SHA-256 与 GitHub 元数据及 [SHA-256 清单](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.31/SHA256SUMS-2.8.31.txt) 一致；4 份发布 ZIP 完整性通过；下载后的 `AnYCore.exe`（`18875`）与 `AnY-Portable-2.8.31.exe`（`18876`）通过隔离数据目录启动、`/api/server/info`（`2.8.31` / `api_revision=3`）、11 份前端资源与 `v2.8.31` 标签逐字节比对及 `/api/server/exit` 正常退出验收。[构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.31/build-report-2.8.31.json)
+- 官网提交 `eac74ae` 已通过 [Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45576478403)。已核对首页、下载页、`update.json`、三份 macOS 更新清单、`downloads/manifest.json` 与 `cli/current.json`，并实际下载验证 Windows 安装版、便携版、双架构 macOS DMG、两条 macOS Python ZIP 及 CLI 源码包，大小和 SHA-256 全部一致。[官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
+| 官网文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Windows 安装版 | 13664172 | `a3b9dcf7033268cb53cf4f21881a0ff768f2749fb0b717d70fbcc5ccc21358a6` |
+| Windows 便携版 | 13494145 | `8454f23332e3579bd24813cb2492ed5648ee4c9cf0d0c149ff920b21bd99f078` |
+| macOS Apple 芯片 DMG | 32572037 | `8a128113842ea39aae692c03e80aa3a880975f837b37afe97fb6ba3cf9fe3220` |
+| macOS Intel DMG | 25715793 | `c0e2ef62bbf0f45e8bcbe0700830b90cbf4ed96cacc811947e8a190c49b48b9c` |
+| macOS Python ZIP | 1979362 | `a8bbec7a1953ba309bc121baf42e343995730ada531d018481669c41a8aca680` |
+| CLI 源码包 | 471167 | `142369674be3a66a49ded8ed07bc97fb826625db44005c143135dc1e0505f237` |
+
+## AnY 2.8.30 过渡发布（2026-11-25）
+
+- 源码 `c5089a4` 与版本提交 `80327c5` 实现并验证了二级/多级弹窗返回导航。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45571809517)全量通过并发布 [v2.8.30 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.30)，本地已核对 12 个附件哈希、4 份 ZIP 完整性及 `AnYCore.exe` / `AnY-Portable-2.8.30.exe` 启停与资源一致。因同期 `main` 已合入 `2.8.31`，官网与 `update.json` 直接对齐至 `2.8.31`。
+
 ## AnY 2.8.29 正式发布（2026-11-25）
 
 - 本版在「会话成员与权限」增加双向调用与转派、设备工作区绑定、远端停止回执和指定接收人分享。外部用户可调用获授权的直连模型。跨账号认领原生 CLI、官方云托管和离线持久排队仍待实现。[权限架构与使用说明](ROOM_CONTACT_PERMISSIONS.md)
