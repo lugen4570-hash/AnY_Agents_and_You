@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "any-desktop"
-version = "2.8.31"
+version = "2.8.32"
 dependencies = [
  "rand 0.8.8",
  "rfd",

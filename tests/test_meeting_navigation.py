@@ -77,9 +77,13 @@ const ctx=vm.createContext({PROJECTS:[{id:'project',name:'Project'}],S:null,PERM
  CONTACTS:[{id:'claude',label:'Claude',enabled:true},{id:'codex',label:'Codex',enabled:true}],
  agCat:{default_participants:['claude']},esc:String,
  document:{body:{classList:{remove(){}}},getElementById:id=>nodes[id]||={querySelectorAll:()=>[],focus(){}}},
- async pollRooms(){},async refreshContacts(){},showModal:html=>markup=html,hideModal(){}});
+ async pollRooms(){throw Error('opening with cached projects should not fetch')},
+ async pollContacts(){throw Error('opening with cached contacts should not fetch')},
+ showModal:html=>markup=html,hideModal(){}});
 vm.runInContext(part,ctx);
-ctx.openNew().then(()=>{
+const opened=ctx.openNew();
+assert.match(markup,/id="nTitle"/,'cached data should show the form immediately');
+opened.then(()=>{
  assert.equal((markup.match(/data-member-check>/g)||[]).length,2);
  assert.doesNotMatch(markup,/data-member-check checked/);
 }).catch(error=>{console.error(error);process.exitCode=1});

@@ -254,11 +254,7 @@ async function openAgentManager() {
   document.body.classList.remove('nav-open');
   const canBack=typeof hasModalBack==='function'&&hasModalBack();
   const pushBack=fn=>{if(typeof pushModalBack==='function')pushModalBack(fn);};
-  showModal('<div id="agentManagerLoading"><h3>正在读取 Agent 与连接…</h3><div class="btns">'+(canBack?'<button type="button" id="agentManagerLoadingBack">返回</button>':'')+'<button onclick="hideModal()">关闭</button></div></div>');
-  const loadingBack=canBack&&document.getElementById('agentManagerLoadingBack');if(loadingBack)loadingBack.onclick=()=>popModalBack();
-  const loading=document.getElementById('agentManagerLoading');
-  try{await refreshContacts(null,true)}catch(error){if(document.getElementById('agentManagerLoading')===loading){loading.innerHTML='<h3>暂时无法读取</h3><p role="alert">'+esc(error.message)+'</p><div class="btns">'+(canBack?'<button type="button" id="agentManagerErrBack">返回</button>':'')+'<button onclick="openAgentManager()">重试</button><button onclick="hideModal()">关闭</button></div>';const eb=canBack&&document.getElementById('agentManagerErrBack');if(eb)eb.onclick=()=>popModalBack();}return;}
-  if(document.getElementById('agentManagerLoading')!==loading)return;
+  if(!agCat&&!await loadContactPanel('Agent 与连接',pollContacts(),openAgentManager))return;
   const local=agCat.local_workspace!==false;
   const {active,presets}=groupAgentSettings(CONTACTS,agCat);
   const agentRows=agents=>agents.map(a=>'<div class="agent-room-row"><span><b>'+esc(a.label)+'</b><small>'+esc(a.enabled?contactStatusLabel(a):'未找到程序，可修改路径')+'</small></span><button type="button" data-agent-settings="'+esc(a.id)+'">详情</button></div>').join('');

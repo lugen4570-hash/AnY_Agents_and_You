@@ -325,8 +325,12 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as error:
                 return self._json(404, {"error": str(error)})
         if path == "/api/agents":
-            if (q.get("reload") or [""])[0] in ("1", "true", "yes"):
+            reload_agents = (q.get("reload") or [""])[0] in ("1", "true", "yes")
+            if reload_agents:
                 registry.load()      # 用户刚改了 data/agents.d：重读一遍，不用重启服务器
+            installation_details = {} if q.get("summary") == ["1"] and not reload_agents else {
+                "discovered_presets": registry.discover_hidden_presets(), "hosts": install.hosts_status(),
+            }
             # 待命通道不属于某一种 driver：Claude/Codex 的桌面端也能待命，界面要能看到
             member_rows = {}
             for s in registry.all_specs():
@@ -335,13 +339,13 @@ class Handler(BaseHTTPRequestHandler):
                 st = members.broker.status(s["id"])
                 if st["automatic"] or s["driver"] == "external":
                     member_rows[s["id"]] = st
-            return self._json(200, dict(registry.catalog(), discovered_presets=registry.discover_hidden_presets(), default_dir=PROJECT, hosts=install.hosts_status(),
+            return self._json(200, dict(registry.catalog(), default_dir=PROJECT,
                                         local_workspace=self._is_host_owner(),
                                         macos_workspace_picker=sys.platform == "darwin" and self._is_host_owner(),
                                         owner_devices=devices.listing(getattr(self, "_device_id", "")),
                                         connections=connections.catalog(), members=member_rows,
                                         discovery=discovery.status(), connection_settings=conn_settings.snapshot(),
-                                        mcp_url="http://127.0.0.1:%d/mcp" % PORT))
+                                        mcp_url="http://127.0.0.1:%d/mcp" % PORT, **installation_details))
         if path in ("/api/state", "/api/messages"):   # 老页面（服务器换了新版、页面还没刷新）：按最近打开的那场回
             rid = R.last_room()
             r = R.rooms.get(rid) if rid else None

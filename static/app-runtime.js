@@ -115,6 +115,6 @@ if(typeof window!=='undefined'&&window.visualViewport){
 if(document.addEventListener)document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(RID){if(since)markSeen(RID,since);poll()}pollRooms()}});
 setInterval(()=>{if(!document.hidden&&RID)poll()},1500);
 setInterval(()=>{if(!document.hidden)pollRooms()},3000);
-refreshContacts().catch(e=>console.error(e));
-setInterval(()=>{if(!document.hidden)refreshContacts(undefined,true).catch(()=>{})},10000);
+pollContacts().catch(e=>console.error(e));
+setInterval(()=>{if(!document.hidden)pollContacts().catch(()=>{})},10000);
 if(RID)switchRoom(RID,true);else pickRoom();

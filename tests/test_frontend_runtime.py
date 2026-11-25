@@ -219,9 +219,9 @@ vm.runInContext(draft+'\nlet quote=null;\n'+recallPart,ctx);
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/workspace.js','utf8');
 const part=source.slice(source.indexOf('let contactsRequestSequence'),source.indexOf('function drawRoomIdentity'));
-let pending=[],writes=0,markup='';
+let pending=[],urls=[],writes=0,markup='';
 const list={scrollTop:37,set innerHTML(v){writes++;markup=v},get innerHTML(){return markup}};
-const context=vm.createContext({fetch:()=>new Promise(resolve=>pending.push(resolve)),
+const context=vm.createContext({fetch:url=>{urls.push(url);return new Promise(resolve=>pending.push(resolve))},
  document:{activeElement:null,getElementById:id=>id==='contactList'?list:{}},
  esc:String,CONTACTS:[],agCat:{},drawQuick:()=>{}});
 vm.runInContext(part,context);
@@ -229,6 +229,15 @@ const response=label=>({ok:true,json:async()=>({agents:[{id:'a',label,letter:'A'
 (async()=>{const old=context.refreshContacts(),fresh=context.refreshContacts();pending[1](response('新'));await fresh;
  pending[0](response('旧'));await old;assert.match(markup,/新/);assert.doesNotMatch(markup,/旧/);assert.equal(writes,1);
  const same=context.refreshContacts();pending[2](response('新'));await same;assert.equal(writes,1);assert.equal(list.scrollTop,37);
+ const full=context.refreshContacts(null,true);
+ const poll=context.pollContacts();
+ assert.equal(context.pollContacts(),poll,'background polling should share an in-flight request');
+ pending[4](response('新'));await poll;
+ pending[3]({ok:true,json:async()=>({agents:[],hosts:[{id:'local'}],discovered_presets:[{id:'preset'}]})});await full;
+ assert.equal(context.agCat.hosts[0].id,'local');
+ assert.equal(context.agCat.discovered_presets[0].id,'preset');
+ assert.equal(context.CONTACTS[0].label,'新');
+ assert.deepEqual(urls,['/api/agents?summary=1','/api/agents?summary=1','/api/agents?summary=1','/api/agents?reload=1','/api/agents?summary=1']);
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
         result=subprocess.run(['node','-e',script],cwd=root,capture_output=True,text=True,timeout=30)
@@ -1097,7 +1106,7 @@ const ctx = vm.createContext({
   markSeen() { counts.markSeen++; },
   poll() { counts.poll++; },
   pollRooms() { counts.pollRooms++; },
-  refreshContacts() { counts.refresh++; return Promise.resolve(); },
+  pollContacts() { counts.refresh++; return Promise.resolve(); },
   switchRoom() {},
   pickRoom() {},
   setInterval(fn) { intervals.push(fn); }
@@ -1298,7 +1307,7 @@ const context = vm.createContext({
   fetch: async (url) => {
     fetches.push(url);
     if (url === '/api/rooms') return { ok: true, status: 200, json: async () => ({ rooms: [], projects: [] }) };
-    if (url === '/api/agents') return { ok: true, status: 200, json: async () => ({ agents: [], connections: {}, members: {} }) };
+    if (url === '/api/agents?summary=1') return { ok: true, status: 200, json: async () => ({ agents: [], connections: {}, members: {} }) };
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   }
 });
@@ -1309,7 +1318,7 @@ for (const file of srcs) {
 }
 assert.ok(fetches.includes('/api/ui/session'), 'missing startup /api/ui/session ping');
 assert.ok(fetches.includes('/api/rooms'), 'missing startup /api/rooms fetch');
-assert.ok(fetches.includes('/api/agents'), 'missing startup /api/agents fetch');
+assert.ok(fetches.includes('/api/agents?summary=1'), 'missing startup contact summary fetch');
 assert.equal(typeof context.poll, 'function');
 assert.equal(typeof context.openViewer, 'function');
 assert.equal(typeof context.copyText, 'function');

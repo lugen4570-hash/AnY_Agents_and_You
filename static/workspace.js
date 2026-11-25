@@ -75,7 +75,47 @@ function expandGroupedPerms(groupState){
   return out;
 }
 let contactsRequestSequence=0, contactsAppliedSequence=0;
-async function refreshContacts(signal,reload=false){const seq=++contactsRequestSequence;const r=await fetch('/api/agents'+(reload?'?reload=1':''),{signal});if(!r.ok)throw Error('读取联系人失败');const data=await r.json();if((signal&&signal.aborted)||seq<contactsAppliedSequence)return;contactsAppliedSequence=seq;agCat=data;CONTACTS=agCat.agents||[];drawContacts();if(typeof drawQuick==='function')drawQuick()}
+let contactInstallation=null, contactInstallationSequence=0, contactPoll=null;
+async function refreshContacts(signal,reload=false){
+  const seq=++contactsRequestSequence;
+  const r=await fetch('/api/agents'+(reload?'?reload=1':'?summary=1'),{signal});
+  if(!r.ok)throw Error('读取联系人失败');
+  const data=await r.json();
+  if(signal?.aborted)return;
+  // 安装详情只随主动扫描返回。独立排序，避免轻量轮询盖掉接入向导所需的结果。
+  if(reload&&seq>=contactInstallationSequence){
+    contactInstallationSequence=seq;
+    contactInstallation={hosts:data.hosts||[],discovered_presets:data.discovered_presets||[]};
+    if(agCat)Object.assign(agCat,contactInstallation);
+  }
+  if(seq<contactsAppliedSequence)return;
+  contactsAppliedSequence=seq;
+  agCat={...data,...contactInstallation};
+  CONTACTS=agCat.agents||[];
+  drawContacts();
+  if(typeof drawQuick==='function')drawQuick();
+}
+function pollContacts(){
+  if(!contactPoll)contactPoll=refreshContacts().finally(()=>{contactPoll=null});
+  return contactPoll;
+}
+async function loadContactPanel(title,ready,retry){
+  showModal('<h3>'+esc(title)+'</h3><p role="status" id="contactPanelStatus">正在读取…</p><div class="btns"><button type="button" id="contactPanelCancel">取消</button></div>');
+  const status=document.getElementById('contactPanelStatus');
+  const current=()=>status.isConnected&&modal.classList.contains('show');
+  document.getElementById('contactPanelCancel').onclick=()=>hasModalBack()?popModalBack():hideModal();
+  try{await ready;return current()}
+  catch(error){
+    if(current()){
+      status.textContent=error.message;
+      const button=document.getElementById('contactPanelCancel');
+      const retryButton=document.createElement('button');
+      retryButton.type='button';retryButton.textContent='重试';retryButton.onclick=retry;
+      button.before(retryButton);
+    }
+    return false;
+  }
+}
 function contactStatusLabel(a){const c=(agCat.connections||{})[a.id]||{},m=(agCat.members||{})[a.id]||{};if(m.standby)return 'MCP 待命中';if(m.automatic)return '自动响应已连接';if(a.kind==='user'&&c.state==='waiting')return '邀请已生成，从未连接';return c.label||'未验证'}
 function contactChannelLabel(a){
   const c=(agCat.connections||{})[a.id]||{},m=(agCat.members||{})[a.id]||{};
@@ -188,7 +228,11 @@ async function openProject(project){document.body.classList.remove('nav-open');
 }
 async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
-  await pollRooms();await refreshContacts();if(!PROJECTS.length)return openProject();
+  if(!PROJECTS.length||!agCat){
+    const ready=Promise.all([PROJECTS.length?null:pollRooms().then(result=>{if(!result)throw Error('读取项目失败')}),agCat?null:pollContacts()]);
+    if(!await loadContactPanel('新建会话',ready,()=>openNew(first,projectId)))return;
+  }
+  if(!PROJECTS.length)return openProject();
   const selected=projectId||(S&&(S.project||legacyProject(S.workdir)))||PROJECTS[0].id;
   const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,false,a.default_permissions||{})).join('');
   showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
@@ -259,7 +303,12 @@ function readMemberPermissions(rows,withSharing=false){
   });
   return withSharing?{participants,permissions,guest_discussion}:{participants,permissions};
 }
-async function openAgents(){if(!RID)return;contactMode='members';const rid=RID;const canBack=typeof hasModalBack==='function'&&hasModalBack();await refreshContacts();if(rid!==RID)return;const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
+async function openAgents(){
+  if(!RID)return;
+  contactMode='members';const rid=RID;const canBack=typeof hasModalBack==='function'&&hasModalBack();
+  if(!agCat&&!await loadContactPanel('会话成员与权限',pollContacts(),openAgents))return;
+  if(rid!==RID)return;
+  const ids=(S&&S.participants)||[],perms=(S&&S.permissions)||{};
   const memberList=CONTACTS.filter(a=>a.enabled||ids.includes(a.id));
   const catalog=typeof agCat==='undefined'?null:agCat;
   const withSharing=catalog?.local_workspace!==false;

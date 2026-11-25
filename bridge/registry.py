@@ -447,7 +447,9 @@ def catalog():
 
 def discover_hidden_presets():
     """Find installed presets hidden from contacts without changing pairings."""
-    hidden = set(_hidden_ids())
+    hidden = set(_hidden_ids()).difference(SPECS)
+    if not hidden:
+        return []
     found = []
     for where, paths in _sources():
         if where != "presets":
@@ -455,8 +457,10 @@ def discover_hidden_presets():
         for path in paths:
             try:
                 for raw in _read_file(path):
+                    if not isinstance(raw, dict) or str(raw.get("id") or "").strip().lower() not in hidden:
+                        continue
                     spec = _norm(raw)
-                    if spec["id"] in hidden and spec["id"] not in SPECS and spec["enabled"] and spec["driver"] in ("cli", "acp", "claude", "codex", "external"):
+                    if spec["enabled"] and spec["driver"] in ("cli", "acp", "claude", "codex", "external"):
                         found.append(public(spec))
             except (OSError, ValueError, TypeError):
                 continue

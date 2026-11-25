@@ -54,6 +54,30 @@ class Contacts(unittest.TestCase):
         self.assertEqual(self.other.ais, [])
         self.assertEqual(R.fix_meta(dict(self.other.meta))["participants"], [])
 
+    def test_contact_summary_skips_installation_checks_but_keeps_live_status(self):
+        with (
+            patch.object(registry, "load", wraps=registry.load) as reload_agents,
+            patch.object(registry, "discover_hidden_presets", return_value=[]) as discover,
+            patch.object(install, "hosts_status", return_value=[{"id": "example"}]) as hosts,
+        ):
+            status, summary = call("/api/agents?summary=1", owner=True)
+            self.assertEqual(status, 200)
+            self.assertIn("alice", {row["id"] for row in summary["agents"]})
+            self.assertIn("alice", summary["connections"])
+            self.assertIn("members", summary)
+            self.assertNotIn("hosts", summary)
+            self.assertNotIn("discovered_presets", summary)
+            reload_agents.assert_not_called()
+            discover.assert_not_called()
+            hosts.assert_not_called()
+            status, full = call("/api/agents?reload=1", owner=True)
+            self.assertEqual(status, 200)
+            self.assertEqual(full["hosts"], [{"id": "example"}])
+            self.assertEqual(full["discovered_presets"], [])
+            reload_agents.assert_called_once()
+            discover.assert_called_once()
+            hosts.assert_called_once()
+
     def test_project_creation_and_members_at_creation(self):
         status, data = call("/api/projects/new", {"name": "示例项目", "workdir": DATA}, owner=True)
         self.assertEqual(status, 200)
