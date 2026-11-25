@@ -1,13 +1,155 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title">
-  <title id="title">AnY · ∀</title>
-  <path fill="#2D847E" fill-rule="evenodd" d="
-    M10 21H24L40.5 50.5 48.7 34.6
-    Q50 32.2 51.3 34.6L59.5 50.5 76 21H90
-    L56 72V75.8Q56 78 58.4 78H60V81H40V78H41.6Q44 78 44 75.8V72Z
-    M50 43.4 45.4 52H54.6Z
-    M42.5 59.4 50 70.2 57.5 59.4Z"/>
-  <path fill="#CD694D" fill-rule="evenodd" d="
-    M32.4 66.2 48.7 34.6Q50 32.2 51.3 34.6L67.6 66.2
-    H60.5L57.3 59.4H42.7L39.5 66.2Z
-    M50 43.4 45.4 52H54.6Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">AnY</title>
+  <defs>
+    
+    <linearGradient id="silver-mirror" x1="14" y1="8" x2="242" y2="248" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0F4F8"/>
+      <stop offset="0.26" stop-color="#D4DCE5"/>
+      <stop offset="0.52" stop-color="#B0BDCB"/>
+      <stop offset="0.74" stop-color="#E2EAF2"/>
+      <stop offset="1" stop-color="#BAC6D4"/>
+    </linearGradient>
+    <linearGradient id="glass-rim-outer" x1="12" y1="10" x2="244" y2="246" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2F7FA"/>
+      <stop offset="0.5" stop-color="#B8C6D4"/>
+      <stop offset="1" stop-color="#718294"/>
+    </linearGradient>
+    <linearGradient id="glass-rim-inner" x1="16" y1="16" x2="240" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B7D0DC"/>
+      <stop offset="0.5" stop-color="#E0ECF2"/>
+      <stop offset="1" stop-color="#8AA2B5"/>
+    </linearGradient>
+    <linearGradient id="glass-glare" x1="12" y1="12" x2="180" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2F6FA" stop-opacity="0.46"/>
+      <stop offset="0.55" stop-color="#EBF2F7" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#DCE5EE" stop-opacity="0.0"/>
+    </linearGradient>
+    <clipPath id="glass-face-clip">
+      <rect x="6.8" y="6.8" width="242.4" height="242.4" rx="49.2"/>
+    </clipPath>
+    
+    <!-- Liquid black-chrome Y gradients -->
+    <linearGradient id="bc-bright" x1="24" y1="34" x2="215" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E6EEF6"/>
+      <stop offset="0.16" stop-color="#8E9BAB"/>
+      <stop offset="0.40" stop-color="#191F27"/>
+      <stop offset="0.58" stop-color="#647385"/>
+      <stop offset="0.78" stop-color="#12161C"/>
+      <stop offset="1" stop-color="#38424F"/>
+    </linearGradient>
+    <linearGradient id="bc-deep" x1="95" y1="38" x2="230" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4B5665"/>
+      <stop offset="0.32" stop-color="#161B22"/>
+      <stop offset="0.58" stop-color="#394452"/>
+      <stop offset="0.85" stop-color="#0C0F14"/>
+      <stop offset="1" stop-color="#1A2028"/>
+    </linearGradient>
+    <linearGradient id="bc-wall-right" x1="120" y1="38" x2="235" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#909DAB"/>
+      <stop offset="0.28" stop-color="#2B323D"/>
+      <stop offset="0.55" stop-color="#5E6B7C"/>
+      <stop offset="0.82" stop-color="#13171E"/>
+      <stop offset="1" stop-color="#242B35"/>
+    </linearGradient>
+    <linearGradient id="bc-wall-inner" x1="55" y1="38" x2="132" y2="165" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A8B5C4"/>
+      <stop offset="0.45" stop-color="#424D5C"/>
+      <stop offset="1" stop-color="#181E26"/>
+    </linearGradient>
+    <linearGradient id="bc-stem-l" x1="100" y1="168" x2="128" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9CA8B7"/>
+      <stop offset="0.38" stop-color="#343C48"/>
+      <stop offset="0.72" stop-color="#4D5868"/>
+      <stop offset="1" stop-color="#151920"/>
+    </linearGradient>
+    <linearGradient id="bc-stem-r" x1="128" y1="168" x2="156" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#444F5D"/>
+      <stop offset="0.52" stop-color="#171C23"/>
+      <stop offset="1" stop-color="#0B0E13"/>
+    </linearGradient>
+
+    <!-- Ultra-contrast 3-tone Penrose 18K Gold gradients -->
+    <linearGradient id="gold-bright" x1="54" y1="52" x2="195" y2="132" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FAF1C4"/>
+      <stop offset="0.30" stop-color="#F4CF6C"/>
+      <stop offset="0.56" stop-color="#E4B33A"/>
+      <stop offset="0.78" stop-color="#F7DF8E"/>
+      <stop offset="1" stop-color="#CE9722"/>
+    </linearGradient>
+    <linearGradient id="gold-mid" x1="78" y1="58" x2="192" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E4A832"/>
+      <stop offset="0.45" stop-color="#BC7E14"/>
+      <stop offset="0.75" stop-color="#CE8F1E"/>
+      <stop offset="1" stop-color="#945D08"/>
+    </linearGradient>
+    <linearGradient id="gold-deep" x1="60" y1="104" x2="200" y2="164" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#704207"/>
+      <stop offset="0.48" stop-color="#482703"/>
+      <stop offset="0.78" stop-color="#5E3505"/>
+      <stop offset="1" stop-color="#341B02"/>
+    </linearGradient>
+  </defs>
+  
+  <g id="silvered-glass-plaque">
+    <!-- Rear brushed/polished silver mirror backing -->
+    <rect x="0" y="0" width="256" height="256" rx="56" fill="url(#silver-mirror)"/>
+    <!-- Front-surface crystal glass reflection sheen clipped to inner bevel -->
+    <g clip-path="url(#glass-face-clip)">
+      <path fill="url(#glass-glare)" d="M0 0L146 0L0 206Z"/>
+      <path fill="#F2F6FA" fill-opacity="0.20" d="M164 0L196 0L16 256L0 256L0 232Z"/>
+    </g>
+    <!-- Thick mineral glass chamfered edge refraction rings -->
+    <path fill="url(#glass-rim-inner)" fill-rule="evenodd" d="M56 2.5 H200 A53.5 53.5 0 0 1 253.5 56 V200 A53.5 53.5 0 0 1 200 253.5 H56 A53.5 53.5 0 0 1 2.5 200 V56 A53.5 53.5 0 0 1 56 2.5 Z M56 6.8 A49.2 49.2 0 0 0 6.8 56 V200 A49.2 49.2 0 0 0 56 249.2 H200 A49.2 49.2 0 0 0 249.2 200 V56 A49.2 49.2 0 0 0 200 6.8 Z"/>
+    <path fill="url(#glass-rim-outer)" fill-rule="evenodd" d="M56 0 H200 A56 56 0 0 1 256 56 V200 A56 56 0 0 1 200 256 H56 A56 56 0 0 1 0 200 V56 A56 56 0 0 1 56 0 Z M56 2.5 A53.5 53.5 0 0 0 2.5 56 V200 A53.5 53.5 0 0 0 56 253.5 H200 A53.5 53.5 0 0 0 253.5 200 V56 A53.5 53.5 0 0 0 200 2.5 Z"/>
+  </g>
+  <g id="emblem" transform="translate(128 126) scale(0.79) translate(-132.2 -130.4)">
+    <g id="through-glass-mirror-shadow">
+      <path fill="#4F5E6D" fill-opacity="0.22" d="M42.2 54.5L72.2 54.5L144 178.8L215.8 54.5L245.8 54.5L158 206.5L158 218.5L172 218.5L172 230.5L116 230.5L116 218.5L130 218.5L130 206.5Z"/><path fill="#414F5D" fill-opacity="0.14" d="M39.2 50.5L69.2 50.5L141 174.8L212.8 50.5L242.8 50.5L155 202.5L155 214.5L169 214.5L169 226.5L113 226.5L113 214.5L127 214.5L127 202.5Z"/><path fill="#4F5E6D" fill-opacity="0.18" fill-rule="evenodd" d="M128 44L198.4 166H183.9L158 121H98L72.1 166H57.6Z M128 69.1L108.4 103H147.6Z" transform="translate(10 11.5)"/>
+    </g>
+    <g id="y-3d-walls">
+      <path fill="url(#bc-wall-right)" d="M156 202L156 214L166 222L166 210Z"/><path fill="#090B0F" d="M156 214L100 214L110 222L166 222Z"/><path fill="url(#bc-wall-right)" d="M142 190L142 202L152 210L152 198Z"/><path fill="url(#bc-wall-right)" d="M229.8 38L142 190L152 198L239.8 46Z"/><path fill="url(#bc-wall-inner)" d="M56.2 38L128 162.3L138 170.3L66.2 46Z"/>
+    </g>
+    <g id="y-glossy-front">
+      <path fill="#181C22" d="M26.2 38L56.2 38L128 162.3L199.8 38L229.8 38L142 190L142 202L156 202L156 214L100 214L100 202L114 202L114 190Z"/>
+      <path fill="url(#bc-bright)" d="M26.2 38L41.2 41.8L113 162.3L128 177.3L114 190Z"/>
+      <path fill="url(#bc-deep)" d="M41.2 41.8L56.2 38L128 162.3L128 177.3L113 162.3Z"/>
+      <path fill="url(#bc-bright)" d="M199.8 38L214.8 41.8L143 162.3L128 177.3L128 162.3Z"/>
+      <path fill="url(#bc-deep)" d="M214.8 41.8L229.8 38L142 190L128 177.3L143 162.3Z"/>
+      <path fill="#C7D2DE" fill-opacity="0.45" d="M32.9 41.8L38.4 41.8L110.1 166L104.6 166Z"/>
+      <path fill="#C7D2DE" fill-opacity="0.42" d="M202.1 41.8L207.6 41.8L142.8 154L137.3 154Z"/>
+      <path fill="url(#bc-stem-l)" d="M114 190L128 177.3L128 208L100 214L100 202L114 202Z"/>
+      <path fill="url(#bc-stem-r)" d="M128 177.3L142 190L142 202L156 202L156 214L128 208Z"/>
+      <path fill="#090B0E" d="M100 214L128 208L156 214Z"/>
+      <path fill="#DCE4EC" d="M26.2 38L56.2 38L54.6 41.8L28.1 41.8Z"/>
+      <path fill="#B6C0CC" d="M199.8 38L229.8 38L227.9 41.8L201.4 41.8Z"/>
+      <path fill="#E4EBF2" fill-opacity="0.72" d="M26.2 38L28.6 41.8L116.2 190L114 190Z"/>
+      <path fill="#DCE4EC" fill-opacity="0.65" d="M199.8 38L202.2 41.8L130.4 162.3L128 162.3Z"/>
+      <path fill="#CFD8E3" fill-opacity="0.58" d="M227.8 41.8L229.8 38L142 190L140 190Z"/>
+    </g>
+    <g id="shadow-a-over-y">
+      <path fill="#06080B" fill-opacity="0.75" d="M86.2 141.9L101.2 115.9L108.5 128.4L93.5 154.4Z"/><path fill="#06080B" fill-opacity="0.75" d="M103.9 111.2L111.1 123.8L108.5 128.4L101.2 115.9Z"/><path fill="#06080B" fill-opacity="0.75" d="M109.4 130L93 130L101.2 115.9Z"/><path fill="#06080B" fill-opacity="0.75" d="M101.2 115.9L103.4 112L104.3 112L114.7 130L109.4 130Z"/><path fill="#06080B" fill-opacity="0.75" d="M157 112L171.6 112L179.3 125.4L176.6 130L146.6 130Z"/>
+    </g>
+    
+  <g id="a-penrose-gold">
+    <path fill="#4B2B03" d="M198.4 166L183.9 166L187.9 169L202.4 169Z"/><path fill="#966313" d="M128 44L198.4 166L202.4 169L132 47Z"/><path fill="#4B2B03" d="M158 121L98 121L102 124L162 124Z"/><path fill="#7C4E09" d="M98 121L72.1 166L76.1 169L102 124Z"/><path fill="#4B2B03" d="M72.1 166L57.6 166L61.6 169L76.1 169Z"/><path fill="#633A05" d="M114.2 103L130.9 74.1L128 69.1L108.4 103Z"/>
+    <path fill="#B67F18" fill-rule="evenodd" d="M128 44L198.4 166H183.9L158 121H98L72.1 166H57.6Z M128 69.1L108.4 103H147.6Z"/>
+    <path fill="url(#gold-deep)" d="M131.6 62.8L191.2 166L183.9 166L158 121L90.8 121L96 112L152.8 112L128 69.1Z"/>
+    <path fill="url(#gold-mid)" d="M131.6 50.3L198.4 166L191.2 166L131.6 62.8L108.4 103L101.2 103Z"/>
+    <path fill="url(#gold-mid)" d="M90.8 121L98 121L72.1 166L64.8 166Z"/>
+    <path fill="url(#gold-bright)" d="M128 44L131.6 50.3L101.2 103L147.6 103L152.8 112L96 112L64.8 166L57.6 166Z"/>
+    <path fill="#381D02" fill-opacity="0.72" d="M131.1 50L100.7 102.7L101.7 103.3L132.1 50.6Z"/><path fill="#381D02" fill-opacity="0.72" d="M95.5 111.7L64.3 165.7L65.3 166.3L96.5 112.3Z"/><path fill="#381D02" fill-opacity="0.72" d="M131.1 63.1L190.7 166.3L191.7 165.7L132.1 62.5Z"/><path fill="#381D02" fill-opacity="0.72" d="M96 112.7L152.8 112.7L152.8 111.3L96 111.3Z"/><path fill="#381D02" fill-opacity="0.72" d="M95.5 111.7L90.3 120.7L91.3 121.3L96.5 112.3Z"/><path fill="#381D02" fill-opacity="0.72" d="M147.1 103.3L152.3 112.3L153.2 111.7L148 102.7Z"/>
+    <path fill="#FAF3CC" fill-opacity="0.88" d="M128 44L129 45.7L59.5 166L57.6 166Z"/><path fill="#FAF3CC" fill-opacity="0.88" d="M101.2 103L147.6 103L148.5 104.6L100.3 104.6Z"/>
+  </g>
+    <g id="shadow-y-right-over-a">
+      <path fill="#3D2202" fill-opacity="0.74" d="M151.5 109.8L158.7 97.2L181.1 135.9L173.8 148.4Z"/><path fill="#3D2202" fill-opacity="0.74" d="M159.2 123.2L166.5 110.7L188.8 149.3L181.5 161.9Z"/>
+    </g>
+    <g id="y-right-3d-bridge">
+      <path fill="url(#bc-wall-right)" d="M203.2 84L217.8 84L169.3 168L154.7 168Z"/>
+      <path fill="url(#bc-bright)" d="M128 168L128 162.3L173.2 84L189.6 84L143 162.3L137.3 168Z"/>
+      <path fill="url(#bc-deep)" d="M143 162.3L189.6 84L203.2 84L154.7 168L137.3 168Z"/>
+      <path fill="#C7D2DE" fill-opacity="0.42" d="M177.7 84L183.2 84L142.8 154L137.3 154Z"/>
+      <path fill="#DCE4EC" fill-opacity="0.68" d="M173.2 84L177 84L130.4 162.3L128 162.3Z"/>
+      <path fill="#CFD8E3" fill-opacity="0.58" d="M202.8 84L203.2 84L154.7 168L153 168Z"/>
+    </g>
+  </g>
 </svg>

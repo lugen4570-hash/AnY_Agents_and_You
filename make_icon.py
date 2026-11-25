@@ -10,6 +10,7 @@ STATIC = ROOT / "static"
 WEBSITE_ASSETS = ROOT / "website" / "assets"
 TAURI_ICON = ROOT / "desktop_tauri" / "src-tauri" / "icons" / "icon.ico"
 TAURI_ICNS = ROOT / "desktop_tauri" / "src-tauri" / "icons" / "icon.icns"
+T2_KIT = ROOT / "design" / "brand" / "any-logo-t2"
 
 INK = "#141413"
 PAPER = "#FAF9F5"
@@ -60,6 +61,28 @@ def main() -> None:
     STATIC.mkdir(exist_ok=True)
     WEBSITE_ASSETS.mkdir(parents=True, exist_ok=True)
     TAURI_ICON.parent.mkdir(parents=True, exist_ok=True)
+
+    t2_master = T2_KIT / "any-logo-master.svg"
+    t2_ico = T2_KIT / "icon.ico"
+    t2_icns = T2_KIT / "icon.icns"
+    t2_192 = T2_KIT / "png" / "any-logo-192.png"
+    t2_512 = T2_KIT / "png" / "any-logo-512.png"
+    if all(p.is_file() for p in (t2_master, t2_ico, t2_icns, t2_192, t2_512)):
+        master_bytes = t2_master.read_bytes()
+        (STATIC / "logo-collaboration.svg").write_bytes(master_bytes)
+        (STATIC / "logo-app.svg").write_bytes(master_bytes)
+        ico_bytes = t2_ico.read_bytes()
+        (ROOT / "roundtable.ico").write_bytes(ico_bytes)
+        TAURI_ICON.write_bytes(ico_bytes)
+        icns_bytes = t2_icns.read_bytes()
+        (ROOT / "roundtable.icns").write_bytes(icns_bytes)
+        TAURI_ICNS.write_bytes(icns_bytes)
+        (ROOT / "roundtable_preview.png").write_bytes(t2_512.read_bytes())
+        png192_bytes = t2_192.read_bytes()
+        (STATIC / "icon-192.png").write_bytes(png192_bytes)
+        (WEBSITE_ASSETS / "icon-192.png").write_bytes(png192_bytes)
+        print("Synced AnY T2 logo SVG, Windows ICO, macOS ICNS, and web icon assets.")
+        return
 
     for name, content in (
         ("logo.svg", svg()),
