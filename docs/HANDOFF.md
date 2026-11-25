@@ -1,6 +1,19 @@
 # AnY 交接摘要
 
-最近更新：2026-11-24。
+最近更新：2026-11-25。
+
+## AnY 2.8.29 正式发布（2026-11-25）
+
+- 本版在「会话成员与权限」增加双向调用与转派、设备工作区绑定、远端停止回执和指定接收人分享。外部用户可调用获授权的直连模型。跨账号认领原生 CLI、官方云托管和离线持久排队仍待实现。[权限架构与使用说明](ROOM_CONTACT_PERMISSIONS.md)
+- 发布源码为 `296c6e1502bac5d846a4de428e874a40f420735f`。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45550933776)通过 Windows Rust 8 项、Python 全量回归 568 项、静态检查、安装与锁定保护、卸载保留数据、macOS 两种架构的安装包和三种系统的 CLI 安装测试。Apple 芯片构建首次在生成 DMG 时遇到 `Resource busy`，同标签重跑成功，已核对 arm64 架构、签名和 DMG 内容，原生启动待验收。
+- [v2.8.29 Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.29) 的 12 个附件均已实际下载。各文件大小和 SHA-256 与 GitHub 元数据一致，校验清单内 11 项一致，ZIP 完整性通过。桌面核心和便携版通过独立数据目录启动、版本与 API 修订校验、新权限状态 API、四份前端文件、内置连接端源码包及退出关闭端口的验收。Windows 构建未签名，构建报告标记了构建过程中的工作树改动。本机未单独验收 Tauri 窗口交互。[SHA-256 清单](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.29/SHA256SUMS-2.8.29.txt) · [构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.29/build-report-2.8.29.json)
+- 官网提交 `2754462c525a0a8679781cfa9642dd55308d011d` 已通过 [Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45552798963)。已核对首页、下载页、Windows 和三份 macOS 更新清单。实际下载 Windows 安装版与便携版、两份 DMG、两条 macOS Python ZIP 链接和 CLI 源码包，全部与对应清单的大小和 SHA-256 一致。前六条链接与 Release 对应附件一致，CLI 清单和归档源码与发布标签一致。[官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
+| 官网文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Windows 安装版 | 13410078 | `c3e06a4e1d6dde3624b2ab683e0c5b63f501f381c45f5b73ba038e3a22fc45ba` |
+| Windows 便携版 | 13383441 | `19e67432380545ef363088aea117a262ad045c888a2e95f9afabac3eb56af9a5` |
+| CLI 源码包 | 435982 | `75765d5d221307ac0b8d75afde73d6b14d93a3aa8bf88fc683995eb053a3ec65` |
 
 ## AnY 2.8.28 正式发布（2026-11-24）
 
