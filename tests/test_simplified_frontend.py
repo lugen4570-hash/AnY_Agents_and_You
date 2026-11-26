@@ -174,7 +174,7 @@ const ctx=vm.createContext({
   confirm:()=>true, alert:m=>{throw Error(m)}, loadTools:async()=>{},
   poll:async()=>{}, loadState:async()=>{}, pollRooms:async()=>{}, refreshContacts:async()=>{},
   fetch:async url=>{
-    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.38',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
+    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.39',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
     if(url==='/api/rooms')return {ok:true,json:async()=>({projects,rooms})};
     if(url==='/api/trash')return {ok:true,json:async()=>({trash:[]})};
     if(url==='/api/settings/connection')return {ok:true,json:async()=>({global:{heartbeat_interval:10},contacts:{},fields:{heartbeat_interval:{label:'心跳间隔',min:3,max:120,default:10}}})};
@@ -182,7 +182,7 @@ const ctx=vm.createContext({
     if(url.startsWith('/api/r/r1/state'))return {ok:true,json:async()=>({meeting:'r1',title:'Room 1',participants:['demo'],permissions:{demo:{read:true,post:true}}})};
     if(url.startsWith('/api/r/r1/tools'))return {ok:true,json:async()=>({mcp:[],plugins:[],skills:[]})};
     if(url.startsWith('/api/extensions'))return {ok:true,json:async()=>({skill_roots:[],items:[]})};
-    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.38',latest:'2.8.38',state:'current'})};
+    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.39',latest:'2.8.39',state:'current'})};
     return {ok:true,json:async()=>({})};
   },
   post:async url=>{
