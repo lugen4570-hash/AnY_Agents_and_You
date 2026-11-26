@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.38",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.38.exe",
-  "sha256": "b235574756981feb910c501e9a26c84a50af87a205a291bdc18566d0be53331b",
-  "size": 13670198,
-  "notes": "AnY 2.8.38 更新桌面与终端界面，并扩充本机 Agent 发现名单。"
+  "version": "2.8.39",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.39.exe",
+  "sha256": "ef909247ddc047336a9eb02d0ca39d403d492189a087336d04aa1bc12c41bca3",
+  "size": 13673140,
+  "notes": "AnY 2.8.39 细化 CLI 启动画面标志。"
 }
