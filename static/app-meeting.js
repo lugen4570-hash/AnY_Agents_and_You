@@ -99,8 +99,8 @@ const titleEl=document.getElementById('title');
 const meetingToolsButton=document.getElementById('sideToggleBtn');
 const meetingSide=document.getElementById('side'),meetingSideBg=document.getElementById('sideBg');
 const meetingSidePin=document.getElementById('sidePin');
-const wideMeetingSide=typeof matchMedia==='function'?matchMedia('(min-width:1200px)'):null;
-let meetingSidePinned=false;
+const wideMeetingSide=typeof matchMedia==='function'?matchMedia('(min-width:1100px)'):null;
+let meetingSidePinned=(()=>{try{const v=localStorage.getItem('any_side_pinned');return v===null?true:v==='1'}catch(e){return true}})();
 function syncMeetingSideLayout(){
   const open=meetingSide.classList.contains('on'),docked=open&&meetingSidePinned&&wideMeetingSide?.matches;
   document.body.classList.toggle('meeting-side-docked',!!docked);
@@ -113,7 +113,7 @@ function syncMeetingSideLayout(){
   }
 }
 wideMeetingSide?.addEventListener?.('change',syncMeetingSideLayout);
-if(meetingSidePin)meetingSidePin.onclick=()=>{meetingSidePinned=!meetingSidePinned;syncMeetingSideLayout()};
+if(meetingSidePin)meetingSidePin.onclick=()=>{meetingSidePinned=!meetingSidePinned;try{localStorage.setItem('any_side_pinned',meetingSidePinned?'1':'0')}catch(e){}syncMeetingSideLayout()};
 function setMeetingSide(open){
   const wasOpen=meetingSide.classList.contains('on');
   if(open)document.body.classList.remove('nav-open');

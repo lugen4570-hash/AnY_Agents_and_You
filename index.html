@@ -22,16 +22,18 @@
   <span class="brand-lockup"><img src="/static/logo-collaboration.svg" width="28" height="28" alt=""><span class="studio-wordmark" role="img" aria-label="AnY"></span></span>
   <button id="navClose" aria-label="收起侧栏" title="收起侧栏 (Ctrl+K)"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path d="m16 9-3 3 3 3"/></svg></button>
 </div>
-<div class="nav-switch" role="group" aria-label="侧栏视图"><button type="button" id="navSessionsButton" aria-controls="navSessions" aria-pressed="true">会话</button><button type="button" id="navContactsButton" aria-controls="contactsSection" aria-pressed="false">联系人 <span id="contactCount"></span></button></div>
+<button id="rNew" class="nav-new nav-row" type="button"><span class="nav-new-badge" aria-hidden="true">+</span><span class="nav-row-label">新建会话</span></button>
+<label class="nav-search nav-row" for="navSearch"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="navSearch" type="search" placeholder="搜索项目或会话" aria-label="搜索项目或会话" autocomplete="off"><kbd aria-hidden="true">⌘ K</kbd></label>
+<div class="nav-switch" role="group" aria-label="侧栏视图"><button type="button" id="navSessionsButton" class="nav-row" aria-controls="navSessions" aria-pressed="true"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="nav-row-label">会话</span></button><button type="button" id="navContactsButton" class="nav-row" aria-controls="contactsSection" aria-pressed="false"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="nav-row-label">联系人</span><span id="contactCount"></span></button></div>
 <section id="navSessions" class="nav-pane" aria-label="会话">
-<button id="rNew" class="nav-new" type="button">＋ 新建会话</button>
-<label class="nav-search" for="navSearch"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="navSearch" type="search" placeholder="搜索项目或会话" aria-label="搜索项目或会话" autocomplete="off"><kbd aria-hidden="true">⌘ K</kbd></label>
 <section class="projects-section"><div class="rh">项目与会话<span class="project-actions"><button type="button" id="bList" aria-label="会话管理、归档与回收站" title="会话管理、归档与回收站">管理</button><button id="projectAdd" aria-label="新建项目" title="新建项目">＋</button></span></div><ul class="rl" id="roomList"></ul></section>
 </section>
 <section class="nav-pane contacts-section" id="contactsSection" aria-label="联系人" hidden><div class="rh"><span>全部联系人</span><span class="rh-actions"><button id="agentSettingsBtn" title="修改 Agent 程序位置、模型与加入设置" aria-label="Agent 与连接管理">管理</button><button id="contactsAdd" aria-label="接入联系人">＋ 接入</button></span></div><ul id="contactList"></ul></section>
 <div class="nav-foot">
-<button type="button" id="openSettingsBtn" class="nav-settings-btn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span data-i18n="nav.settings">设置</span></button>
-<button type="button" id="updateApp" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" title="停止本机 AnY 服务">退出</button></div><div id="navResizer" class="nav-resizer" aria-hidden="true" title="拖动调整侧栏宽度，双击重置"></div></nav>
+<button type="button" id="accountBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="accountMenu"><span class="account-avatar" id="accountAvatar" aria-hidden="true">本</span><span class="account-name" id="accountName">本机用户</span><svg class="ui-icon account-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5-5 5 5"/><path d="m7 9 5-5 5 5" opacity=".45"/></svg></button>
+<div id="accountMenu" role="menu" aria-label="账户" hidden>
+<button type="button" id="openSettingsBtn" role="menuitem" class="nav-settings-btn"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg><span data-i18n="nav.settings">设置</span></button>
+<button type="button" id="updateApp" role="menuitem" title="发现新版本，点击更新" hidden>更新</button><button type="button" id="quitApp" role="menuitem" title="停止本机 AnY 服务">退出 AnY</button></div></div><div id="navResizer" class="nav-resizer" aria-hidden="true" title="拖动调整侧栏宽度，双击重置"></div></nav>
 <header class="chat-toolbar">
   <button id="navToggle" aria-label="展开侧栏" title="展开侧栏 (Ctrl+K)"><svg class="ui-icon nav-toggle-icon-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><span class="nav-toggle-icon-mobile" aria-hidden="true">☰</span></button>
   <div class="room-heading"><span id="roomContext" hidden></span><div id="title">会议室</div></div><div id="wd" hidden></div>
@@ -85,19 +87,25 @@
 <footer>
   <div id="slashMenu" class="slash-menu" role="listbox" aria-label="命令与技能" hidden></div>
   <div id="composerPopover" class="composer-popover" role="dialog" aria-label="模型设置" hidden></div>
+  <div id="greet" hidden><img class="greet-mark" src="/static/logo-mark.svg" width="44" height="44" alt=""><div class="greet-title">今天想和谁一起推进？</div><div class="greet-sub">@ 点名成员开始，或用 / 调用命令与技能</div><button type="button" id="greetNew" hidden>＋ 新建会话</button></div>
   <div class="quick" id="quick"></div>
-  <div id="quote"><span class="qtx"></span><button type="button" id="quoteX" aria-label="取消引用">&times;</button></div>
-  <div id="pend"></div>
-  <div class="row"><button id="clip" type="button" aria-label="添加附件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="m9 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8"/><path d="m7 14 7-7"/></svg></button><input type="file" id="file" multiple class="sr-file-input"><textarea id="ta" rows="1" autocomplete="off" aria-label="会话消息" placeholder="有什么新想法？@ 指定成员，/ 命令与技能…"></textarea><button id="send" type="button">发送 <span aria-hidden="true">↑</span></button></div>
-  <div class="composer-bar" id="composerBar">
-    <div class="composer-controls">
-      <button type="button" id="composerModeBtn" class="composer-chip mode-chip" title="切换讨论 / 干活模式">讨论模式</button>
-      <button type="button" id="composerModelBtn" class="composer-chip model-chip" aria-haspopup="dialog" aria-expanded="false" title="查看或切换当前会话模型">模型</button>
-      <button type="button" id="composerExtBtn" class="composer-chip ext-chip" title="配置本会话技能、MCP 与扩展 (/skills)">扩展</button>
-      <button type="button" id="debateBtn" class="composer-chip">论道</button>
+  <div class="composer-box">
+    <div id="quote"><span class="qtx"></span><button type="button" id="quoteX" aria-label="取消引用">&times;</button></div>
+    <div id="pend"></div>
+    <div class="row composer-input-row"><input type="file" id="file" multiple class="sr-file-input"><textarea id="ta" rows="1" autocomplete="off" aria-label="会话消息" placeholder="有什么新想法？@ 指定成员，/ 命令与技能…"></textarea></div>
+    <div class="composer-bar" id="composerBar">
+      <div class="composer-controls">
+        <button id="clip" type="button" aria-label="添加附件" title="添加附件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button><button type="button" id="composerModeBtn" class="composer-chip mode-chip" title="切换讨论 / 干活模式">讨论模式</button>
+        <button type="button" id="composerExtBtn" class="composer-chip ext-chip" title="配置本会话技能、MCP 与扩展 (/skills)">扩展</button>
+        <button type="button" id="debateBtn" class="composer-chip">论道</button>
+      </div>
+      <div class="composer-send-group">
+        <button type="button" id="composerModelBtn" class="composer-chip model-chip" aria-haspopup="dialog" aria-expanded="false" title="查看或切换当前会话模型">模型</button>
+        <button id="send" type="button" aria-label="发送" title="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></button>
+      </div>
     </div>
-    <div class="composer-meta"><span id="composerTargetHint" class="composer-target-hint"></span><span class="composer-shortcuts" data-i18n="composer.hint">@ 指定成员 · / 命令与技能</span></div>
   </div>
+  <div class="composer-meta"><span id="composerTargetHint" class="composer-target-hint"></span><span class="composer-shortcuts" data-i18n="composer.hint">@ 指定成员 · / 命令与技能</span></div>
 </footer>
 <script src="/static/workspace.js"></script>
 <script src="/static/qrcode.min.js"></script>

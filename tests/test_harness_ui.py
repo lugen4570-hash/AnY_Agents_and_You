@@ -42,8 +42,16 @@ class HarnessUiTests(unittest.TestCase):
         for marker in ('id="navSessionsButton"', 'id="navContactsButton"', 'id="navSessions"', 'id="contactsSection"'):
             self.assertIn(marker, html, f'Missing sidebar marker {marker} in index.html')
         studio_css = (ROOT / 'static' / 'studio.css').read_text(encoding='utf-8')
-        self.assertIn('.chat-toolbar .room-heading,.chat-toolbar #wd{display:none}', studio_css)
+        self.assertNotIn('.chat-toolbar .room-heading,.chat-toolbar #wd{display:none}', studio_css)
         self.assertIn('.nav-switch{', studio_css)
+        for marker in ('id="accountBtn"', 'id="accountMenu"', 'class="composer-box"', 'id="greet"'):
+            self.assertIn(marker, html, f'Missing gui2 marker {marker} in index.html')
+        account_menu = html[html.index('id="accountMenu"'):html.index('id="navResizer"')]
+        for marker in ('id="openSettingsBtn"', 'id="updateApp"', 'id="quitApp"'):
+            self.assertIn(marker, account_menu, f'{marker} must live inside the account menu')
+        composer_box = html[html.index('class="composer-box"'):html.index('class="composer-meta"')]
+        for marker in ('id="ta"', 'id="send"', 'id="composerModelBtn"', 'id="clip"'):
+            self.assertIn(marker, composer_box, f'{marker} must live inside the composer box')
         self.assertNotIn('data-inline-tools', (ROOT / 'static' / 'harness-ui.js').read_text(encoding='utf-8'))
 
     def test_slash_commands_render_before_tools_and_escape_cancels_refresh(self):

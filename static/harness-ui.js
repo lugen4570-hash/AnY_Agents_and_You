@@ -2394,4 +2394,40 @@
       closeSlashMenu();
     }
   });
+
+  /* ===== gui2: account menu + empty-state greeting ===== */
+  (function gui2Shell(){
+    const accountBtn=document.getElementById('accountBtn'),accountMenu=document.getElementById('accountMenu');
+    if(accountBtn&&accountMenu){
+      const setMenu=open=>{
+        accountMenu.hidden=!open;
+        accountBtn.setAttribute('aria-expanded',String(open));
+        if(open){const first=[...accountMenu.querySelectorAll('button')].find(b=>!b.hidden);first&&first.focus()}
+      };
+      accountBtn.addEventListener('click',e=>{e.stopPropagation();setMenu(accountMenu.hidden)});
+      document.addEventListener('click',e=>{
+        if(accountMenu.hidden)return;
+        if(!accountMenu.contains(e.target)&&!accountBtn.contains(e.target))setMenu(false);
+      });
+      document.addEventListener('keydown',e=>{
+        if(e.key==='Escape'&&!accountMenu.hidden){setMenu(false);accountBtn.focus()}
+      });
+      accountMenu.addEventListener('click',e=>{if(e.target.closest('button'))setMenu(false)});
+    }
+    const greetNew=document.getElementById('greetNew'),rNew=document.getElementById('rNew');
+    if(greetNew&&rNew)greetNew.addEventListener('click',()=>rNew.click());
+    const feedEl=document.getElementById('feed');
+    const syncEmpty=()=>{
+      if(!document.body)return
+      const empty=feedEl&&!feedEl.querySelector('.msg,.agent-progress');
+      document.body.classList.toggle('chat-empty',!!empty);
+      let noRoom=true;
+      try{noRoom=(typeof RID==='undefined')||!RID}catch(e){}
+      document.body.classList.toggle('no-room',noRoom);
+      if(greetNew)greetNew.hidden=!noRoom;
+    };
+    if(feedEl&&typeof MutationObserver==='function')new MutationObserver(syncEmpty).observe(feedEl,{childList:true,subtree:true});
+    if(typeof setInterval==='function'){const gui2Timer=setInterval(syncEmpty,700);if(gui2Timer&&typeof gui2Timer.unref==='function')gui2Timer.unref()}
+    syncEmpty();
+  })();
 })(typeof window !== 'undefined' ? window : globalThis);

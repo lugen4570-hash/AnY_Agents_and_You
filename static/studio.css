@@ -290,14 +290,6 @@ header{position:relative}
 /* Compact chat navigation and the two sidebar views. */
 .chat-toolbar{padding:6px 14px;align-items:center;flex-wrap:nowrap;gap:10px}
 body.work .chat-toolbar{box-shadow:none}
-@media(min-width:850px){
- body{grid-template-rows:0 minmax(0,1fr) auto auto}
- .chat-toolbar{grid-area:feed;justify-self:end;align-self:start;z-index:12;width:auto;margin:12px 14px 0 0;padding:0;background:transparent;border:0;border-radius:0;box-shadow:none;pointer-events:none}
- .chat-toolbar .room-heading,.chat-toolbar #wd{display:none}
- .chat-toolbar .header-actions{grid-column:auto;pointer-events:auto}
- .chat-toolbar #sideToggleBtn{background:color-mix(in srgb,var(--bar) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:var(--shadow)}
- #feed{border-top:1px solid var(--line);border-radius:20px 20px 0 0;padding:22px max(60px,calc((100% - 820px)/2)) 12px}
-}
 #rooms .brand{padding:2px 4px 12px;gap:8px}
 #rooms .brand-lockup{gap:8px}
 #rooms .brand img{width:28px;height:28px}
