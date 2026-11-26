@@ -115,7 +115,7 @@ def _setup_venv(generation, interpreter):
     venv_dir = generation / "venv"
     source_dir = generation / "AnY-CLI"
     try:
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True, stdout=sys.stderr)
         subprocess.run([str(interpreter), "-m", "pip", "--disable-pip-version-check", "install", "-e", ".[cli]"],
                        cwd=source_dir, check=True, stdout=sys.stderr)
     except subprocess.CalledProcessError:
@@ -123,7 +123,7 @@ def _setup_venv(generation, interpreter):
         if not uv_bin:
             raise
         shutil.rmtree(venv_dir, ignore_errors=True)
-        subprocess.run([uv_bin, "venv", "--python", sys.executable, str(venv_dir)], check=True)
+        subprocess.run([uv_bin, "venv", "--python", sys.executable, str(venv_dir)], check=True, stdout=sys.stderr)
         subprocess.run([uv_bin, "pip", "install", "--python", str(interpreter), "-e", ".[cli]"],
                        cwd=source_dir, check=True, stdout=sys.stderr)
 

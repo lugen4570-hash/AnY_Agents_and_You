@@ -10,11 +10,18 @@ uv_dir="${XDG_DATA_HOME:-$HOME/.local/share}/any-cli/bootstrap"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/Library/Frameworks/Python.framework/Versions/Current/bin:${PATH:-/usr/bin:/bin}"
 
 check_python() {
-  local bin="${1:-}"
+  local bin="${1:-}" probe_dir=""
   [[ -n "$bin" && -x "$bin" ]] || return 1
   # Apple's placeholder can pop up the Xcode Command Line Tools installer.
   if [[ $(uname -s) == Darwin && "$bin" == /usr/bin/python3 ]]; then return 1; fi
-  "$bin" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' >/dev/null 2>&1
+  "$bin" -c 'import sys, venv, ensurepip; raise SystemExit(sys.version_info < (3, 11))' >/dev/null 2>&1 || return 1
+  probe_dir=$(mktemp -d "${TMPDIR:-/tmp}/any-venv-probe-XXXXXX") || return 1
+  if "$bin" -m venv "$probe_dir" >/dev/null 2>&1 && "$probe_dir/bin/python" -m pip --version >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return 0
+  fi
+  rm -rf "$probe_dir"
+  return 1
 }
 
 find_uv() {
@@ -34,13 +41,18 @@ find_uv() {
 }
 
 find_python() {
-  local candidate uv_bin py
+  local candidate uv_bin py seen=""
   for candidate in \
     "$(command -v python3 || true)" \
     /opt/homebrew/bin/python3 \
     /usr/local/bin/python3 \
     /Library/Frameworks/Python.framework/Versions/Current/bin/python3 \
     /usr/bin/python3; do
+    [[ -n "$candidate" ]] || continue
+    case ":$seen:" in
+      *":$candidate:"*) continue ;;
+    esac
+    seen="${seen}:$candidate"
     if check_python "$candidate"; then
       printf '%s\n' "$candidate"
       return 0
@@ -66,7 +78,7 @@ for arg in "$@"; do
 done
 
 if [[ ${ANY_CLI_MANAGED_PYTHON:-0} == 1 ]] || ! py=$(find_python); then
-  echo "未检测到 Python 3.11+，正在自动配置独立 Python 运行环境…"
+  echo "未检测到可用的 Python 3.11+（含 venv）环境，正在自动配置独立 Python 运行环境…"
   if ! uv_bin=$(find_uv); then
     curl -LsSf https://astral.sh/uv/0.13.9/install.sh | UV_UNMANAGED_INSTALL="$uv_dir" sh
     uv_bin="$uv_dir/uv"

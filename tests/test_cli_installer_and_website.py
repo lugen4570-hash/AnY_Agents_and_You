@@ -62,7 +62,8 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'cli'
 
-            def fake_run(cmd, **_kwargs):
+            def fake_run(cmd, **kwargs):
+                self.assertIs(kwargs.get('stdout'), INSTALLER.sys.stderr)
                 if cmd[1:3] == ['-m', 'venv']:
                     raise subprocess.CalledProcessError(1, cmd)
                 if Path(cmd[0]).name.startswith('uv') and cmd[1] == 'venv':
@@ -83,6 +84,12 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
             self.assertTrue(launcher.is_file())
             self.assertEqual(launcher.parent, root.resolve())
             self.assertIn('-I -X utf8 -m bridge.cli', launcher.read_text(encoding='utf-8'))
+
+    def test_shell_installer_requires_working_venv_and_pip(self):
+        script = (ROOT / 'website' / 'install-cli.sh').read_text(encoding='utf-8')
+        self.assertIn('import sys, venv, ensurepip', script)
+        self.assertIn('-m venv "$probe_dir"', script)
+        self.assertIn('-m pip --version', script)
 
 
 if __name__ == '__main__':
