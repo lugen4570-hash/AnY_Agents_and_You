@@ -2,6 +2,12 @@
 
 最近更新：2026-11-26。
 
+## AnY 2.8.36 正式发布（2026-11-26）
+
+- 「添加联系人 → 本机 Agent」和「通过 MCP 手动参与」已移除官网下载链接。官网首页与下载页继续提供 MCP 入口，支持提示词配置与 ZIP 下载；本机程序验证和 MCP 手动接入流程照常可用。[官网下载 MCP](https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html)
+- 源码标签 `v2.8.36` 对应 `bc36539083c4aa4146eeab04fcc09f04fde7e1a5`。Windows 静态检查、Rust 与 Python 回归、安装与卸载数据保留、运行中安装保护、核心启动退出、双架构 macOS 构建和 CLI 安装均通过。13 个 Release 附件已下载核对大小和 SHA-256，ZIP 完整性通过。实下载的 Windows 便携版与桌面核心已验证启动、联系人向导资源和退出，便携版与官网下载同版 MCP 包完成带联系人密钥的 `list_rooms` 验证。Windows 产物未签名。Tauri 窗口交互及 Apple Silicon 原生启动待真机验收。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45744716345) · [Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.36)
+- 官网提交 `05256bf41b4d9e391dd9b34666fef0f8fe9dcd88` 已部署，已核对首页、MCP 页面、更新与下载清单，实下载文件与 Release 一致，CLI 源码包与标签一致。MCP ZIP 为 24,806 字节，SHA-256 为 `9c2462eaca41485472ad36691148da045968431fbc19a06131a74c5a26cad225`。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45745905802) · [官网下载清单](https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/manifest.json)
+
 ## AnY 2.8.35 正式发布（2026-11-26）
 
 - 官网首页和下载页新增「MCP」入口。用户可选择 Codex、Claude Code、Claude Desktop、Cursor 或其他 STDIO 客户端，复制提示词请 Harness 配置，也可下载 ZIP 参照样例手动安装。ZIP 内的 `any-mcp.pyz` 复用 AnY 的 STDIO 转发程序，需要 Python 3.11+ 与运行中的 AnY。接入凭据从 AnY 生成，在本机配置中填写。[MCP 下载页](https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html)
