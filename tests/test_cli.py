@@ -94,6 +94,9 @@ class CojamCliTest(unittest.TestCase):
                 mark = app.query_one(WelcomeMark)
                 activity = app.query_one(ReplyActivity)
                 activity.show(["Codex 正在回复"], color="#10a37f", leading=True)
+                # 70x20 is compact mode: no splash, single-line masthead.
+                self.assertFalse(app.splash_active)
+                self.assertTrue(app.query_one("#layout").has_class("compact"))
                 self.assertEqual(str(mark.render()), "AnY")
                 self.assertEqual(mark.size.height, 1)
                 self.assertEqual(str(activity.render()), "● Codex 正在回复")
@@ -140,14 +143,14 @@ class CojamCliTest(unittest.TestCase):
             console.print(transcript_entry({"speaker": speaker, "text": "**原文**", "time": "12:00"},
                                            agents, {}, {}))
         result = output.getvalue()
-        for marker in ("[你]", "[AI · Claude]", "[AI · Codex]", "[成员 · Lee]", "─ 系统"):
+        for marker in ("◆ 你", "● Claude · AI", "● Codex · AI", "○ Lee · 成员", "─ 系统"):
             self.assertIn(marker, result)
         self.assertEqual(result.count("**原文**"), 3)
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_create_send_and_receive(self):
         from textual.widgets import Footer, Input, OptionList, RichLog, Static
-        from bridge.terminal import AnYTerminal, WelcomeMark
+        from bridge.terminal import AnYTerminal
 
         async def wait_for(pilot, check):
             for _ in range(40):
@@ -164,15 +167,14 @@ class CojamCliTest(unittest.TestCase):
             app.no_color = False
             app.animation_level = "full"
             async with app.run_test(size=(120, 36)) as pilot:
+                self.assertTrue(app.splash_active)
+                await wait_for(pilot, lambda: not app.splash_active)
                 await wait_for(pilot, lambda: app.connected and app.rooms)
-                mark = app.query_one(WelcomeMark)
-                await wait_for(pilot, lambda: mark.frame == len(mark.FRAMES) - 1)
-                self.assertEqual(mark.frame, len(mark.FRAMES) - 1)
-                self.assertEqual(str(mark.render()), "AnY")
-                self.assertEqual(mark.size.height, 1)
                 self.assertIsNone(app.room)
                 self.assertFalse(app.query_one("#chat").display)
                 self.assertFalse(app.query(Footer))
+                from bridge.version import VERSION
+                self.assertIn(VERSION, app.export_screenshot())
                 self.assertIn("新建项目", app.export_screenshot())
                 self.assertEqual(app.query_one("#rooms", OptionList).highlighted_option.id, existing.id)
                 await pilot.press("enter")
@@ -228,9 +230,9 @@ class CojamCliTest(unittest.TestCase):
                 meeting.board_op("你", "done", "", "", [3])
                 await wait_for(pilot, lambda: "[x] #3 先前任务" in str(app.query_one("#details", Static).content))
                 details = str(app.query_one("#details", Static).content)
-                self.assertIn("▌ 待办  1\n  [ ] #1 核对结果", details)
-                self.assertIn("▌ 公告  1\n  › #2 今晚确认", details)
-                self.assertIn("▌ 已完成  1\n  [x] #3 先前任务", details)
+                self.assertIn("待办  1\n  [ ] #1 核对结果", details)
+                self.assertIn("公告  1\n  › #2 今晚确认", details)
+                self.assertIn("已完成  1\n  [x] #3 先前任务", details)
                 room.rooms.get(app.room).set_participants([])
                 app.composer.set_text("从终端发言")
                 await pilot.press("shift+enter")
@@ -363,6 +365,81 @@ class CojamCliTest(unittest.TestCase):
         actions = [call.args[1] for call in lifecycle.update.call_args_list]
         self.assertIn("open", actions)
         self.assertEqual(actions[-1], "close")
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_logo_art_geometry(self):
+        import re as regex
+        from rich.cells import cell_len
+        from bridge.terminal_brand import logo_art
+
+        art = logo_art(34, 15)
+        lines = art.plain.split("\n")
+        self.assertEqual(len(lines), 15)
+        for line in lines:
+            self.assertLessEqual(cell_len(line), 34)
+        self.assertTrue(any("▀" in line or "▄" in line for line in lines))
+        hidden = logo_art(16, 7, reveal=0)
+        for glyph in ("▀", "▄", "█"):
+            self.assertNotIn(glyph, hidden.plain)
+
+        offsets = [0]
+        for line in lines:
+            offsets.append(offsets[-1] + len(line) + 1)
+
+        def style_at(row, col):
+            pos = offsets[row] + col
+            for span in art.spans:
+                if span.start <= pos < span.end:
+                    return str(span.style or "")
+            return ""
+
+        def rgb_of(style):
+            match = regex.search(r"#([0-9a-fA-F]{6})", style)
+            if not match:
+                return None
+            value = match.group(1)
+            return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+        apex_col = 34 // 2
+        apex = None
+        for row in range(1, 6):
+            for col in range(apex_col - 2, apex_col + 3):
+                rgb = rgb_of(style_at(row, col))
+                if rgb and rgb[0] > 150 and rgb[0] > rgb[2] + 60:
+                    apex = rgb
+                    break
+            if apex:
+                break
+        self.assertIsNotNone(apex, "expected a gold-ish pixel near the top centre (the A apex)")
+        left = None
+        for row in range(4, 12):
+            for col in range(0, 6):
+                rgb = rgb_of(style_at(row, col))
+                if rgb and abs(rgb[0] - rgb[2]) < 60 and rgb[0] > 100:
+                    left = rgb
+                    break
+            if left:
+                break
+        self.assertIsNotNone(left, "expected a chrome-ish pixel in the left arm of the Y")
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_terminal_splash_shows_and_dismisses_on_key(self):
+        from bridge.terminal import AnYTerminal
+        from bridge.terminal_brand import Splash
+
+        async def run():
+            app = AnYTerminal(LocalClient(self.port))
+            app.no_color = False
+            app.animation_level = "full"
+            async with app.run_test(size=(120, 36)) as pilot:
+                self.assertTrue(app.splash_active)
+                self.assertIsInstance(app.screen, Splash)
+                await pilot.press("space")
+                await pilot.pause(0.2)
+                self.assertFalse(app.splash_active)
+                self.assertNotIsInstance(app.screen, Splash)
+
+        asyncio.run(run())
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_terminal_left_right_arrows_switch_between_home_and_chat(self):

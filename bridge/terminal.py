@@ -6,72 +6,32 @@ import secrets
 from contextlib import suppress
 from typing import Any
 
-from rich import box
 from rich.cells import cell_len, get_character_cell_size
-from rich.console import Group
+from rich.console import Group, Measurement
 from rich.markdown import Markdown
 from rich.padding import Padding
-from rich.panel import Panel
 from rich.rule import Rule
+from rich.segment import Segment
+from rich.style import Style
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.theme import Theme
 from textual.widgets import Button, Input, Label, OptionList, RichLog, Select, SelectionList, Static
 from textual.widgets.option_list import Option
 
 from .cli import CliError, room_path
+from .terminal_brand import (
+    AGENT_FALLBACKS, CORAL, GOLD, INK, MINT, MUTED_TEXT,
+    PAPER, RAISED, RED, SILVER, TERMINAL_THEME, Splash, WelcomeMark, splash_enabled,
+)
 from .terminal_input import COMMANDS, Completion, Composer, plain
+from .version import VERSION
 
 
 CLI_VIAS = ("cli", "codex", "claude")
-INK = "#0b0e13"
-PAPER = "#e6eef6"
-SILVER = "#b7d0dc"
-GOLD = "#e4a832"
-CORAL = "#ff977a"
-RED = "#ff7a85"
-MINT = "#88d3b8"
-MUTED_TEXT = "#a6b6c7"
-AGENT_FALLBACKS = ("#8ebdf4", "#e995b4", "#9ac986", "#c8b6ff", MINT)
-TERMINAL_THEME = Theme(
-    name="any", primary=SILVER, accent=SILVER, success=MINT,
-    warning=CORAL, error=RED, foreground=PAPER,
-    background=INK, surface="#12171f", panel="#283442",
-)
-
-
-class WelcomeMark(Static):
-    FRAMES = (
-        " ╱       ╲\n╱         ╲",
-        " ╱╲     ╲ ╱\n╱──╲     ╵",
-        " ╱╲ ╲ ╱\n╱──╲ ╵",
-        "AnY",
-    )
-
-    def on_mount(self):
-        animate = motion_enabled(self.app) and getattr(self.app, "room", None) is None
-        self.frame = 0 if animate else len(self.FRAMES) - 1
-        self.draw_mark()
-        if animate:
-            self.set_interval(0.15, self.advance, repeat=len(self.FRAMES) - 1)
-
-    def advance(self):
-        self.frame = min(self.frame + 1, len(self.FRAMES) - 1)
-        self.draw_mark()
-
-    def draw_mark(self):
-        settled = self.frame == len(self.FRAMES) - 1
-        self.set_class(settled, "settled")
-        mark = Text(no_wrap=True, overflow="crop")
-        for line in self.FRAMES[self.frame].splitlines(keepends=True):
-            gold, silver = (line[:1], line[1:]) if settled else (line[:4], line[4:])
-            mark.append(gold, style="bold" if self.app.no_color else f"bold {GOLD}")
-            mark.append(silver, style="bold" if self.app.no_color else f"bold {SILVER}")
-        self.update(mark)
 
 
 def motion_enabled(app):
@@ -101,10 +61,44 @@ def _message_body_items(message, *, markdown=False):
     if message.get("recalled"):
         items.append(Text("消息已撤回", style=f"dim {MUTED_TEXT}"))
     elif text := message.get("text"):
-        items.append(Markdown(plain(text), hyperlinks=False) if markdown else Text(plain(text), style=PAPER))
+        items.append(Markdown(plain(text), hyperlinks=False, code_theme="github-dark") if markdown else Text(plain(text), style=PAPER))
     for attachment in message.get("attachments", []):
         items.append(Text("📎 " + plain(attachment.get("name", "文件")), style=f"bold {SILVER}"))
     return items
+
+
+class Barred:
+    """Render a child with a vertical bar prefix on every line, optionally over a background."""
+
+    def __init__(self, renderable, prefix="▌ ", style=SILVER, *, bg=None):
+        self.renderable = renderable
+        self.prefix = prefix
+        self.style = style
+        self.bg = bg
+
+    def __rich_console__(self, console, options):
+        width = max(4, options.max_width - cell_len(self.prefix))
+        lines = console.render_lines(self.renderable, options.update(width=width), pad=False)
+        bar = Segment(self.prefix, Style.parse(self.style))
+        bg = Style(bgcolor=self.bg) if self.bg else None
+        newline = Segment.line()
+        for line in lines:
+            yield bar
+            used = 0
+            for seg in line:
+                used += cell_len(seg.text)
+                if bg is not None:
+                    yield Segment(seg.text, (seg.style or Style()) + bg)
+                else:
+                    yield seg
+            if bg is not None and used < width:
+                yield Segment(" " * (width - used), bg)
+            yield newline
+
+    def __rich_measure__(self, console, options):
+        measurement = Measurement.get(console, options, self.renderable)
+        extra = cell_len(self.prefix)
+        return Measurement(measurement.minimum + extra, measurement.maximum + extra)
 
 
 def transcript_entry(message, agents, colors, members):
@@ -117,44 +111,43 @@ def transcript_entry(message, agents, colors, members):
         if "\n" not in text and len(text) <= 44 and not message.get("attachments") and not message.get("reply_to"):
             return Padding(Rule(f" ─ 系统 · {text} ", style=f"dim {MUTED_TEXT}", characters="─"), (0, 2, 1, 2))
         body_items = _message_body_items(message, markdown=False)
-        header = Text.assemble((" ─ 系统 ", f"bold {INK} on {MUTED_TEXT}"), (f"  {time_str}" if time_str else "", f"dim {MUTED_TEXT}"))
+        header = Text.assemble(("─ 系统", f"bold {MUTED_TEXT}"), (f"  {time_str}" if time_str else "", f"dim {MUTED_TEXT}"))
         return Padding(Group(header, *(Padding(item, (0, 0, 0, 2)) for item in body_items)), (0, 2, 1, 2))
 
     is_human = agent.get("kind") == "user" or members.get(speaker, {}).get("transport") == "human"
     body_items = _message_body_items(message, markdown=(speaker != "你" and not is_human))
     content = Group(*body_items) if body_items else Text("")
 
-    accent = SILVER if speaker == "你" or is_human else GOLD
-    if speaker == "你":
-        title = Text(" [你] ", style=f"bold {SILVER}")
-    elif is_human:
-        title = Text(f" [成员 · {name}] ", style=f"bold {SILVER}")
-    else:
-        title = Text.assemble((" [AI · ", f"bold {GOLD}"),
-                              (name, f"bold {colors.get(speaker) or GOLD}"),
-                              ("] ", f"bold {GOLD}"))
+    if speaker == "你" or is_human:
+        marker = "◆ 你" if speaker == "你" else f"○ {name} · 成员"
+        header = Text(marker, style=f"bold {SILVER}")
+        if time_str:
+            header.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
+        bar_style = SILVER if speaker == "你" else MUTED_TEXT
+        block = Barred(Group(header, content), prefix="▌ ", style=bar_style, bg=RAISED)
+        return Padding(block, (0, 0, 1, 0))
+
+    color = colors.get(speaker) or GOLD
+    header = Text.assemble((f"● {name}", f"bold {color}"), (" · AI", f"dim {GOLD}"))
     if name.casefold() != speaker.casefold():
-        title.append(f"  @{plain(speaker)}", style=MUTED_TEXT)
+        header.append(f"  @{plain(speaker)}", style=f"dim {MUTED_TEXT}")
     if message.get("origin") == "debate-summary":
-        title.append("  论道总结", style=f"bold {accent}")
+        header.append("  论道总结", style=f"bold {GOLD}")
     elif message.get("to_user"):
-        title.append("  → 用户", style=f"bold {SILVER}")
+        header.append("  → 用户", style=f"bold {SILVER}")
     if time_str:
-        title.append(f"  {time_str}", style=MUTED_TEXT)
-    card_bg = "#191f27" if accent == SILVER else "#12171f"
-    panel = Panel(content, title=title, title_align="left", box=box.SQUARE,
-                  border_style=accent, style=f"{PAPER} on {card_bg}", padding=(0, 1))
-    return Padding(panel, (0, 0, 1, 4) if speaker == "你" else (0, 2, 1, 0))
+        header.append(f"  {time_str}", style=f"dim {MUTED_TEXT}")
+    return Padding(Group(header, Padding(content, (0, 0, 0, 2))), (0, 0, 1, 0))
 
 
 def append_details_header(details, title, bg_color, count=None, right_note="", *, first=False):
     if not first:
-        details.append("\n\n" + "─" * 28 + "\n", style="dim #46576b")
-    details.append(f"▌ {title} ", style=f"bold {INK} on {bg_color}")
+        details.append("\n\n")
+    details.append(title, style=f"bold {bg_color}")
     if count is not None:
-        details.append(f" {count}", style=f"bold {bg_color}")
+        details.append(f"  {count}", style=f"dim {bg_color}")
     elif right_note:
-        details.append(f" {right_note}", style=f"bold {bg_color}")
+        details.append(f"  {right_note}", style=f"dim {bg_color}")
     details.append("\n")
 
 
@@ -448,15 +441,21 @@ class AnYTerminal(App):
     #layout.home { align-horizontal: center; }
     #layout.home #navigation { display: block; }
     #layout.home #chat, #layout.home #details-pane { display: none; }
-    #masthead { height: auto; margin-bottom: 1; }
-    #welcome { width: 1fr; height: 3; padding: 0 1; }
-    #welcome.settled { height: 1; }
-    #brand-name { width: auto; height: 1; padding: 0 1; color: $text-muted; }
+    #masthead { height: auto; margin-bottom: 1; border: round #89651e; padding: 0 1; }
+    #masthead-body { height: auto; }
+    #welcome { width: auto; height: auto; padding: 0 2 0 1; }
+    #masthead-info { width: 1fr; height: auto; padding: 0 1; }
+    #masthead-tips { width: auto; height: auto; padding: 0 1 0 2; border-left: solid #2c3644; display: none; }
+    #layout.wide #masthead-tips { display: block; }
+    #masthead-tagline { display: none; width: auto; height: 1; padding: 0 1; color: $text-muted; }
+    #layout.compact #masthead { border: none; padding: 0; }
+    #layout.compact #masthead-info, #layout.compact #masthead-tips { display: none; }
+    #layout.compact #masthead-tagline { display: block; }
     #projects-heading { height: 1; width: 1fr; }
     #project-actions { height: 1; margin: 0 0 1 1; }
-    #rooms { height: 1fr; border: round $panel; padding: 0 1; background: $surface; }
-    #rooms > .option-list--option-highlighted { background: $primary 28%; color: $text; text-style: bold; }
-    #rooms:focus { border: round $primary; }
+    #rooms { height: 1fr; border: none; padding: 0 1; background: $background; background-tint: transparent; }
+    #rooms:focus { border: none; background: $background; background-tint: transparent; }
+    #rooms > .option-list--option-highlighted { background: $surface; color: $text; text-style: bold; }
     #home-help { height: 1; padding: 0 1; color: $text-muted; text-overflow: ellipsis; }
     #chat { width: 1fr; min-width: 10; }
     #transcript { height: 1fr; min-height: 2; padding: 1 1 0 1; background: $background; overflow-x: hidden; scrollbar-size-vertical: 1; }
@@ -467,31 +466,38 @@ class AnYTerminal(App):
     #details { padding: 1 1 1 2; }
     .heading { color: $text; padding: 0 1; height: 1; text-style: bold; }
     #chat-heading, #details-heading, #roster-bar { height: 1; }
-    #chat-heading, #details-heading { margin: 0; padding: 0 1; background: $surface; }
+    #chat-heading, #details-heading { margin: 0; padding: 0 1; background: $background; }
+    #details-heading { background: $surface; }
     #title, #details-label { width: 1fr; height: 1; text-overflow: ellipsis; }
-    #meeting-mode { width: auto; height: 1; padding: 0; background: $surface; }
-    #roster-bar { height: 2; border-bottom: solid $panel; padding: 0 1; background: $surface; }
+    #meeting-mode { width: auto; height: 1; padding: 0; background: $background; }
+    #roster-bar { height: 1; padding: 0 1; background: $background; }
     #roster-scroll { width: 1fr; height: 1; overflow-x: auto; scrollbar-size-horizontal: 0; }
     #roster { width: auto; height: 1; }
     .link-button { width: auto; min-width: 0; height: 1; padding: 0 1; }
     #status, #activity { padding: 0 2; height: auto; color: $text-muted; }
-    #status { max-height: 1; text-overflow: ellipsis; background: $surface; }
+    #status { max-height: 1; text-overflow: ellipsis; background: $background; color: $text-muted; }
     #activity { max-height: 4; }
     #composer { height: auto; padding: 0 1; }
-    #message { height: 3; border: round $panel; background: $surface; }
-    #message:focus { border: round $primary; }
+    #message { height: 3; border: round #46576b; background: $background; }
+    #message:focus { border: round #9f7523; }
     #completion { display: none; width: 100%; padding: 0; background: $surface; border: round $panel; }
     #completion > .option-list--option-highlighted { background: $primary 30%; color: $text; }
     #prompt-hint { padding: 0 1; height: 1; color: $text-muted; text-overflow: ellipsis; }
     CreateForm, SessionPicker, DebateForm { align: center middle; }
-    #session-picker { width: 72; max-width: 95%; height: 18; max-height: 90%; border: round $primary; background: $surface; }
+    #session-picker { width: 72; max-width: 95%; height: 18; max-height: 90%; border: round #9f7523; background: $surface; }
     #session-results { height: 1fr; border: none; }
-    #new-form { width: 62; max-width: 95%; height: auto; border: round $primary; background: $surface; padding: 1 2; }
+    #new-form { width: 62; max-width: 95%; height: auto; border: round #9f7523; background: $surface; padding: 1 2; }
     #new-actions { height: auto; }
-    #debate-form { width: 64; max-width: 95%; height: auto; max-height: 96%; border: round $primary; background: $surface; padding: 1; }
+    #debate-form { width: 64; max-width: 95%; height: auto; max-height: 96%; border: round #9f7523; background: $surface; padding: 1; }
     #debate-rounds { height: 4; }
     #debate-members { height: auto; max-height: 9; }
     #debate-actions { height: 3; }
+    Splash { background: #0b0e13; }
+    #splash-center { width: 100%; height: 100%; align: center middle; }
+    #splash-box { width: auto; height: auto; }
+    #splash-art { width: auto; height: auto; }
+    #splash-word { width: 34; height: 1; margin-top: 1; text-align: center; }
+    #splash-tag { width: 34; height: 1; text-align: center; }
     """
 
     def __init__(self, client, room=None):
@@ -515,6 +521,7 @@ class AnYTerminal(App):
         self.discovered: dict[str, str] = {}
         self._transcript_items: list[Any] = []
         self._transcript_width: int | None = None
+        self.splash_active = False
 
     @property
     def composer(self):
@@ -523,9 +530,17 @@ class AnYTerminal(App):
     def compose(self) -> ComposeResult:
         with Horizontal(id="layout", classes="home" if self.room is None else ""):
             with Vertical(id="navigation"):
-                with Horizontal(id="masthead"):
-                    yield WelcomeMark(id="welcome")
-                    yield Static("Agents and You", id="brand-name")
+                with Vertical(id="masthead"):
+                    with Horizontal(id="masthead-body"):
+                        yield WelcomeMark(id="welcome")
+                        yield Static(id="masthead-info", markup=False)
+                        yield Static(
+                            Text.assemble(("上手提示", f"bold {GOLD}"),
+                                          ("\nEnter 打开会话 · Ctrl+N 新建", f"dim {MUTED_TEXT}"),
+                                          ("\n/ 命令 · @ 点名成员", f"dim {MUTED_TEXT}"),
+                                          ("\nF3 看板与成员 · F1 帮助", f"dim {MUTED_TEXT}")),
+                            id="masthead-tips", markup=False)
+                        yield Static(f"  v{VERSION} · Agents and You", id="masthead-tagline", markup=False)
                 with Horizontal(id="project-actions"):
                     yield Label("项目与会话", id="projects-heading", classes="heading")
                     yield Button("新建会话", id="home-new", compact=True, classes="link-button")
@@ -553,8 +568,50 @@ class AnYTerminal(App):
         yield Static("正在连接本机后台…", id="status", markup=False)
 
     def on_mount(self):
+        self.splash_active = False
+        self._sync_compact()
+        self.update_masthead()
         self.focus_main()
         self.refresh_backend()
+        if self.room is None and motion_enabled(self) and splash_enabled(self):
+            self.splash_active = True
+
+            def splash_done(_result=None):
+                self.splash_active = False
+
+            self.push_screen(Splash(), splash_done)
+
+    def _sync_compact(self):
+        layout = self.query_one("#layout")
+        compact = self.size.width < 72 or self.size.height < 26
+        layout.set_class(compact, "compact")
+        layout.set_class(self.size.width >= 100, "wide")
+        mark = self.query_one("#welcome", WelcomeMark)
+        if mark.compact != compact:
+            mark.compact = compact
+            mark.redraw()
+        with suppress(Exception):
+            self.query_one("#masthead").border_title = f" AnY v{VERSION} "
+
+    def update_masthead(self):
+        try:
+            info = self.query_one("#masthead-info", Static)
+        except Exception:
+            return
+        cwd = os.getcwd()
+        width = max(20, self.size.width - 60)
+        if cell_len(cwd) > width:
+            while cwd and cell_len("…" + cwd) > width:
+                cwd = cwd[1:]
+            cwd = "…" + cwd
+        connection = ("已连接", MINT) if self.connected else ("连接中…", MUTED_TEXT)
+        lines = Text()
+        lines.append("欢迎回来\n", style=f"bold {PAPER}")
+        lines.append("Agents and You\n\n", style=MUTED_TEXT)
+        lines.append(cwd + "\n", style=f"dim {MUTED_TEXT}")
+        lines.append(f"本机后台 127.0.0.1:{self.client.port}  ", style=f"dim {MUTED_TEXT}")
+        lines.append(connection[0], style=connection[1])
+        info.update(lines)
 
     async def on_unmount(self):
         self.workers.cancel_group(self, "refresh")
@@ -568,6 +625,8 @@ class AnYTerminal(App):
 
     def on_resize(self, event):
         self.query_one("#layout").set_class(event.size.width < 100, "narrow")
+        self._sync_compact()
+        self.update_masthead()
         self.composer.size_completion_menu()
         self.call_after_refresh(self._sync_transcript_width)
 
@@ -803,7 +862,7 @@ class AnYTerminal(App):
         self.state = state
         title = plain(state["title"])
         mode = " 干活 " if state.get("mode") == "work" else " 讨论 "
-        mode_bg = MUTED_TEXT if state.get("mode") == "work" else SILVER
+        mode_bg = GOLD if state.get("mode") == "work" else SILVER
         project_id = state.get("project") or next((r["project"] for r in self.rooms if r["id"] == self.room), "")
         project = next((p["name"] for p in self.projects if p["id"] == project_id), "")
         heading = Text.assemble((plain(project) + " / " if project else "", f"dim {MUTED_TEXT}"), (title, f"bold {PAPER}"))
@@ -1005,6 +1064,7 @@ class AnYTerminal(App):
                     if not self.is_running:
                         break
                     self.connected = True
+                    self.update_masthead()
                     lease_due = now + 30
                 if now >= rooms_due:
                     rooms_payload = await self.request("/api/rooms")

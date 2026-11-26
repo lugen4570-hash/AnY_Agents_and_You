@@ -139,7 +139,7 @@ class Composer(Vertical):
     def compose(self):
         yield OptionList(id="completion", compact=True)
         yield Prompt(id="message", placeholder="输入消息 · / 命令 · @ 成员", highlight_cursor_line=False)
-        yield Static("Enter 发送  ·  Shift+Enter 换行", id="prompt-hint", markup=False)
+        yield Static("Enter 发送  ·  Shift+Enter 换行  ·  / 命令  ·  @ 成员  ·  F3 看板", id="prompt-hint", markup=False)
 
     def on_mount(self):
         self.menu.display = False
@@ -195,7 +195,7 @@ class Composer(Vertical):
         self.menu.display = bool(suggestions)
         self.query_one("#prompt-hint", Static).update(
             "↑↓ 选择  ·  Tab 补全  ·  Enter 确认  ·  Esc 收起" if suggestions
-            else "Enter 发送  ·  Shift+Enter 换行"
+            else "Enter 发送  ·  Shift+Enter 换行  ·  / 命令  ·  @ 成员  ·  F3 看板"
         )
 
     def size_completion_menu(self):
