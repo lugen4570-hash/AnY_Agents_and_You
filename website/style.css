@@ -417,6 +417,8 @@ html:not(.has-js) .stage-tabs { display: none; }
 .dl-heading { align-self: end; }
 .dl-heading h1 { font-size: clamp(43px, 6vw, 87px); }
 .dl-heading p { color: var(--muted); margin: 0; }
+.download-mcp { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 6px; color: var(--action); text-decoration: underline; text-underline-offset: 4px; }
+.download-mcp:hover { color: var(--ink); }
 .platform-tiles { display: grid; align-self: start; gap: 6px; max-width: 340px; }
 .platform-tile {
   display: flex;
