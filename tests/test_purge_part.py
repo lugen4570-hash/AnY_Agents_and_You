@@ -183,10 +183,11 @@ class T(unittest.TestCase):
         self.assertEqual(ROOM.session_name(), "[AnY] 登录重构")
         from unittest import mock
         from bridge import drivers
-        with mock.patch.object(R.registry, "get", return_value={"id": "opencode", "driver": "cli", "context": "delta"}):
-            prompt = ROOM.build_prompt("opencode", "discuss")[0]
+        with mock.patch.object(R.registry, "get", return_value={"id": "claude", "driver": "cli", "context": "delta"}):
+            prompt = ROOM.build_prompt("claude", "discuss")[0]
         self.assertTrue(prompt.startswith("[AnY] 登录重构\n【AnY】"))
         spec = R.registry.get("opencode")
+        self.assertIsNotNone(spec)
         if spec:
             ctx = drivers._ctx("opencode", spec, ROOM, "discuss", None)
             args, _ = drivers._compose(spec, ctx, None, (), "discuss", "hi")
