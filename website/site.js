@@ -541,11 +541,17 @@ if (installer) {
   const status = document.querySelector('[data-copy-status]');
   const platformButtons = [...installer.querySelectorAll('[data-platform]')];
   const posixCommand = command.textContent;
+  const commands = {
+    posix: posixCommand,
+    windows: command.dataset.windowsCommand || posixCommand,
+    cmd: command.dataset.cmdCommand || posixCommand,
+  };
 
   function selectCliOs(platform) {
-    command.textContent = platform === 'windows' ? command.dataset.windowsCommand : posixCommand;
+    const target = Object.prototype.hasOwnProperty.call(commands, platform) ? platform : 'posix';
+    command.textContent = commands[target];
     for (const button of platformButtons) {
-      button.setAttribute('aria-pressed', String(button.dataset.platform === platform));
+      button.setAttribute('aria-pressed', String(button.dataset.platform === target));
     }
     if (status) status.textContent = '';
   }

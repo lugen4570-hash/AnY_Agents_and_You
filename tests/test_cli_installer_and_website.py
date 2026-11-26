@@ -1,12 +1,16 @@
 """Verify CLI bootstrap scripts, macOS DMG packaging config, and download page wiring."""
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import io
 import json
 from pathlib import Path
+import re
 import subprocess
+import sys
 import tarfile
 import tempfile
+from threading import Thread
 import unittest
 from unittest.mock import patch
 
@@ -38,6 +42,9 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
         self.assertIn('downloads/AnY-macOS-x86_64.dmg', html)
         self.assertIn('install-cli.sh', html)
         self.assertIn('install-cli.ps1', html)
+        self.assertIn('data-platform="cmd"', html)
+        self.assertIn('data-cmd-command=', html)
+        self.assertIn('powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex"', html)
         self.assertIn('data-install-guide', html)
         self.assertIn('data-wechat-banner', html)
 
@@ -90,6 +97,35 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
         self.assertIn('import sys, venv, ensurepip', script)
         self.assertIn('-m venv "$probe_dir"', script)
         self.assertIn('-m pip --version', script)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows cmd.exe check')
+    def test_cmd_install_command_executes_via_cmd_exe(self):
+        html = (ROOT / 'website' / 'download.html').read_text(encoding='utf-8')
+        match = re.search(r"data-cmd-command='([^']+)'", html)
+        self.assertIsNotNone(match)
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Write-Output 'cmd-bridge-ok'")
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            cmd = match.group(1).replace(
+                'https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1',
+                f'http://127.0.0.1:{server.server_port}/install-cli.ps1',
+            )
+            res = subprocess.run(f'cmd.exe /c {cmd}', capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, res.stderr + res.stdout)
+            self.assertIn('cmd-bridge-ok', res.stdout)
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == '__main__':

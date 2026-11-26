@@ -119,11 +119,12 @@
               <div class="platform-picker" aria-label="终端系统">
                 <button type="button" data-platform="posix" aria-pressed="true">macOS / Linux</button>
                 <button type="button" data-platform="windows" aria-pressed="false">Windows PowerShell</button>
+                <button type="button" data-platform="cmd" aria-pressed="false">Windows CMD</button>
               </div>
               <button class="copy-command" type="button" data-copy>复制安装命令</button>
             </div>
-            <pre tabindex="0"><code data-command data-windows-command="irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex">curl -fsSL https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.sh | bash</code></pre>
-            <noscript><p class="noscript-tip">Windows 请在 PowerShell 执行 <code>irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex</code>。</p></noscript>
+            <pre tabindex="0"><code data-command data-windows-command="irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex" data-cmd-command='powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex"'>curl -fsSL https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.sh | bash</code></pre>
+            <noscript><p class="noscript-tip">Windows 请在 PowerShell 执行 <code>irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex</code>，或在 CMD 执行 <code>powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://lugen4570-hash.github.io/AnY_Agents_and_You/install-cli.ps1 | iex"</code>。</p></noscript>
           </div>
           <p class="copy-status" data-copy-status role="status" aria-live="polite"></p>
           <div class="platform-links"><a href="support.html#install-cli">CLI 安装与使用说明 ↗</a></div>
