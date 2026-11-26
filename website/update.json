@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.35",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.35.exe",
-  "sha256": "70d2ea0879f6b3315442f40b42490fb6fb8d4ababdd1a57650a1b33651d15213",
-  "size": 13664287,
-  "notes": "AnY 2.8.35 增加桌面 Harness 的 MCP 下载与配置入口，支持复制提示词交给 Harness 配置，也可下载独立 ZIP 手动安装。添加联系人时，仅在本机程序列表显示检测到的 CLI 或 ACP，桌面 MCP 使用统一入口。"
+  "version": "2.8.36",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.36.exe",
+  "sha256": "62e6271b0f279a9877985865833d9ba18fcc613943bb05669712cfc942354763",
+  "size": 13666856,
+  "notes": "AnY 2.8.36 移除添加联系人向导中的 MCP 官网下载链接。MCP 下载和安装说明集中在官网。"
 }
