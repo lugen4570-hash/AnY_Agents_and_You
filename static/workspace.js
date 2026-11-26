@@ -135,17 +135,26 @@ function drawRoomIdentity(){
 function drawRooms(){
   const live=ROOMS.filter(m=>!m.archived||m.id===RID),query=document.getElementById('navSearch').value.trim().toLocaleLowerCase();
   drawRoomIdentity();
-  const canMove=PROJECTS.length>1;
-  const row=m=>{const b=roomBadge(m);return '<li class="'+(m.id===RID?'cur':'')+'"><a href="?r='+encodeURIComponent(m.id)+'" data-id="'+esc(m.id)+'" draggable="'+canMove+'"'+(canMove?' title="拖到其他项目可移动会话"':'')+(m.id===RID?' aria-current="page"':'')+'>'+uiIcon('message')+'<span class="dot '+(b?(b[0]||'new'):'')+'"></span><span class="t">'+esc(m.title)+'</span>'+(b?'<span class="b '+b[0]+'">'+esc(b[1])+'</span>':'')+'</a></li>'};
-  const html=PROJECTS.map(p=>{
+  const roomCanMove=m=>(!m.project&&PROJECTS.length>0)||PROJECTS.length>1;
+  const row=m=>{const b=roomBadge(m),move=roomCanMove(m);return '<li class="'+(m.id===RID?'cur':'')+'"><a href="?r='+encodeURIComponent(m.id)+'" data-id="'+esc(m.id)+'" draggable="'+move+'"'+(move?' title="拖到其他项目可移动会话"':'')+(m.id===RID?' aria-current="page"':'')+'>'+uiIcon('message')+'<span class="dot '+(b?(b[0]||'new'):'')+'"></span><span class="t">'+esc(m.title)+'</span>'+(b?'<span class="b '+b[0]+'">'+esc(b[1])+'</span>':'')+'</a></li>'};
+  const standaloneAll=live.filter(m=>!m.project&&(m.standalone||!legacyProject(m.workdir)));
+  const standaloneMatches='独立会话'.includes(query);
+  const standaloneRooms=standaloneAll.filter(m=>!query||standaloneMatches||m.title.toLocaleLowerCase().includes(query));
+  let standaloneHtml='';
+  if(standaloneRooms.length){
+    const expanded=!!query||!collapsedProjects.has('__standalone__');
+    standaloneHtml='<li class="project"><div class="project-head"><button data-project-toggle="__standalone__" aria-expanded="'+expanded+'">'+uiIcon('message')+' <span>独立会话</span><span class="project-count">'+standaloneRooms.length+'</span></button><button data-project-new="" title="新建独立会话" aria-label="新建独立会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+standaloneRooms.map(row).join('')+'</ul></li>';
+  }
+  const projectHtml=PROJECTS.map(p=>{
     const matchesProject=p.name.toLocaleLowerCase().includes(query);
-    const rooms=live.filter(m=>(m.project||legacyProject(m.workdir))===p.id&&(matchesProject||m.title.toLocaleLowerCase().includes(query)));
+    const rooms=live.filter(m=>(m.project||(m.standalone?'':legacyProject(m.workdir)))===p.id&&(matchesProject||m.title.toLocaleLowerCase().includes(query)));
     if(query&&!matchesProject&&!rooms.length)return '';
     const expanded=!!query||!collapsedProjects.has(p.id);
     const isRemote=typeof agCat!=='undefined'&&agCat&&agCat.local_workspace===false;
     const settings=isRemote?'':'<button data-project-edit="'+esc(p.id)+'" title="项目设置" aria-label="'+esc(p.name)+'的项目设置">⚙</button>';
     return '<li class="project" data-project-drop="'+esc(p.id)+'"><div class="project-head"><button data-project-toggle="'+esc(p.id)+'" aria-expanded="'+expanded+'">'+uiIcon('folder')+' <span>'+esc(p.name)+'</span><span class="project-count">'+rooms.length+'</span></button>'+settings+'<button data-project-new="'+esc(p.id)+'" title="在此项目下新建会话" aria-label="新建会话">＋</button></div><ul class="rl project-rooms"'+(expanded?'':' hidden')+'>'+rooms.map(row).join('')+'</ul></li>';
-  }).join('')||'<li class="nav-empty">'+(query?'没有匹配的项目或会话':'创建项目，开始第一场会话。')+'</li>';
+  }).join('');
+  const html=(standaloneHtml+projectHtml)||'<li class="nav-empty">'+(query?'没有匹配的项目或会话':'点击「新建会话」开始第一场会话。')+'</li>';
   if(!roomList.dataset.dragging&&roomList.innerHTML!==html)roomList.innerHTML=html;
   const wait=ROOMS.filter(m=>m.id!==RID&&!m.archived&&(roomBadge(m)||[])[0]==='you').length;
   const manage=document.getElementById('bList');
@@ -228,25 +237,35 @@ async function openProject(project){document.body.classList.remove('nav-open');
 }
 async function openNew(first,projectId){
   document.body.classList.remove('nav-open');
-  if(!PROJECTS.length||!agCat){
-    const ready=Promise.all([PROJECTS.length?null:pollRooms().then(result=>{if(!result)throw Error('读取项目失败')}),agCat?null:pollContacts()]);
+  if(!agCat){
+    const ready=Promise.all([!PROJECTS.length&&typeof ROOMS==='undefined'?pollRooms().then(result=>{if(!result)throw Error('读取项目失败')}):null,pollContacts()]);
     if(!await loadContactPanel('新建会话',ready,()=>openNew(first,projectId)))return;
   }
-  if(!PROJECTS.length)return openProject();
-  const selected=projectId||(S&&(S.project||legacyProject(S.workdir)))||PROJECTS[0].id;
+  const hasExplicit=projectId!==undefined;
+  const selected=hasExplicit?(projectId||''):(S?(S.project||(S.standalone?'':legacyProject(S.workdir))):(PROJECTS[0]?.id||''));
   const members=CONTACTS.filter(a=>a.enabled).map(a=>memberPermissionRow(a,false,a.default_permissions||{})).join('');
-  showModal('<h3>新建会话</h3><label>所属项目<select id="nProject">'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
+  showModal('<h3>新建会话</h3><label>所属项目<select id="nProject"><option value=""'+(selected===''?' selected':'')+'>独立会话（不绑定项目）</option>'+PROJECTS.map(p=>'<option value="'+esc(p.id)+'"'+(selected===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></label><label>会话标题<input id="nTitle" maxlength="60" placeholder="这次想做什么？"></label><label>目标<textarea id="nAnn" placeholder="描述目标，可稍后修改"></textarea></label><h4>邀请联系人和设置权限</h4><div id="nContacts">'+(members||'<p class="hint">可以先创建空会话。</p>')+'</div><div class="btns"><button type="button" id="nCancel">取消</button><button type="button" id="nOk" class="pri">创建会话</button></div>');
   const rows=[...document.getElementById('nContacts').querySelectorAll('[data-member]')];
   const projectChoice=document.getElementById('nProject'),createButton=document.getElementById('nOk');
-  let workspaceChoice;
+  let workspaceChoice,workdirInput;
   const localWs=typeof agCat==='undefined'||!agCat||agCat.local_workspace!==false;
   if(localWs&&typeof document.createElement==='function'&&typeof post==='function'){
     const label=document.createElement('label');label.textContent='工作目录与分支';
     workspaceChoice=document.createElement('select');workspaceChoice.id='nWorkspace';label.appendChild(workspaceChoice);
-    projectChoice.parentElement.after(label);
+    const wdLabel=document.createElement('label');wdLabel.textContent='工作文件夹（可选）';
+    workdirInput=document.createElement('input');workdirInput.id='nWorkdir';workdirInput.value=(typeof agCat!=='undefined'&&agCat&&agCat.default_dir)||'';workdirInput.placeholder='留空则使用默认工作区目录';
+    wdLabel.appendChild(workdirInput);
+    projectChoice.parentElement.after(label,wdLabel);
+    if(typeof attachWorkspaceFolderPicker==='function')attachWorkspaceFolderPicker('nWorkdir');
     let request=0;
     projectChoice.onchange=async()=>{
       const id=projectChoice.value,current=++request;
+      if(!id){
+        label.hidden=true;wdLabel.hidden=false;
+        workspaceChoice.disabled=true;createButton.disabled=false;
+        return;
+      }
+      label.hidden=false;wdLabel.hidden=true;
       const project=PROJECTS.find(p=>p.id===id);
       const folders=(project?.workdirs||[project?.workdir]).filter(Boolean);
       workspaceChoice.innerHTML='<option value="">正在读取工作目录…</option>';
@@ -266,11 +285,13 @@ async function openNew(first,projectId){
   document.getElementById('nCancel').onclick=hideModal;
   document.getElementById('nOk').onclick=async e=>{
     const button=e.currentTarget;if(button.disabled)return;
-    const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:projectChoice.value,workspace:workspaceChoice?.value,...readMemberPermissions(rows)};
-    projectChoice.disabled=true;if(workspaceChoice)workspaceChoice.disabled=true;
+    const pid=projectChoice.value;
+    const wd=workdirInput?workdirInput.value.trim():'';
+    const body={title:document.getElementById('nTitle').value,announcement:document.getElementById('nAnn').value,project:pid,...(pid?{workspace:workspaceChoice?.value}:(wd?{workdir:wd}:{})),...readMemberPermissions(rows)};
+    projectChoice.disabled=true;if(workspaceChoice)workspaceChoice.disabled=true;if(workdirInput)workdirInput.disabled=true;
     button.disabled=true;button.textContent='正在创建…';
     try{const [ok,j]=await post('/api/rooms/new',body);if(!ok)return alert(j.error||'创建失败');if(document.getElementById('nOk')===button){hideModal();switchRoom(j.id)}pollRooms()}
-    finally{projectChoice.disabled=false;if(workspaceChoice)workspaceChoice.disabled=false;button.disabled=false;button.textContent='创建会话'}
+    finally{projectChoice.disabled=false;if(workspaceChoice&&pid)workspaceChoice.disabled=false;if(workdirInput)workdirInput.disabled=false;button.disabled=false;button.textContent='创建会话'}
   };
   document.getElementById('nTitle').focus();
 }
@@ -560,7 +581,7 @@ function bindRoomContextMenu(list){
       b.onclick=()=>{closeSidebarMenu();return fn()};
       menu.appendChild(b);
     };
-    const curPid=room.project||legacyProject(room.workdir);
+    const curPid=room.project||(room.standalone?'':legacyProject(room.workdir));
     const others=PROJECTS.filter(p=>p.id!==curPid);
     if(others.length){
       const lbl=document.createElement('div');
@@ -578,7 +599,7 @@ function bindRoomContextMenu(list){
     });
     const busy=!!((room.running&&room.running.length)||room.queued);
     addBtn('删除',async()=>{
-      if(!confirm('把「'+room.title+'」移到回收站？（可以恢复）'))return;
+      if(!confirm('删除「'+room.title+'」？（若无成员在终端运行，将同步清理 Agent 端对应会话）'))return;
       const [ok,res]=await post('/api/rooms/delete',{id:room.id});
       if(!ok)return alert((res&&res.error)||'失败');
       if(typeof RID!=='undefined'&&room.id===RID){

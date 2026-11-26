@@ -63,14 +63,10 @@ class T(unittest.TestCase):
         proj, keep = make_claude_files(csid)
         make_claude_files("old-claude-0001")
         new_room("留着的")
-        ok, err = R.trash_meeting(a)
+        trash_cleanup = []
+        ok, err = R.trash_meeting(a, cleanup=trash_cleanup)
         self.assertTrue(ok, err)
-        self.assertTrue(os.path.exists(os.path.join(proj, csid + ".jsonl")), "进回收站时不删")
-        cleanup = []
-        ok, err = R.purge_all(cleanup)
-        self.assertTrue(ok, err)
-        self.assertFalse(any("彻底删除" in m["text"] for m in ROOM.messages))
-        self.assertTrue(any(item["ai"] == "claude" and item["status"] == "deleted" for item in cleanup))
+        self.assertTrue(any(item["ai"] == "claude" and item["status"] == "deleted" for item in trash_cleanup))
         self.assertFalse(os.path.exists(os.path.join(proj, csid + ".jsonl")))
         self.assertFalse(os.path.exists(os.path.join(proj, csid)))
         self.assertFalse(os.path.exists(os.path.join(FAKE_HOME, "file-history", csid)))
@@ -78,6 +74,10 @@ class T(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(proj, "old-claude-0001.jsonl")))
         self.assertTrue(os.path.exists(keep), "别的会话不能动")
         self.assertIn(xsid, codex_deleted)
+        cleanup = []
+        ok, err = R.purge_all(cleanup)
+        self.assertTrue(ok, err)
+        self.assertFalse(any("彻底删除" in m["text"] for m in ROOM.messages))
 
     def test_shared_session_kept(self):
         a = new_room("共用甲")
@@ -130,23 +130,68 @@ class T(unittest.TestCase):
 
         new_room("删第三方会话")
         deleted_claude = []
+        deleted_opencode = []
 
         def fake_agent(aid):
             if aid == "claude-alt":
                 return {"id": "claude-alt", "driver": "claude"}
             if aid == "acp-bot":
                 return {"id": "acp-bot", "driver": "acp"}
+            if aid == "opencode":
+                return {"id": "opencode", "driver": "cli", "bin": ["opencode"]}
             return None
 
         with mock.patch.object(R.registry, "get", side_effect=fake_agent), \
-             mock.patch.object(agents, "delete_claude_session", side_effect=lambda sid: (deleted_claude.append(sid), 2)[1]):
+             mock.patch.object(agents, "delete_claude_session", side_effect=lambda sid: (deleted_claude.append(sid), 2)[1]), \
+             mock.patch.object(agents, "delete_opencode_session", side_effect=lambda sid, _spec=None: (deleted_opencode.append(sid), (True, ""))[1]):
             results = R.delete_sessions("测试场", {"claude-alt": ["aaaaaaaa-1111-2222-3333-444444444444"],
+                                                 "opencode": ["ses_1234abcd"],
                                                  "acp-bot": ["acp-session-1234"], "antigravity": ["agy-session-1234"]})
         self.assertEqual(deleted_claude, ["aaaaaaaa-1111-2222-3333-444444444444"])
-        self.assertEqual([item["status"] for item in results], ["deleted", "manual", "manual"])
-        self.assertEqual([item["ai"] for item in results], ["claude-alt", "acp-bot", "antigravity"])
+        self.assertEqual(deleted_opencode, ["ses_1234abcd"])
+        self.assertEqual([item["status"] for item in results], ["deleted", "deleted", "manual", "manual"])
+        self.assertEqual([item["ai"] for item in results], ["claude-alt", "opencode", "acp-bot", "antigravity"])
         self.assertEqual(results[-1]["session"], "agy-session-1234")
         self.assertFalse(any("彻底删除" in m["text"] for m in ROOM.messages))
+
+    def test_trash_preserves_sessions_when_agent_handed_off(self):
+        codex_deleted.clear()
+        a = new_room("已交给终端")
+        ROOM.handle_message("你", "两个都说话")
+        wait_idle()
+        csid, xsid = ROOM.meta["claude_session"], ROOM.meta["codex_session"]
+        proj, _ = make_claude_files(csid)
+        ROOM.meta["handed_off"]["claude"] = True
+        ROOM.save_meta()
+        new_room("留着的")
+        cleanup = []
+        ok, err = R.trash_meeting(a, cleanup=cleanup)
+        self.assertTrue(ok, err)
+        self.assertTrue(os.path.exists(os.path.join(proj, csid + ".jsonl")))
+        self.assertNotIn(xsid, codex_deleted)
+        purge_cleanup = []
+        ok, err = R.purge_all(purge_cleanup)
+        self.assertTrue(ok, err)
+        self.assertTrue(os.path.exists(os.path.join(proj, csid + ".jsonl")))
+        self.assertNotIn(xsid, codex_deleted)
+        self.assertTrue(any(item["status"] == "handed_off" for item in purge_cleanup))
+
+    def test_session_name_marks_any_for_harness_only(self):
+        new_room("登录重构")
+        self.assertEqual(ROOM.title(), "登录重构")
+        self.assertEqual(ROOM.summary()["title"], "登录重构")
+        self.assertEqual(ROOM.session_name(), "[AnY] 登录重构")
+        from unittest import mock
+        from bridge import drivers
+        with mock.patch.object(R.registry, "get", return_value={"id": "opencode", "driver": "cli", "context": "delta"}):
+            prompt = ROOM.build_prompt("opencode", "discuss")[0]
+        self.assertTrue(prompt.startswith("[AnY] 登录重构\n【AnY】"))
+        spec = R.registry.get("opencode")
+        if spec:
+            ctx = drivers._ctx("opencode", spec, ROOM, "discuss", None)
+            args, _ = drivers._compose(spec, ctx, None, (), "discuss", "hi")
+            self.assertIn("--title", args)
+            self.assertIn("[AnY] 登录重构", args)
 
 
 if __name__ == "__main__":

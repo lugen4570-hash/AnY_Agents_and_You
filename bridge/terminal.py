@@ -306,7 +306,7 @@ class CreateForm(ModalScreen):
             yield Label("新建项目" if self.create_project else "新建会话")
             yield Input(placeholder="项目名称" if self.create_project else "会话标题", id="new-title")
             if not self.create_project:
-                choices = [("按工作目录分组", "")] + [(plain(p["name"]), p["id"]) for p in self.projects]
+                choices = [("独立会话（不绑定项目）", "")] + [(plain(p["name"]), p["id"]) for p in self.projects]
                 yield Select(choices, value=self.current_project, allow_blank=False, id="new-project")
             yield Input(os.getcwd(), placeholder="工作目录", id="new-directory")
             with Horizontal(id="new-actions"):

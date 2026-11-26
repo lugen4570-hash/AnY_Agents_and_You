@@ -987,6 +987,34 @@ def delete_claude_session(sid):
     return n
 
 
+def delete_opencode_session(sid, spec=None):
+    """Delete a local OpenCode session via `opencode session delete <sid>`. Returns (ok, detail)."""
+    if not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", sid):
+        return False, "id 不对"
+    exe = agent_executable("opencode")
+    if not exe and spec:
+        for b in spec.get("bin") or ():
+            exe = resolve_cmd(b)
+            if exe:
+                break
+    if not exe:
+        return False, "找不到 opencode 命令"
+    try:
+        res = subprocess.run(
+            exe + ["session", "delete", sid],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, **NO_WINDOW,
+        )
+    except Exception as error:
+        return False, str(error)
+    output = ((res.stderr or "") + "\n" + (res.stdout or "")).strip()
+    if res.returncode == 0:
+        return True, ""
+    lower = output.lower()
+    if any(marker in lower for marker in ("not found", "does not exist", "no session")):
+        return True, "本机没找到"
+    return False, output.splitlines()[-1] if output else "退出码 %s" % res.returncode
+
+
 # ===================== codex（App Server）=====================
 # 旧的每轮起一个 codex exec 只能手动切回：环境变量 ROUNDTABLE_CODEX=exec
 CODEX_BACKEND = os.environ.get("ROUNDTABLE_CODEX", "appserver")

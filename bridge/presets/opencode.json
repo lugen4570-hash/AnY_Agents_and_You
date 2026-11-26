@@ -16,6 +16,10 @@
       "--model",
       "{model}"
     ],
+    "title": [
+      "--title",
+      "{session_name}"
+    ],
     "read": [],
     "work": [
       "--auto"

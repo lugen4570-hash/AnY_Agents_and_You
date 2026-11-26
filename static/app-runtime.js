@@ -89,7 +89,7 @@ async function pickRoom(){
   const rooms=(j&&j.rooms)||[];
   const id=(j&&j.last&&rooms.some(m=>m.id===j.last)&&j.last)||((rooms.find(m=>!m.archived)||rooms[0]||{}).id);
   if(id)switchRoom(id,true);
-  else {drawState();feed.innerHTML='<div class="workspace-empty"><h2>开始一场新会话</h2><p>添加联系人，创建项目，再邀请成员一起协作。</p><button id="emptyNew">＋ 创建项目 / 会话</button></div>';document.getElementById('emptyNew').onclick=()=>openNew(true)}
+  else {drawState();feed.innerHTML='<div class="workspace-empty"><h2>开始一场新会话</h2><p>直接新建会话即可协作，也可按项目整理工作目录与成员。</p><button id="emptyNew">＋ 新建会话</button></div>';document.getElementById('emptyNew').onclick=()=>openNew(true)}
 }
 document.getElementById('rNew').onclick=()=>openNew(false);
 if(typeof window!=='undefined'&&window.visualViewport){

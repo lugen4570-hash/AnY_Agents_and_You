@@ -309,9 +309,16 @@ class Room:
                 raise
         return True, ""
 
+    ANY_SESSION_PREFIX = "[AnY] "
+
     def session_name(self):
-        """AI 那边的会话名 = 会议名（用户 2026-10-18 定），在 claude / codex 的会话列表里能认出是哪场会议。"""
-        return (self.meta.get("title") or "").strip()[:80]
+        """AI 那边的会话名带 [AnY] 标注，在各 Harness 原生会话列表里能一眼区分；AnY 自身列表仍显示原始标题。"""
+        raw = (self.meta.get("title") or "").strip()
+        if not raw:
+            return f"{self.ANY_SESSION_PREFIX}会议"
+        if raw.startswith(self.ANY_SESSION_PREFIX):
+            return raw[:80]
+        return f"{self.ANY_SESSION_PREFIX}{raw}"[:80]
 
     def mode(self):
         return self.meta.get("mode", "discuss")
@@ -792,7 +799,8 @@ class Room:
             changed = self.meta.get("instruction_seen", {}).get(ai) != self.instruction_signature(ai, mode)
             if not native and (first or changed):
                 allowed = [label for key, label in {"read":"读消息", "post":"发言", "trigger":"唤起成员", "board":"改看板", "files":"发文件", "work":"修改文件/执行命令"}.items() if access.permissions(self, ai)[key] and (key != "work" or mode == "work")]
-                parts.append("【AnY】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
+                title_prefix = (self.session_name() + "\n") if first else ""
+                parts.append(title_prefix + "【AnY】你是 @%s；工作目录：%s；%s。仅允许：%s。遵守文件护栏；用 @成员 交接、@用户 汇报。附件用【发送】路径；看板用【公告】/【待办】内容、【完成】编号。" %
                              (ai, self.execution_workdir(ai), "讨论模式，只读" if mode != "work" else "干活模式", "、".join(allowed) or "无"))
             elif native and not first and changed:
                 perms = access.permissions(self, ai)
@@ -2275,7 +2283,9 @@ class Room:
             last_tu = next((m["id"] for m in reversed(self.messages) if m.get("to_user")), -1)
             return {"id": self.id, "title": self.meta["title"], "created": self.meta.get("created", ""),
                     "status": self.meta.get("status", "open"), "archived": is_archived(self.meta.get("status")),
-                    "workdir": self.workdir(), "project": self.meta.get("project", ""), "participants": list(self.ais), "mode": self.mode(), "loaded": True,
+                    "workdir": self.workdir(), "project": self.meta.get("project", ""),
+                    "standalone": bool(self.meta.get("standalone")) and not (self.meta.get("project") or ""),
+                    "participants": list(self.ais), "mode": self.mode(), "loaded": True,
                     "running": [a for a in self.state["running"]], "queued": self.queued_count(),
                     "count": len(self.messages), "last_to_user": last_tu,
                     "last_time": self.messages[-1]["time"] if self.messages else ""}
@@ -2373,7 +2383,9 @@ def scan(base):
                 st = m.get("status", "closed")
                 entry = {"id": name, "title": m.get("title", name), "created": m.get("created", ""),
                          "status": st, "archived": is_archived(st), "workdir": m.get("workdir") or PROJECT,
-                         "project": m.get("project", ""), "participants": m.get("participants", ["claude", "codex"]),
+                         "project": m.get("project", ""),
+                         "standalone": bool(m.get("standalone")) and not (m.get("project") or ""),
+                         "participants": m.get("participants", ["claude", "codex"]),
                          "mode": m.get("mode", "discuss")}
             with _scan_lock:
                 _scan_cache[ckey] = (sig, entry)
@@ -2518,12 +2530,14 @@ class Rooms:
         with self.lock:
             return list(self.loaded.values())
 
-    def create(self, title, ann="", wd=None, project="", participants=None, permissions=None):
+    def create(self, title, ann="", wd=None, project="", participants=None, permissions=None, standalone=False):
         """建一场新的。别的会议照常跑，不受影响。返回 Room。"""
         now = datetime.now()
         title = (title or "").strip() or "会议"
         meta = default_meta(title, ann, wd)
         meta["project"] = project
+        if standalone and not project:
+            meta["standalone"] = True
         if participants is not None:
             meta["participants"] = list(participants)
         if permissions is not None:
@@ -2588,10 +2602,16 @@ class Rooms:
                 meta = read_json(path)
                 if not isinstance(meta, dict):
                     return False, "无法读取会话设置"
-                write_json(path, {**meta, "project": project_id})
+                updated = {**meta, "project": project_id}
+                if project_id:
+                    updated.pop("standalone", None)
+                write_json(path, updated)
             else:
                 with r.lock:
                     updated = {**r.meta, "project": project_id}
+                    if project_id:
+                        updated.pop("standalone", None)
+                        r.meta.pop("standalone", None)
                     write_json(os.path.join(r.dir, "meeting.json"), updated)
                     r.meta["project"] = project_id
             return True, ""
@@ -2761,8 +2781,30 @@ def remove_contact(pid):
     return True, ""
 
 
-def trash_meeting(rid):
-    """移进回收站。这场会议的 AI 在跑时不行（别的会议在跑没关系）。返回 (ok, 错误)。"""
+def _room_has_handed_off_agent(m):
+    return any(bool(v) for v in ((m or {}).get("handed_off") or {}).values())
+
+
+def _unused_sessions(meta, exclude_dir=None):
+    """Return (unused_sids, shared_pairs) excluding sessions still referenced by other rooms."""
+    sids = meeting_sessions(meta)
+    used: set[tuple[str, str]] = set()
+    excluded = norm(exclude_dir) if exclude_dir else ""
+    for base in (MEET_DIR, TRASH_DIR):
+        for x in scan(base):
+            room_dir = os.path.join(base, x["id"])
+            if excluded and norm(room_dir) == excluded:
+                continue
+            mm = read_json(os.path.join(room_dir, "meeting.json")) or {}
+            for a, ss in meeting_sessions(mm).items():
+                used.update((a, v) for v in ss)
+    shared = [(a, v) for a, ss in sids.items() for v in ss if (a, v) in used]
+    unused = {a: [v for v in ss if (a, v) not in used] for a, ss in sids.items()}
+    return unused, shared
+
+
+def trash_meeting(rid, cleanup=None):
+    """移进回收站。这场会议的 AI 在跑时不行（别的会议在跑没关系）。若无成员交给终端运行，同时清理各 Agent 端会话。"""
     with rooms.lock:
         r = rooms.loaded.get(rid)
         if r is not None and r.busy_for():
@@ -2774,11 +2816,24 @@ def trash_meeting(rid):
         else:
             guard.release_room(rid)
         try:
-            _move_meeting(MEET_DIR, TRASH_DIR, rid)
+            new = _move_meeting(MEET_DIR, TRASH_DIR, rid)
         except Exception as e:
             return False, str(e)
+        d = os.path.join(TRASH_DIR, new)
+        m = read_json(os.path.join(d, "meeting.json")) or {}
+        title = m.get("title") or new
+        handed_off = _room_has_handed_off_agent(m)
+        sids, shared = ({}, []) if handed_off else _unused_sessions(m, exclude_dir=d)
     if last_room() is None:
         set_last("")
+    if not handed_off and any(sids.values()):
+        if cleanup is None:
+            threading.Thread(target=delete_sessions, args=(title, sids), name="trash-session-cleanup").start()
+        else:
+            cleanup.extend(delete_sessions(title, sids))
+    elif cleanup is not None and shared:
+        cleanup.extend({"room": title, "ai": a, "session": v, "status": "shared", "message": "其他会话仍在使用，已保留"}
+                       for a, v in shared)
     return True, ""
 
 
@@ -2818,25 +2873,25 @@ def purge_meeting(name, cleanup=None):
         m = read_json(os.path.join(d, "meeting.json")) or {}
         ref_name = m.get("ref_name") or ref_safe(name)
         wd = m.get("workdir") or PROJECT
-        sids = meeting_sessions(m)
+        handed_off = _room_has_handed_off_agent(m)
+        raw_sids = meeting_sessions(m)
         shutil.rmtree(d)
         try:
             if os.path.isdir(wd):
                 ws.purge_refs(ref_name, wd)
         except Exception as error:
             logger.debug("purge_refs failed for room %s (%s): %s", ref_name, wd, error)
-        # 别的会议（还在的、回收站里剩下的）也在用的会话不删
-        used: set[tuple[str, str]] = set()
-        for base in (MEET_DIR, TRASH_DIR):
-            for x in scan(base):
-                mm = read_json(os.path.join(base, x["id"], "meeting.json")) or {}
-                for a, ss in meeting_sessions(mm).items():
-                    used.update((a, v) for v in ss)
         title = m.get("title") or name
+        if handed_off:
+            if cleanup is not None:
+                cleanup.extend({"room": title, "ai": a, "session": v, "status": "handed_off",
+                                "message": "已有 Agent 交给终端运行，已保留"}
+                               for a, ss in raw_sids.items() for v in ss)
+            return True, ""
+        sids, shared = _unused_sessions(m)
         if cleanup is not None:
             cleanup.extend({"room": title, "ai": a, "session": v, "status": "shared", "message": "其他会话仍在使用，已保留"}
-                           for a, ss in sids.items() for v in ss if (a, v) in used)
-        sids = {a: [v for v in ss if (a, v) not in used] for a, ss in sids.items()}
+                           for a, v in shared)
     if any(sids.values()):
         if cleanup is None:
             threading.Thread(target=delete_sessions, args=(title, sids), daemon=True).start()
@@ -2846,13 +2901,15 @@ def purge_meeting(name, cleanup=None):
 
 
 def delete_sessions(title, sids):
-    """彻底删除会议后在后台删各 AI 的会话，返回清理结果列表。"""
+    """删除会议后在后台删各 AI 的会话，返回清理结果列表。"""
     results = []
     for agent_id, ids in (sids or {}).items():
         if not ids:
             continue
         spec = registry.get(agent_id) or {}
         drv = spec.get("driver") or agent_id
+        bins = [str(b).lower() for b in (spec.get("bin") or ())]
+        is_opencode = agent_id == "opencode" or any(os.path.basename(b) in ("opencode", "opencode.exe", "opencode.cmd") for b in bins)
         for sid in ids:
             try:
                 if drv == "claude" or agent_id == "claude":
@@ -2860,6 +2917,12 @@ def delete_sessions(title, sids):
                     status, message = ("deleted", "已删除 %d 项" % n) if n else ("missing", "本机没找到")
                 elif drv == "codex" or agent_id == "codex":
                     ok, why = agents.delete_codex_thread(sid)
+                    if not ok:
+                        status, message = "failed", "没删成（%s）" % why
+                    else:
+                        status, message = ("missing", why) if why else ("deleted", "已删除")
+                elif is_opencode:
+                    ok, why = agents.delete_opencode_session(sid, spec)
                     if not ok:
                         status, message = "failed", "没删成（%s）" % why
                     else:

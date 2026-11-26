@@ -198,7 +198,7 @@ def _norm(raw, idx=0):
     raw_args = raw.get("args")
     args = raw_args if isinstance(raw_args, dict) else {}
     arg = {}
-    for k in ("base", "read", "work", "new", "resume", "model", "effort", "acp"):
+    for k in ("base", "read", "work", "new", "resume", "model", "effort", "title", "acp"):
         arg[k] = _as_list(args.get(k))
 
     raw_parse = raw.get("parse")

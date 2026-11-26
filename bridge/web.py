@@ -289,13 +289,15 @@ class Handler(BaseHTTPRequestHandler):
             with R.rooms.lock:
                 rows = R.rooms.listing()
                 for row in rows:
-                    row["project"] = row.get("project") or projects.legacy_id(row["workdir"])
+                    if not row.get("project") and not row.get("standalone"):
+                        row["project"] = projects.legacy_id(row["workdir"])
                 groups = projects.listing(rows)
             return self._json(200, {"rooms": rows, "projects": groups, "last": R.last_room(), "default_workdir": PROJECT})
         if path == "/api/trash":
             rows = R.list_trash()
             for row in rows:
-                row["project"] = row.get("project") or projects.legacy_id(row["workdir"])
+                if not row.get("project") and not row.get("standalone"):
+                    row["project"] = projects.legacy_id(row["workdir"])
             return self._json(200, {"trash": rows})
         if path == "/api/devices":
             return self._json(200, {"account": devices.account(),
@@ -753,7 +755,7 @@ class Handler(BaseHTTPRequestHandler):
                     rows = R.rooms.listing()
                     if path == "/api/projects/delete":
                         pid = str(data.get("id") or "")
-                        project_rows = [row for row in rows if (row.get("project") or projects.legacy_id(row["workdir"])) == pid]
+                        project_rows = [row for row in rows if (row.get("project") or ("" if row.get("standalone") else projects.legacy_id(row["workdir"]))) == pid]
                         if any(row.get("running") or row.get("queued") or ((loaded := R.rooms.loaded.get(row["id"])) is not None and loaded.busy_for())
                                for row in project_rows):
                             return self._json(409, {"ok": False, "error": "项目下有正在运行或排队的会话，请先停止后再删除"})
@@ -806,7 +808,7 @@ class Handler(BaseHTTPRequestHandler):
                     wd = os.path.normpath(os.path.expandvars(os.path.expanduser(wd)))
                     if not os.path.isabs(wd) or not os.path.isdir(wd):
                         raise ValueError("工作文件夹不存在：" + wd)
-                    r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids, data.get("permissions"))
+                    r = R.rooms.create(str(data.get("title", "")), ann, wd, pid, member_ids, data.get("permissions"), standalone=not pid)
             except ValueError as error:
                 return self._json(400, {"error": str(error)})
             return self._json(200, {"ok": True, "id": r.id})

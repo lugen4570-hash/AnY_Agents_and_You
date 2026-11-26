@@ -312,6 +312,36 @@ assert.equal(node('navContactsButton').attrs['aria-pressed'], 'false');
                                 capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_open_new_and_draw_rooms_support_standalone_sessions(self):
+        script = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
+const source=fs.readFileSync('static/workspace.js','utf8');
+const drawPart=source.slice(source.indexOf('function drawRooms(){'),source.indexOf('// The server supplies'));
+const newPart=source.slice(source.indexOf('async function openNew('),source.indexOf('function syncMemberPermissionRow('));
+const nodes={};function node(id){return nodes[id]||={innerHTML:'',value:'',textContent:'',attrs:{},dataset:{},
+ setAttribute(k,v){this.attrs[k]=v},classList:{toggle(k,v){this[k]=v}},querySelectorAll:()=>[],focus(){}}}
+let modalHtml='',projectOpened=false;
+const ctx=vm.createContext({
+  PROJECTS:[],ROOMS:[{id:'s1',project:'',standalone:true,title:'随手聊'}],
+  RID:'s1',S:{title:'随手聊',project:'',standalone:true},collapsedProjects:new Set(),
+  roomList:node('roomList'),CONTACTS:[],PERM_GROUPS:[],agCat:{default_dir:'/tmp'},
+  document:{body:{classList:{remove(){}}},getElementById:node,title:''},
+  drawRoomIdentity(){},roomBadge:()=>null,esc:String,uiIcon:()=>'',legacyProject:()=>'legacy-dir',
+  openProject(){projectOpened=true},showModal:html=>modalHtml=html,hideModal(){},
+  async pollRooms(){return {rooms:[],projects:[]}},async pollContacts(){},
+});
+vm.runInContext(drawPart+'\n'+newPart,ctx);
+ctx.drawRooms();
+assert.match(node('roomList').innerHTML,/独立会话/);
+assert.match(node('roomList').innerHTML,/随手聊/);
+ctx.openNew(true);
+assert.equal(projectOpened,false,'openNew must not force creating a project');
+assert.match(modalHtml,/value="" selected>独立会话（不绑定项目）/);
+"""
+        result = subprocess.run(['node', '-e', script], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

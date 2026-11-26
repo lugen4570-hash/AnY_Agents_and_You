@@ -52,6 +52,7 @@ def _ctx(pid, spec, room, mode, session_id):
     wd = room.workdir() if room is not None else os.getcwd()
     return {"cwd": wd, "session": session_id or "",
             "room": room.id if room is not None else "", "room_title": room.title() if room is not None else "",
+            "session_name": room.session_name() if (room is not None and hasattr(room, "session_name")) else "",
             "goal": room.goal() if room is not None else "", "sid": session_id or "",
             "bridge_url": bridge_url("/mcp"), "bridge_key": key, "speaker": pid, "mode": mode,
             "title": room.title() if room is not None else ""}
@@ -66,6 +67,8 @@ def _build_arg_seq(spec, base_ctx, session_id, mode):
         seq += list(a.get("model") or [])
     if base_ctx.get("effort"):
         seq += list(a.get("effort") or [])
+    if base_ctx.get("session_name"):
+        seq += list(a.get("title") or [])
     seq += list(a["resume"] if session_id else a["new"])
     return seq
 

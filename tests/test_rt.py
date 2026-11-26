@@ -186,8 +186,9 @@ class T(unittest.TestCase):
             c = seen["cmd"]
             self.assertEqual(c[c.index("--model") + 1], "claude-opus-5-5")
             self.assertEqual(c[c.index("--effort") + 1], "medium")
-            # 会话名 = 会议名，同一会话名字没变就不重复设
-            self.assertEqual(c[c.index("-n") + 1], "甲")
+            # Harness 侧会话名带 [AnY] 标注，AnY 自身列表仍保持原始标题；同一会话名字没变就不重复设
+            self.assertEqual(r.summary()["title"], "甲")
+            self.assertEqual(c[c.index("-n") + 1], "[AnY] 甲")
             sid = c[c.index("--session-id") + 1]
             agents.call_ai("claude", "hi", sid, (), None, r)
             self.assertNotIn("-n", seen["cmd"])

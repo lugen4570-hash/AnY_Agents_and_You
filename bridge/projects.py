@@ -36,6 +36,8 @@ def listing(conversations):
         saved = read_json(os.path.join(LOG_DIR, "projects.json")) or []
         result = {p["id"]: p for p in saved}
         for r in conversations:
+            if not r.get("project") and r.get("standalone"):
+                continue
             pid = r.get("project") or legacy_id(r["workdir"])
             if pid not in result:
                 wd = r["workdir"]
@@ -125,6 +127,7 @@ def delete(pid, conversations=None):
         if len(remaining) != len(saved):
             write_json(path, remaining)
             return True, ""
-        if any((room.get("project") or legacy_id(room["workdir"])) == pid for room in (conversations or [])):
+        if any((room.get("project") or ("" if room.get("standalone") else legacy_id(room["workdir"]))) == pid
+               for room in (conversations or [])):
             return True, ""
         return False, "项目不存在"

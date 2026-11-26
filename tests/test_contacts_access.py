@@ -204,6 +204,22 @@ class Contacts(unittest.TestCase):
         self.assertIn(projects.legacy_id(DATA), [p["id"] for p in rows])
         self.assertEqual(projects.legacy_id(DATA), projects.legacy_id(DATA))
 
+    def test_standalone_session_without_project(self):
+        status, created = call("/api/rooms/new", {"title": "独立讨论", "project": "", "participants": []}, owner=True)
+        self.assertEqual(status, 200, created)
+        room = R.rooms.get(created["id"])
+        self.assertTrue(room.meta.get("standalone"))
+        self.assertEqual(room.meta.get("project"), "")
+        _, listing = call("/api/rooms", owner=True)
+        row = next(item for item in listing["rooms"] if item["id"] == created["id"])
+        self.assertEqual(row["project"], "")
+        self.assertTrue(row["standalone"])
+        self.assertNotIn(projects.legacy_id(row["workdir"]), [p["id"] for p in listing["projects"]])
+        project = projects.create("归档目标", DATA)
+        self.assertEqual(call("/api/rooms/move", {"id": created["id"], "project": project["id"]}, owner=True)[0], 200)
+        self.assertFalse(room.meta.get("standalone"))
+        self.assertEqual(room.meta.get("project"), project["id"])
+
     def test_only_invited_rooms_are_visible(self):
         status, data = call("/api/external/rooms", key=self.key)
         self.assertEqual(status, 200)

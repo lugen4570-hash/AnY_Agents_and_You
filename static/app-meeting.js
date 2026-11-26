@@ -376,8 +376,8 @@ async function openList(showTrash){
     const folders=(p.workdirs||[p.workdir]).filter(Boolean);
     return '<div class="item project-item"><span class="tt">'+esc(p.name)+' <small>'+st.count+' 场会话'+(folders.length>1?' · '+folders.length+' 个目录':'')+(st.inTrash?' · 回收站 '+st.inTrash+' 场':'')+'</small></span><span class="acts">'+(isRemote?'':'<button type="button" data-project-edit="'+esc(p.id)+'">设置</button>')+'<button type="button" data-project-delete="'+esc(p.id)+'"'+(st.busy?' disabled':'')+'>删除项目</button></span></div>';
   }).join('');
-  const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':'')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
-    '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(projects.length<2?' disabled':'')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
+  const rows=j.rooms.map(m=>{const cur=m.id===RID,b=roomBadge(m),projectName=projectNames.get(m.project),canMove=projects.some(p=>p.id!==m.project);return '<div class="item'+(m.archived?' arch':'')+'" data-id="'+esc(m.id)+'"><span class="tt">'+(b?'<span class="rl"><span class="b '+b[0]+'">'+esc(b[1])+'</span></span> ':'')+esc(m.title)+(projectName?' <small>· '+esc(projectName)+'</small>':' <small>· 独立会话</small>')+(cur?' <small>（这个标签页）</small>':'')+(m.archived?' <small>（已归档）</small>':'')+'</span><span class="acts"><small>'+esc(m.created.slice(5,16))+'</small>'+
+    '<button type="button" class="rn">改名</button><button type="button" class="mv"'+(canMove?'':' disabled')+'>移动到项目</button><button type="button" class="ab" data-on="'+(m.archived?0:1)+'">'+(m.archived?'取消归档':'归档')+'</button><button type="button" class="db"'+((m.running||[]).length||m.queued?' disabled':'')+'>删除</button></span></div>'}).join('');
   const trows=tj.trash.map(m=>'<div class="item" data-id="'+esc(m.id)+'" data-title="'+esc(m.title)+'"><span class="tt">'+esc(m.title)+'</span><span class="acts"><button type="button" class="rb">恢复</button><button type="button" class="pb">彻底删除</button></span></div>').join('');
   const canBack=typeof hasModalBack==='function'&&hasModalBack();
   const isTrashOpen=()=>document.getElementById('trashBox')?.style.display==='block';
@@ -447,7 +447,7 @@ async function openList(showTrash){
     el.querySelector('.mv').onclick=e=>{e.stopPropagation();pushListBack();openMoveRoom(room,projects)};
     el.querySelector('.ab').onclick=async e=>{e.stopPropagation();if(await act('/api/rooms/archive',{id:el.dataset.id,on:el.querySelector('.ab').dataset.on==='1'})){await loadState();pollRooms();openList()}};
     el.querySelector('.db').onclick=async e=>{e.stopPropagation();
-      if(!confirm('把「'+el.querySelector('.tt').textContent+'」移到回收站？（可以恢复）'))return;
+      if(!confirm('删除「'+el.querySelector('.tt').textContent+'」？（若无成员在终端运行，将同步清理 Agent 端对应会话）'))return;
       if(await act('/api/rooms/delete',{id:el.dataset.id})){
         if(el.dataset.id===RID){hideModal();roomViewGeneration++;RID=null;resetRoomView();const params=new URLSearchParams(location.search);params.delete('r');history.replaceState({},'',location.pathname+(params.size?'?'+params.toString():''));await pickRoom()}
         else {await pollRooms();openList(true)}
