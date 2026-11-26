@@ -2,6 +2,12 @@
 
 最近更新：2026-11-26。
 
+## AnY 2.8.39 正式发布（2026-11-26）
+
+- CLI 动态 Logo 改为更细的 2×4 点阵，保留扫光动画和配色；CLI 9 项测试、本地 mypy 与 Ruff 均通过。发布源码为 `f3b141926f84e5a0498a1eed6f493160fad9f581`。[发布流程](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45780307793)
+- Windows 构建、安装和数据保留验证、双架构 macOS 构建及 Linux CLI 安装通过。13 个 Release 附件已核对大小、SHA-256 和 ZIP 完整性；实下载的 Windows 便携版与桌面核心完成启动退出，便携版完成 MCP 认证调用。Windows 包未签名，Tauri 原生窗口交互与 Apple Silicon 实机启动仍待验收。[Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.39)
+- 官网提交 `28e59f9750ba45557305fd42c70750c8791d63f9` 已部署；更新清单、Windows、macOS、MCP 文件和 CLI 源码包均已线上核验。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45782067384) · [官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
 ## AnY 2.8.38 正式发布（2026-11-26）
 
 - 本版包含 CLI 启动画面、欢迎面板和流式对话布局，GUI 侧栏、输入区和消息布局调整，以及公开 Agent 扫描名单扩充。GUI 账号行仍显示「本机用户」。官网设计稿保留在工作区，本次官网仅更新正式下载版本。
