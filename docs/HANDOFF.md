@@ -2,6 +2,13 @@
 
 最近更新：2026-11-26。
 
+## AnY 2.8.38 正式发布（2026-11-26）
+
+- 本版包含 CLI 启动画面、欢迎面板和流式对话布局，GUI 侧栏、输入区和消息布局调整，以及公开 Agent 扫描名单扩充。GUI 账号行仍显示「本机用户」。官网设计稿保留在工作区，本次官网仅更新正式下载版本。
+- 首次 2.8.37 构建发现 CLI 启动画面的类型及异常处理检查失败，未发布 Release。修复后递增至 2.8.38，发布源码为 `1d0073629ebb44bd7dfc247eefa64b0067849bc1`。Windows 全量回归、安装卸载数据保留、运行中安装保护、核心启动退出、双架构 macOS 构建与 Linux CLI 安装通过。[发布流程](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45764653651)
+- 已下载 Release 全部 13 个附件并核对大小与 SHA-256，ZIP 完整性通过；实下载的 Windows 便携版和桌面核心完成启动、资源读取及退出验证，便携版与 MCP ZIP 完成认证调用。Windows 包未签名，Tauri 原生窗口交互及 Apple Silicon 实机启动仍待验收。[Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.38) · [构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.38/build-report-2.8.38.json)
+- 官网提交 `e0b44d0fae451ca040b6ca04bceaaed19f86fef5` 已通过 Pages 部署。更新清单、Windows 和 macOS 下载、MCP 包及 CLI 源码包已线上核验，文件大小与哈希一致。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45765749746) · [官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
+
 ## AnY 2.8.36 正式发布（2026-11-26）
 
 - 「添加联系人 → 本机 Agent」和「通过 MCP 手动参与」已移除官网下载链接。官网首页与下载页继续提供 MCP 入口，支持提示词配置与 ZIP 下载；本机程序验证和 MCP 手动接入流程照常可用。[官网下载 MCP](https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html)
