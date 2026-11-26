@@ -289,10 +289,10 @@ function renderConnectionWizard() {
   const w = connectionWizard; if (!w) return;
   clearInterval(w.timer);
   if (w.step === 1) {
-    const aiChoices = agCat?.local_workspace === false ? ['local','external'] : ['local','direct','external'];
+    const aiChoices = ['local','external'];
     const choices = w.chooseAI ? aiChoices.map(id => [id, CONNECTION_TYPES[id]]) : [
       ['user', ['邀请其他人', '生成邀请链接，让朋友加入指定会话。', uiIcon('user')]],
-      ['ai', ['连接 AI', '使用本机程序、API Key 或其他设备上的 Harness。', uiIcon('terminal')]],
+      ['ai', ['连接 AI', '使用本机程序或其他设备上的 Harness。', uiIcon('terminal')]],
       ['mydevice', CONNECTION_TYPES.mydevice]
     ];
     wizardFrame(w, '<h3>' + (w.chooseAI ? '选择 AI 的连接方式' : '谁来加入 AnY 会话？') + '</h3><p class="hint">' + (w.chooseAI ? '选择 AI 所在的位置或服务类型。' : '选择要邀请的人、AI 或自己的设备。') + '</p><div class="connection-choices">' + choices.map(([id, t]) => '<button class="connection-choice" data-connection-type="' + id + '"><span class="connection-symbol">' + t[2] + '</span><span><b>' + t[0] + '</b><small>' + t[1] + '</small></span><span>›</span></button>').join('') + '</div>' + (w.chooseAI ? '<details class="connection-advanced"><summary>高级设置</summary><button data-connection-type="http">连接自建服务</button></details><div class="btns"><button id="connChoiceBack">返回</button></div>' : ''));
