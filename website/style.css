@@ -417,8 +417,6 @@ html:not(.has-js) .stage-tabs { display: none; }
 .dl-heading { align-self: end; }
 .dl-heading h1 { font-size: clamp(43px, 6vw, 87px); }
 .dl-heading p { color: var(--muted); margin: 0; }
-.download-mcp { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 6px; color: var(--action); text-decoration: underline; text-underline-offset: 4px; }
-.download-mcp:hover { color: var(--ink); }
 .platform-tiles { display: grid; align-self: start; gap: 6px; max-width: 340px; }
 .platform-tile {
   display: flex;
@@ -505,11 +503,9 @@ html:not(.has-js) .stage-tabs { display: none; }
 .mcp-name { color: var(--ai); font: 600 14px/1.4 var(--mono); }
 .mcp-setup { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: clamp(16px, 4vw, 36px); }
 .mcp-setup p { color: var(--muted); }
-.mcp-options, .mcp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.mcp-options { padding-bottom: 22px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
-.mcp-options .platform-picker { margin-inline-start: auto; }
-.mcp-options button, .mcp-options select, .mcp-actions a { min-height: 44px; }
-.mcp-options select { max-width: 100%; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--control-line); background: var(--paper); color: var(--ink); font: inherit; }
+.mcp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.mcp-options { padding-bottom: 18px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.mcp-options button, .mcp-actions a { min-height: 44px; }
 .mcp-code { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; }
 .mcp-code pre { flex: 1 1 340px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mcp-code button { margin: 12px; min-height: 44px; }
@@ -522,7 +518,6 @@ html:not(.has-js) .stage-tabs { display: none; }
 .mcp-setup .mcp-check { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line); }
 @keyframes mcp-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .mcp-heading { animation: none; } }
-@media (max-width: 720px) { .mcp-options .platform-picker { margin-inline-start: 0; } }
 .copy-status, .noscript-tip { margin: 8px 0; font-size: 13px; }
 .noscript-tip { padding-inline: 16px; }
 
@@ -660,8 +655,8 @@ html:not(.has-js) .stage-tabs { display: none; }
   .quick-start { grid-template-columns: 1fr; gap: 14px; }
   .download-center { grid-template-columns: minmax(0, 1fr); gap: 18px; min-height: 0; }
   .platform-panels { grid-column: auto; grid-row: auto; min-height: 0; margin-right: 8px; }
-  .platform-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: none; }
-  .platform-tile { justify-content: center; gap: 4px; padding: 8px 3px; line-height: 1.35; font-size: 12px; }
+  .platform-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: none; }
+  .platform-tile { justify-content: center; gap: 4px; min-height: 44px; padding: 8px 3px; line-height: 1.35; font-size: 12px; }
   .tile-icon { width: 18px; height: 18px; }
 }
 @media (max-width: 360px) {

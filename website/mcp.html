@@ -13,8 +13,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <title>AnY MCP · 连接桌面 Harness</title>
   <link rel="icon" href="assets/logo.svg?v=t2">
-  <link rel="stylesheet" href="style.css?v=2.8.36-flow">
-  <script src="site.js?v=2.8.36-flow" defer></script>
+  <link rel="stylesheet" href="style.css?v=2.8.36-mcp">
+  <script src="site.js?v=2.8.36-mcp" defer></script>
 </head>
 <body class="page-mcp">
   <header class="topbar">
@@ -27,7 +27,7 @@
       <a href="index.html">首页</a>
       <a href="support.html">支持</a>
     </nav>
-    <a class="nav-cta" href="download.html">下载 AnY <i aria-hidden="true">↗</i></a>
+    <a class="nav-cta" href="download.html#mcp">下载 AnY <i aria-hidden="true">↗</i></a>
   </header>
 
   <main id="top" class="wrap mcp-page" tabindex="-1" data-mcp-setup>
@@ -39,14 +39,6 @@
 
     <div class="mcp-setup">
       <div class="mcp-options" data-mcp-controls hidden>
-        <label for="mcp-host">你使用的 Harness</label>
-        <select id="mcp-host">
-          <option>Codex</option>
-          <option>Claude Code</option>
-          <option>Claude Desktop</option>
-          <option>Cursor</option>
-          <option value="">其他 MCP 客户端</option>
-        </select>
         <div class="platform-picker" role="group" aria-label="配置方式">
           <button type="button" data-mcp-mode="agent" aria-pressed="true" aria-controls="mcp-agent">让 Harness 配置</button>
           <button type="button" data-mcp-mode="manual" aria-pressed="false" aria-controls="mcp-manual">手动安装</button>
@@ -73,17 +65,16 @@
         <ol class="doc-steps">
           <li>将 <code>any-mcp.pyz</code> 解压到固定位置，让 Harness 启动 Python 来运行它。</li>
           <li>在 AnY 选择「添加联系人 → 连接 AI → 其他设备上的 Harness → 通过 MCP 手动参与」，生成配置并分配会话。</li>
-          <li>按下方提示添加 STDIO 服务 <code>ai-bridge</code>，使用完整的 Python 路径和 <code>any-mcp.pyz</code> 路径。把 AnY 给出的地址和密钥填入 <code>AI_BRIDGE_URL</code> 和 <code>AI_BRIDGE_TOKEN</code>。</li>
+          <li>在 Harness 的 MCP 设置中添加 STDIO 服务 <code>ai-bridge</code>，使用完整的 Python 路径和 <code>any-mcp.pyz</code> 路径。把 AnY 给出的地址和密钥填入 <code>AI_BRIDGE_URL</code> 和 <code>AI_BRIDGE_TOKEN</code>。</li>
         </ol>
-        <p data-mcp-host-note>在 Harness 的 MCP 设置中添加 STDIO 服务，配置样例见安装说明。</p>
         <details class="mcp-config">
           <summary>查看配置样例</summary>
-          <h3>Codex · TOML</h3>
+          <h3>TOML 配置</h3>
           <pre class="cli-card" tabindex="0"><code>[mcp_servers.ai-bridge]
 command = "python"
 args = ["/absolute/path/to/any-mcp.pyz"]
 env = { AI_BRIDGE_URL = "http://127.0.0.1:8765/mcp", AI_BRIDGE_TOKEN = "你的联系人接入密钥" }</code></pre>
-          <h3>Claude Desktop、Cursor 等 · JSON</h3>
+          <h3>JSON 配置</h3>
           <pre class="cli-card" tabindex="0"><code>{
   "mcpServers": {
     "ai-bridge": {

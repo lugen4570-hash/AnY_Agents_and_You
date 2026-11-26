@@ -445,9 +445,10 @@ const dlSelector = document.querySelector('[data-download-selector]');
 if (dlSelector) {
   const tiles = [...dlSelector.querySelectorAll('[data-platform-tile]')];
   const panels = [...dlSelector.querySelectorAll('[data-platform-panel]')];
+  const options = new Set(tiles.map(tile => tile.dataset.platformTile));
 
   function selectDownloadPlatform(platform, updateHash = false) {
-    const target = ['windows', 'macos', 'cli'].includes(platform) ? platform : 'windows';
+    const target = options.has(platform) ? platform : 'windows';
     for (const tile of tiles) {
       const current = tile.dataset.platformTile === target;
       tile.setAttribute('aria-selected', String(current));
@@ -484,7 +485,7 @@ if (dlSelector) {
 
   function syncDownloadFromEnv() {
     const hash = window.location.hash.slice(1);
-    if (['windows', 'macos', 'cli'].includes(hash)) {
+    if (options.has(hash)) {
       selectDownloadPlatform(hash, false);
       return;
     }
@@ -513,19 +514,9 @@ async function copyTextWithFeedback(text, selectEl, statusEl, okText, fallbackTe
 
 const mcpSetup = document.querySelector('[data-mcp-setup]');
 if (mcpSetup) {
-  const host = mcpSetup.querySelector('#mcp-host');
-  const hostNote = mcpSetup.querySelector('[data-mcp-host-note]');
   const prompt = mcpSetup.querySelector('[data-mcp-prompt]');
   const status = mcpSetup.querySelector('[data-mcp-status]');
   const copy = mcpSetup.querySelector('[data-copy-mcp]');
-  const initialPrompt = prompt.textContent;
-  const genericNote = hostNote.textContent;
-  const hostNotes = {
-    Codex: '在 Codex 的用户 MCP 设置中添加 STDIO 服务，或将 TOML 样例合并到 ~/.codex/config.toml。',
-    'Claude Code': '用 claude mcp add 添加用户级 STDIO 服务，完整参数见安装说明。',
-    'Claude Desktop': '打开「设置 → 开发者 → 编辑配置」，合并安装说明中的 JSON 配置。',
-    Cursor: '在 Cursor 的 MCP 设置中添加服务，或将 JSON 样例合并到 ~/.cursor/mcp.json。',
-  };
   const modes = mcpSetup.querySelectorAll('[data-mcp-mode]');
   const panels = mcpSetup.querySelectorAll('[data-mcp-panel]');
 
@@ -534,21 +525,14 @@ if (mcpSetup) {
     for (const panel of panels) panel.hidden = panel.dataset.mcpPanel !== mode;
     status.textContent = '';
   }
-  function updateHost() {
-    prompt.textContent = host.value ? initialPrompt.replace('当前 Harness', host.value) : initialPrompt;
-    hostNote.textContent = hostNotes[host.value] || genericNote;
-    status.textContent = '';
-  }
 
   mcpSetup.querySelector('[data-mcp-controls]').hidden = false;
   copy.hidden = false;
   for (const button of modes) button.addEventListener('click', () => selectMode(button.dataset.mcpMode));
-  host.addEventListener('change', updateHost);
   copy.addEventListener('click', () => copyTextWithFeedback(
     prompt.textContent, prompt, status, '提示词已复制。', '提示词已选中，可手动复制。'
   ));
   selectMode('agent');
-  updateHost();
 }
 
 const installer = document.querySelector('[data-installer]');
