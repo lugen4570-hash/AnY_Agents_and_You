@@ -1,11 +1,11 @@
 ﻿#define MyAppName "AnY"
-#define MyAppVersion "2.8.37"
+#define MyAppVersion "2.8.38"
 #ifdef TEST_BUILD
 #define MyAppId "{{E49FBE28-CC82-4E08-B5CD-E48A2C894472}"
-#define OutputName "AnY-Setup-2.8.37-test"
+#define OutputName "AnY-Setup-2.8.38-test"
 #else
 #define MyAppId "{{856A26B5-6DDE-40EC-A6B0-2CDE2C62A58E}"
-#define OutputName "AnY-Setup-2.8.37"
+#define OutputName "AnY-Setup-2.8.38"
 #endif
 [Setup]
 AppId={#MyAppId}

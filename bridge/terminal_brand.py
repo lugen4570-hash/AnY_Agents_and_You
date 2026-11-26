@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Brand palette, logo rasteriser and splash screen for the AnY terminal."""
 import os
+import logging
 import time
 from functools import lru_cache
 
@@ -10,6 +11,8 @@ from textual.containers import Center, Vertical
 from textual.screen import Screen
 from textual.theme import Theme
 from textual.widgets import Static
+
+logger = logging.getLogger(__name__)
 
 INK = "#0b0e13"
 PAPER = "#e6eef6"
@@ -214,6 +217,7 @@ class Splash(Screen):
     def tick(self):
         try:
             t = time.monotonic() - self.started
+            sweep: float | None
             if t < 0.65:
                 reveal = t / 0.65
                 sweep = reveal
@@ -233,7 +237,7 @@ class Splash(Screen):
             if t >= self.DURATION:
                 self.dismiss()
         except Exception:
-            pass
+            logger.exception("Failed to update terminal splash")
 
     def on_key(self, event):
         self.dismiss()
@@ -242,10 +246,7 @@ class Splash(Screen):
         self.dismiss()
 
     def on_resize(self, event):
-        try:
-            self.tick()
-        except Exception:
-            pass
+        self.tick()
 
 
 def splash_enabled(app):
