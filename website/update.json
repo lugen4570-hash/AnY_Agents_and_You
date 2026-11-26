@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.34",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.34.exe",
-  "sha256": "5530610226c519b9dbcd64a0d0e19e882b472991bdb2d0454eca149436623f77",
-  "size": 13664719,
-  "notes": "AnY 2.8.34：三端全面升级为 T2 蓝宝石光学座舱视觉（Y 冷银代表人、A 18K 金代表 AI），官网上线花体签名字标与随机疏密速度金色字节雨，GUI 同步深浅双主题与静噪护栏，CLI 重绘主题、启动动画并修复退出轮询竞态。"
+  "version": "2.8.35",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.35.exe",
+  "sha256": "70d2ea0879f6b3315442f40b42490fb6fb8d4ababdd1a57650a1b33651d15213",
+  "size": 13664287,
+  "notes": "AnY 2.8.35 增加桌面 Harness 的 MCP 下载与配置入口，支持复制提示词交给 Harness 配置，也可下载独立 ZIP 手动安装。添加联系人时，仅在本机程序列表显示检测到的 CLI 或 ACP，桌面 MCP 使用统一入口。"
 }

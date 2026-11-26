@@ -662,6 +662,13 @@ html:not(.has-js) .stage-tabs { display: none; }
   .platform-tile { justify-content: center; gap: 4px; padding: 8px 3px; line-height: 1.35; font-size: 12px; }
   .tile-icon { width: 18px; height: 18px; }
 }
+@media (max-width: 360px) {
+  :is(.page-home, .page-download) .topbar { gap: 8px; padding-inline: 12px; }
+  :is(.page-home, .page-download) .topbar nav { gap: 6px; }
+  :is(.page-home, .page-download) .brand-ink { width: 60px; }
+  :is(.page-home, .page-download) .brand-tagline { display: none; }
+  :is(.page-home, .page-download) .topbar .nav-cta { gap: 4px; padding-inline: 8px; }
+}
 .mac-security-picture { display: grid; gap: 9px; margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); }
 .mac-security-picture > div { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .mac-security-picture strong { padding: 4px 10px; border: 1px solid var(--control-line); border-radius: 7px; background: var(--panel); }
