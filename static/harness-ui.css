@@ -449,8 +449,15 @@ footer {
 .pop-agent-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: center;
+  gap: 8px;
+  align-items: end;
+}
+.pop-agent-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--mut);
 }
 .pop-agent-controls select {
   width: 100%;

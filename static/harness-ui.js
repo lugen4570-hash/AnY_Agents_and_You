@@ -22,6 +22,8 @@
       'mode.discuss': '讨论模式',
       'mode.work': '干活模式',
       'composer.model': '模型',
+      'composer.modelField': '模型',
+      'composer.effortField': '思考强度',
       'composer.ext': '扩展',
       'composer.hint': '@ 指定成员 · / 命令与技能',
       'composer.placeholder': '有什么新想法？@ 指定成员，/ 命令与技能…',
@@ -101,6 +103,8 @@
       'mode.discuss': 'Discuss',
       'mode.work': 'Work',
       'composer.model': 'Models',
+      'composer.modelField': 'Model',
+      'composer.effortField': 'Reasoning effort',
       'composer.ext': 'Extensions',
       'composer.hint': '@ mention · / commands & skills',
       'composer.placeholder': 'Type a message… @ to mention, / for commands & skills',
@@ -1442,12 +1446,12 @@
       const modelOptions = '<option value="">跟随接入设置</option>'
         + models.map(v => '<option value="' + esc(v) + '"' + (v === curModel ? ' selected' : '') + '>' + esc(modelOptionLabel(mo, v)) + '</option>').join('');
       const effortOptions = efforts.length
-        ? '<select data-pop-effort="' + esc(id) + '"' + (busy ? ' disabled' : '') + '><option value="">跟随接入设置</option>'
-          + efforts.map(e => '<option value="' + esc(e) + '"' + (e === curEffort ? ' selected' : '') + '>' + esc((EFFORT_LABELS[e] || e)) + '</option>').join('') + '</select>'
+        ? '<label class="pop-agent-field"><span>' + esc(t('composer.effortField')) + '</span><select data-pop-effort="' + esc(id) + '"' + (busy ? ' disabled' : '') + '><option value="">跟随接入设置</option>'
+          + efforts.map(e => '<option value="' + esc(e) + '"' + (e === curEffort ? ' selected' : '') + '>' + esc((EFFORT_LABELS[e] || e)) + '</option>').join('') + '</select></label>'
         : '';
       return '<div class="pop-agent-row" data-pop-ai="' + esc(id) + '">'
         + '<div class="pop-agent-top"><b>' + esc(name) + '</b><span class="pop-agent-status">' + esc(statusText) + '</span></div>'
-        + '<div class="pop-agent-controls"><select data-pop-model="' + esc(id) + '"' + (busy ? ' disabled' : '') + '>' + modelOptions + '</select>' + effortOptions + '</div>'
+        + '<div class="pop-agent-controls"><label class="pop-agent-field"><span>' + esc(t('composer.modelField')) + '</span><select data-pop-model="' + esc(id) + '"' + (busy ? ' disabled' : '') + '>' + modelOptions + '</select></label>' + effortOptions + '</div>'
         + '<div class="pop-agent-foot"><button type="button" data-pop-open="' + esc(id) + '">' + esc(t('composer.openFull')) + '</button>'
         + '<button type="button" class="pri" data-pop-save="' + esc(id) + '"' + (busy ? ' disabled' : '') + '>' + esc(t('composer.save')) + '</button></div></div>';
     }).join('');
