@@ -7,7 +7,7 @@ async function checkConnectionBackend(signal) {
     if (!response.ok) throw Error();
     info = await response.json();
   } catch (e) { if (signal && signal.aborted) throw e; throw Error('无法连接 AnY 后台，请重新打开 AnY 后重试。'); }
-  if (info.app !== 'AI Bridge' || info.version !== '2.8.35' || info.api_revision !== 3)
+  if (info.app !== 'AI Bridge' || info.version !== '2.8.36' || info.api_revision !== 3)
     throw Error('界面与后台版本不一致。请重新打开最新的 AnY，再刷新此页面。');
   return info;
 }
@@ -311,9 +311,6 @@ function connectionArgsMarkup(w) {
   const values = Array.isArray(w.form.args) ? w.form.args : w.form.localDriver === 'acp' ? ['acp'] : ['-p','{prompt}'];
   return agentListEditor('wizard-args', values);
 }
-function connectionMcpHelp() {
-  return '<p class="hint"><a href="https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html" target="_blank" rel="noopener noreferrer">下载与配置桌面 Harness 的 MCP ↗</a></p>';
-}
 function renderConnectionSetup(w) {
   let content = '<h3>' + CONNECTION_TYPES[w.type][0] + '</h3>';
   if (w.type === 'mydevice') {
@@ -344,7 +341,7 @@ function renderConnectionSetup(w) {
       w.localChoice = (local[0] || {}).id || '__custom__';
       w.id = ''; w.saved = false; w.status = null;
     }
-    content += '<p class="hint">自动检测运行 AnY 的设备上的程序；安装或卸载后可重新检索，也可打开「本机 Agent 扫描」一键连接。</p><label>选择程序<select id="connLocal">' + local.map(a => '<option value="' + esc(a.id) + '"' + (w.localChoice === a.id ? ' selected' : '') + '>' + esc(a.label) + ' · 已检测到</option>').join('') + '<option value="__custom__"' + (w.localChoice === '__custom__' ? ' selected' : '') + '>其他程序…</option></select></label><div class="btns" style="justify-content:flex-start;margin:6px 0"><button id="connRescan" type="button">重新检索已安装程序</button><button id="connOpenScan" type="button">查找其他 AI</button></div>' + '<details class="connection-advanced" id="connCustom"' + (w.localChoice === '__custom__' ? '' : ' hidden') + '><summary>高级设置</summary>' + connectionNameFields(w.localChoice === '__custom__' ? w : {...w, saved: false}) + '<label>协议类型<select id="connLocalDriver"><option value="cli"' + (w.form.localDriver !== 'acp' ? ' selected' : '') + '>无头命令行 (CLI)</option><option value="acp"' + (w.form.localDriver === 'acp' ? ' selected' : '') + '>ACP 协议 (Agent Client Protocol)</option></select></label><label>命令或可执行文件路径<input id="connCommand" placeholder="my-agent 或完整程序路径" value="' + esc(w.form.command || '') + '"></label><h4>调用参数</h4><p class="hint">每个参数单独添加，不需要引号或配置文件。</p><div id="connArgs">' + connectionArgsMarkup(w) + '</div></details><button id="connCheck" class="pri">检测并验证程序</button><p class="hint">检查程序是否可用；登录和模型权限将在首次回复时确认。</p>' + connectionMcpHelp();
+    content += '<p class="hint">自动检测运行 AnY 的设备上的程序；安装或卸载后可重新检索，也可打开「本机 Agent 扫描」一键连接。</p><label>选择程序<select id="connLocal">' + local.map(a => '<option value="' + esc(a.id) + '"' + (w.localChoice === a.id ? ' selected' : '') + '>' + esc(a.label) + ' · 已检测到</option>').join('') + '<option value="__custom__"' + (w.localChoice === '__custom__' ? ' selected' : '') + '>其他程序…</option></select></label><div class="btns" style="justify-content:flex-start;margin:6px 0"><button id="connRescan" type="button">重新检索已安装程序</button><button id="connOpenScan" type="button">查找其他 AI</button></div>' + '<details class="connection-advanced" id="connCustom"' + (w.localChoice === '__custom__' ? '' : ' hidden') + '><summary>高级设置</summary>' + connectionNameFields(w.localChoice === '__custom__' ? w : {...w, saved: false}) + '<label>协议类型<select id="connLocalDriver"><option value="cli"' + (w.form.localDriver !== 'acp' ? ' selected' : '') + '>无头命令行 (CLI)</option><option value="acp"' + (w.form.localDriver === 'acp' ? ' selected' : '') + '>ACP 协议 (Agent Client Protocol)</option></select></label><label>命令或可执行文件路径<input id="connCommand" placeholder="my-agent 或完整程序路径" value="' + esc(w.form.command || '') + '"></label><h4>调用参数</h4><p class="hint">每个参数单独添加，不需要引号或配置文件。</p><div id="connArgs">' + connectionArgsMarkup(w) + '</div></details><button id="connCheck" class="pri">检测并验证程序</button><p class="hint">检查程序是否可用；登录和模型权限将在首次回复时确认。</p>';
   } else {
     content += connectionNameFields(w);
     if (w.type === 'direct') {
@@ -358,7 +355,7 @@ function renderConnectionSetup(w) {
       content += w.saved ? '<p class="hint">使用此联系人已保存的回调地址和服务密钥。</p>' : '<label>Harness 回调地址<input id="connEndpoint" placeholder="http://127.0.0.1:9100/bridge" value="' + esc(w.form.endpoint || '') + '"></label><label>服务密钥（可选）<input id="connServiceKey" type="password" autocomplete="off" value="' + esc(w.form.serviceKey || '') + '"></label>';
       content += '<p class="hint">测试会向服务发送一条只需简短回复的验证消息，可能消耗少量模型额度，不授予工具或文件权限。</p><button id="connCheck" class="pri">测试连接与回复</button><details class="connection-advanced"><summary>查看服务需要实现的协议</summary><p>接收 POST JSON，其中包含 prompt、speaker、mode、permissions。返回 <code>{"text":"连接成功"}</code>。</p></details>';
     } else {
-      if (w.type === 'external') content += '<label>参与方式<select id="connMemberMode"><option value="auto"'+(w.memberMode !== 'manual'?' selected':'')+'>自动接收任务并回复（推荐）</option><option value="manual"'+(w.memberMode === 'manual'?' selected':'')+'>通过 MCP 手动参与</option></select></label><div id="connManual"'+(w.memberMode === 'manual'?'':' hidden')+'><label>对方使用的软件<select id="connHost"><option value="custom">自定义 / 其他 MCP 客户端</option>' + ((agCat && agCat.hosts) || []).filter(h => h.present).map(h => '<option value="' + esc(h.id) + '"' + (w.host === h.id ? ' selected' : '') + '>' + esc(h.label) + '</option>').join('') + '</select></label>' + connectionMcpHelp() + '</div>';
+      if (w.type === 'external') content += '<label>参与方式<select id="connMemberMode"><option value="auto"'+(w.memberMode !== 'manual'?' selected':'')+'>自动接收任务并回复（推荐）</option><option value="manual"'+(w.memberMode === 'manual'?' selected':'')+'>通过 MCP 手动参与</option></select></label><div id="connManual"'+(w.memberMode === 'manual'?'':' hidden')+'><label>对方使用的软件<select id="connHost"><option value="custom">自定义 / 其他 MCP 客户端</option>' + ((agCat && agCat.hosts) || []).filter(h => h.present).map(h => '<option value="' + esc(h.id) + '"' + (w.host === h.id ? ' selected' : '') + '>' + esc(h.label) + '</option>').join('') + '</select></label></div>';
       content += '<details class="connection-advanced"><summary>接入地址（手机 / 其他设备用）</summary><label>对方能访问的应用地址<input id="connBase" value="' + esc(w.base) + '"></label><p class="hint" id="connBaseHint"></p></details><button id="connGenerate" class="pri">生成连接配置</button>' + (w.status && w.status.has_key ? '<button id="connRevoke">撤销现有密钥 / 邀请</button><p class="hint">已有密钥不会再次显示明文；重新生成会使旧密钥和旧邀请失效。</p>' : '') + '<div id="connCredentials"></div>';
     }
   }

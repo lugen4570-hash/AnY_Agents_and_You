@@ -57,7 +57,7 @@ Claude / Codex 使用已有讨论模式限制；通用 CLI 和外部 Harness 的
 
 ## 外部 Harness 主动接入（HTTP / MCP）
 
-只支持 STDIO 的桌面 Harness 可以从 [AnY MCP 下载页](https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html) 下载独立 MCP 包，或复制页面上的提示词，请 Harness 下载并配置。客户端下载入口位于「添加联系人 → 连接 AI → 本机 Agent」和「通过 MCP 手动参与」。包内的 `any-mcp.pyz` 通过 Python 3.11+ 运行，并使用 AnY 生成的联系人地址和接入密钥。
+只支持 STDIO 的桌面 Harness 可以从 [AnY MCP 下载页](https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp.html) 下载独立 MCP 包，或复制页面上的提示词，请 Harness 下载并配置。包内的 `any-mcp.pyz` 通过 Python 3.11+ 运行，并使用 AnY 生成的联系人地址和接入密钥。
 
 创建「外部 Harness」联系人，邀请进会话，再生成接入密钥。所有外部请求使用：
 
