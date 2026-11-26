@@ -224,7 +224,7 @@ def _inspect_entry(entry, installed_names, specs, conn_cat, host_map, dismissed)
     elif level == "mcp":
         reason = "已检测到桌面软件，可一键写入 MCP 插件并在软件内开启待命模式"
     elif level == "unsupported":
-        reason = "仅检测到图形界面且该软件暂不支持 CLI / ACP / MCP"
+        reason = "已检测到桌面软件，AnY 尚未适配其自动接入方式"
 
     return {
         "id": pid,

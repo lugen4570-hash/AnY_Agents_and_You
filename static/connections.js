@@ -884,7 +884,7 @@ function renderDiscoveryModal(disc) {
     const label = member.standby ? 'MCP 待命中' : member.automatic ? '自动响应端在线' : direct && item.connected ? 'CLI 已验证' : item.mcp_installed ? 'MCP 已配置，等待待命' : '已检测，待配置';
     const actions = (direct ? '<button data-disc-config="'+esc(item.id)+'" data-via="'+esc(item.via)+'">配置 CLI</button>' : '')
       + (desktop && item.mcp_host ? '<button data-disc-config="'+esc(item.id)+'" data-via="mcp">配置桌面 / MCP</button>' : '')
-      + (item.level === 'unsupported' ? '<span class="hint">暂不支持接入</span>' : '');
+      + (item.level === 'unsupported' ? '<span class="hint">暂未适配自动接入</span>' : '');
     return '<div class="disc-row agent-room-row"><div><b>'+esc(item.label)+'</b> <small>@'+esc(item.id)+'</small><p class="hint">'+esc(label)+'</p><small>'+esc(item.exe || item.desktop_path || '')+'</small></div><div class="btns">'+actions+'</div></div>';
   }).join('');
   showModal('<div id="discoveryModal"><div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="discBack">← 返回</button>':'')+'<span class="eyebrow">本机 Agent 自动发现</span><button id="discClose" aria-label="关闭">×</button></div><h3>在这台电脑上发现 '+detected.length+' 个 Agent</h3><p class="hint">CLI 走直连；桌面配置 MCP 后开启 /any_standby，以真实心跳保持接入。扫描只提供候选程序，所有修改均进入同一个 Agent 设置页。</p>'+rows+'<p id="discError" role="alert"></p><div class="btns"><button id="discRescan">重新扫描</button><button id="discManual">手动添加</button><button id="discDone" class="pri">完成</button></div></div>');

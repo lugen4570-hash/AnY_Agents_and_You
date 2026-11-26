@@ -1,6 +1,21 @@
 {
   "agents": [
     {
+      "id": "devin",
+      "label": "Devin",
+      "color": "#7b61ff",
+      "desktop": {
+        "detect": [
+          "%LOCALAPPDATA%\\Programs\\Devin\\Devin.exe",
+          "%ProgramFiles%\\Devin\\Devin.exe",
+          "/Applications/Devin.app",
+          "~/Applications/Devin.app"
+        ],
+        "shortcuts": ["Devin"],
+        "uninstall": ["Devin"]
+      }
+    },
+    {
       "id": "claude",
       "label": "Claude Code / Desktop",
       "color": "#d97757",
