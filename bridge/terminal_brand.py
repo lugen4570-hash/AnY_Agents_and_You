@@ -84,8 +84,8 @@ def _gradient(shape, t):
 
 @lru_cache(maxsize=16)
 def _pixels(cols, rows):
-    """Per-pixel (base rgb, coverage, diagonal position, tint rgb) for the logo at cols x 2*rows pixels."""
-    width, height = cols, rows * 2
+    """Sample the logo on the 2-by-4 dot grid of each terminal cell."""
+    width, height = cols * 2, rows * 4
     bx, by, bw, bh = BBOX
     scale = min(width / bw, height / bh)
     ox = (width - bw * scale) / 2
@@ -136,37 +136,30 @@ def _style_rgb(rgb):
 
 
 def logo_art(cols, rows, *, sweep=None, reveal=1.0):
-    """Rasterise the AnY mark with half-block cells: cols wide, rows terminal lines tall."""
+    """Rasterise the AnY mark using the finer 2-by-4 Braille dot grid."""
     grid = _pixels(cols, rows)
     art = Text()
     for line in range(rows):
         if line:
             art.append("\n")
         for col in range(cols):
-            top = grid[line * 2][col]
-            bottom = grid[line * 2 + 1][col] if line * 2 + 1 < len(grid) else None
-
-            def shade(pixel):
-                base, coverage, d, tint = pixel
-                if not coverage or d > reveal:
-                    return None
-                color = base
-                if sweep is not None:
-                    factor = max(0.0, 1 - abs(d - sweep) / 0.06)
-                    if factor:
-                        color = _lerp(color, tint, min(1.0, factor) * 0.65)
-                return color
-
-            hi = shade(top)
-            lo = shade(bottom) if bottom else None
-            if hi is None and lo is None:
-                art.append(" ")
-            elif hi is not None and lo is not None:
-                art.append("▀", style=f"{_style_rgb(hi)} on {_style_rgb(lo)}")
-            elif hi is not None:
-                art.append("▀", style=_style_rgb(hi))
+            dots = 0
+            colors = []
+            for dy, bits in enumerate(((1, 8), (2, 16), (4, 32), (64, 128))):
+                for dx, bit in enumerate(bits):
+                    base, coverage, d, tint = grid[line * 4 + dy][col * 2 + dx]
+                    if coverage < 0.4 or d > reveal:
+                        continue
+                    if sweep is not None:
+                        factor = max(0.0, 1 - abs(d - sweep) / 0.06)
+                        base = _lerp(base, tint, factor * 0.65)
+                    dots |= bit
+                    colors.append(base)
+            if dots:
+                color = tuple(sum(c[channel] for c in colors) / len(colors) for channel in range(3))
+                art.append(chr(0x2800 + dots), style=_style_rgb(color))
             else:
-                art.append("▄", style=_style_rgb(lo))
+                art.append(" ")
     return art
 
 

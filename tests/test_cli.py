@@ -377,10 +377,9 @@ class CojamCliTest(unittest.TestCase):
         self.assertEqual(len(lines), 15)
         for line in lines:
             self.assertLessEqual(cell_len(line), 34)
-        self.assertTrue(any("▀" in line or "▄" in line for line in lines))
+        self.assertTrue(any(0x2801 <= ord(char) <= 0x28ff for char in art.plain))
         hidden = logo_art(16, 7, reveal=0)
-        for glyph in ("▀", "▄", "█"):
-            self.assertNotIn(glyph, hidden.plain)
+        self.assertFalse(any(0x2801 <= ord(char) <= 0x28ff for char in hidden.plain))
 
         offsets = [0]
         for line in lines:
