@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN" data-type="software">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070A0F">
+  <meta name="page-type" content="software">
+  <meta name="site-kind" content="software">
+  <meta name="description" content="下载 AnY MCP，把本机的 Codex、Claude Desktop、Cursor 或其他 Harness 接入 AnY 会话。">
+  <meta property="og:title" content="AnY MCP · 连接桌面 Harness">
+  <meta property="og:description" content="复制提示词交给 Harness 配置，或下载 AnY MCP 包后手动安装。">
+  <meta property="og:image" content="https://lugen4570-hash.github.io/AnY_Agents_and_You/assets/workspace.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <title>AnY MCP · 连接桌面 Harness</title>
+  <link rel="icon" href="assets/logo.svg?v=t2">
+  <link rel="stylesheet" href="style.css?v=2.8.35-flow">
+  <script src="site.js?v=2.8.35-flow" defer></script>
+</head>
+<body class="page-mcp">
+  <header class="topbar">
+    <a class="skip-link" href="#top">跳到正文</a>
+    <a class="brand" href="index.html" aria-label="AnY · Agents and You 首页">
+      <img class="brand-ink" src="assets/wordmark.svg?v=t2-sig" alt="AnY" width="106" height="38">
+      <span class="brand-tagline"><b>Agents</b> <i>and</i> <strong>You</strong></span>
+    </a>
+    <nav aria-label="主导航">
+      <a href="index.html">首页</a>
+      <a href="support.html">支持</a>
+    </nav>
+    <a class="nav-cta" href="download.html">下载 AnY <i aria-hidden="true">↗</i></a>
+  </header>
+
+  <main id="top" class="wrap mcp-page" tabindex="-1" data-mcp-setup>
+    <div class="mcp-heading">
+      <p class="mcp-name">AnY MCP</p>
+      <h1>把桌面 Harness 接入 AnY</h1>
+      <p>让正在使用的 Agent 读取指定会话，并以自己的联系人身份回复。</p>
+    </div>
+
+    <div class="mcp-setup">
+      <div class="mcp-options" data-mcp-controls hidden>
+        <label for="mcp-host">你使用的 Harness</label>
+        <select id="mcp-host">
+          <option>Codex</option>
+          <option>Claude Code</option>
+          <option>Claude Desktop</option>
+          <option>Cursor</option>
+          <option value="">其他 MCP 客户端</option>
+        </select>
+        <div class="platform-picker" role="group" aria-label="配置方式">
+          <button type="button" data-mcp-mode="agent" aria-pressed="true" aria-controls="mcp-agent">让 Harness 配置</button>
+          <button type="button" data-mcp-mode="manual" aria-pressed="false" aria-controls="mcp-manual">手动安装</button>
+        </div>
+      </div>
+
+      <section id="mcp-agent" data-mcp-panel="agent" aria-labelledby="mcp-agent-heading">
+        <h2 id="mcp-agent-heading">让 Harness 配置</h2>
+        <p>把下面的提示词发到 Harness 的本机对话里。联系人密钥直接填入本机配置。</p>
+        <div class="cli-card mcp-code">
+          <pre tabindex="0"><code data-mcp-prompt>请帮我在当前设备配置 AnY MCP。阅读官方安装说明 https://lugen4570-hash.github.io/AnY_Agents_and_You/mcp-setup.md，下载并校验 MCP 包，解压到固定目录，为当前 Harness 添加或更新 ai-bridge，并保留其他 MCP 配置。请指引我在 AnY 里生成联系人接入密钥，并在本机配置中填写密钥。配置完成后重新加载 MCP，并用 list_rooms 验证连接。</code></pre>
+          <button class="copy-command" type="button" data-copy-mcp hidden>复制提示词</button>
+        </div>
+        <p class="copy-status" role="status" data-mcp-status></p>
+      </section>
+
+      <section id="mcp-manual" data-mcp-panel="manual" aria-labelledby="mcp-manual-heading">
+        <h2 id="mcp-manual-heading">下载并配置 MCP</h2>
+        <p>适用于 Windows、macOS 和 Linux。使用 Python 3.11 或更高版本。</p>
+        <div class="mcp-actions">
+          <a class="button primary" href="downloads/AnY-MCP.zip" download>下载 AnY MCP ZIP <i aria-hidden="true">↓</i></a>
+          <a href="downloads/AnY-MCP.zip.sha256">查看 SHA-256</a>
+        </div>
+        <ol class="doc-steps">
+          <li>将 <code>any-mcp.pyz</code> 解压到固定位置，让 Harness 启动 Python 来运行它。</li>
+          <li>在 AnY 选择「添加联系人 → 连接 AI → 其他设备上的 Harness → 通过 MCP 手动参与」，生成配置并分配会话。</li>
+          <li>按下方提示添加 STDIO 服务 <code>ai-bridge</code>，使用完整的 Python 路径和 <code>any-mcp.pyz</code> 路径。把 AnY 给出的地址和密钥填入 <code>AI_BRIDGE_URL</code> 和 <code>AI_BRIDGE_TOKEN</code>。</li>
+        </ol>
+        <p data-mcp-host-note>在 Harness 的 MCP 设置中添加 STDIO 服务，配置样例见安装说明。</p>
+        <details class="mcp-config">
+          <summary>查看配置样例</summary>
+          <h3>Codex · TOML</h3>
+          <pre class="cli-card" tabindex="0"><code>[mcp_servers.ai-bridge]
+command = "python"
+args = ["/absolute/path/to/any-mcp.pyz"]
+env = { AI_BRIDGE_URL = "http://127.0.0.1:8765/mcp", AI_BRIDGE_TOKEN = "你的联系人接入密钥" }</code></pre>
+          <h3>Claude Desktop、Cursor 等 · JSON</h3>
+          <pre class="cli-card" tabindex="0"><code>{
+  "mcpServers": {
+    "ai-bridge": {
+      "command": "python",
+      "args": ["/absolute/path/to/any-mcp.pyz"],
+      "env": {
+        "AI_BRIDGE_URL": "http://127.0.0.1:8765/mcp",
+        "AI_BRIDGE_TOKEN": "你的联系人接入密钥"
+      }
+    }
+  }
+}</code></pre>
+        </details>
+        <a href="mcp-setup.md" class="mcp-guide-link" download>下载完整安装说明 ↓</a>
+      </section>
+
+      <p class="mcp-check">保持 AnY 运行，重新加载 Harness 的 MCP 设置，再用 <code>list_rooms</code> 确认能看到分配给该联系人的会话。</p>
+    </div>
+  </main>
+
+  <footer class="footer wrap">
+    <p>Agents and You</p>
+  </footer>
+</body>
+</html>

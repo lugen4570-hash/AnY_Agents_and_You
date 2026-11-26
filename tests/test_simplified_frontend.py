@@ -73,6 +73,7 @@ function makeNode(id){
     getAttribute:k=>attrs[k],
     addEventListener:(k,fn)=>listeners[k]=fn,
     appendChild(child){this.children.push(child);this.innerHTML+=(child.innerHTML||'');return child},
+    parentElement:{after(){}},
     focus(){}, select(){}, click(){if(this.onclick)this.onclick()},
     closest:sel=>sel==='#appSettingsModal'&&hasId('appSettingsModal')?getNode('appSettingsModal'):null,
     querySelector:sel=>sel.startsWith('#')?getNode(sel.slice(1)):getNode('__sel:'+sel),
@@ -173,7 +174,7 @@ const ctx=vm.createContext({
   confirm:()=>true, alert:m=>{throw Error(m)}, loadTools:async()=>{},
   poll:async()=>{}, loadState:async()=>{}, pollRooms:async()=>{}, refreshContacts:async()=>{},
   fetch:async url=>{
-    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.34',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
+    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.35',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
     if(url==='/api/rooms')return {ok:true,json:async()=>({projects,rooms})};
     if(url==='/api/trash')return {ok:true,json:async()=>({trash:[]})};
     if(url==='/api/settings/connection')return {ok:true,json:async()=>({global:{heartbeat_interval:10},contacts:{},fields:{heartbeat_interval:{label:'心跳间隔',min:3,max:120,default:10}}})};
@@ -181,7 +182,7 @@ const ctx=vm.createContext({
     if(url.startsWith('/api/r/r1/state'))return {ok:true,json:async()=>({meeting:'r1',title:'Room 1',participants:['demo'],permissions:{demo:{read:true,post:true}}})};
     if(url.startsWith('/api/r/r1/tools'))return {ok:true,json:async()=>({mcp:[],plugins:[],skills:[]})};
     if(url.startsWith('/api/extensions'))return {ok:true,json:async()=>({skill_roots:[],items:[]})};
-    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.34',latest:'2.8.34',state:'current'})};
+    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.35',latest:'2.8.35',state:'current'})};
     return {ok:true,json:async()=>({})};
   },
   post:async url=>{
@@ -330,6 +331,15 @@ vm.runInContext(harnessJs,ctx);
   // 8. Root openAgentSettings has NO Back button
   await ctx.openAgentSettings('demo');
   assert.equal(hasId('agentSummaryBack'),false, 'Root Agent Summary must not show Back button');
+  ctx.hideModal();
+
+  // Saved external contacts are not local program configuration shortcuts.
+  contacts.push({id:'devin',label:'Devin',driver:'external',kind:'ai',enabled:true});
+  ctx.agCat.discovered_presets = [{id:'qoder',label:'Qoder',driver:'external',kind:'ai',enabled:true}];
+  await ctx.startConnectionWizard('', 'local');
+  assert.ok(hasId('connCheck'), 'Local Agent still verifies the selected program');
+  assert.match(modalHtml, /AnY_Agents_and_You\/mcp\.html/);
+  assert.doesNotMatch(modalHtml, /配置 Devin|配置 Qoder|data-external-agent/);
   ctx.hideModal();
 })().catch(e=>{console.error(e);process.exitCode=1});
 ''')

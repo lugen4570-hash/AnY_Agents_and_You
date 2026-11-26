@@ -97,6 +97,7 @@ jobs:
               raise SystemExit("Windows artifact source does not match the release tag")
           PY
           python packaging/build_macos_python.py --output-dir release-artifacts
+          python packaging/build_mcp.py --output-dir release-artifacts
           cd release-artifacts
           sha256sum -c "SHA256SUMS-${ver}.txt"
           sha256sum -c "SHA256SUMS-macOS-arm64.txt"
@@ -113,6 +114,7 @@ jobs:
             "AnY-${ver}-macOS-arm64.zip"
             "AnY-${ver}-macOS-x86_64.zip"
             "AnY-${ver}-macOS-Python.zip"
+            "AnY-MCP-${ver}.zip"
             "build-report-${ver}.json"
           )
           for file in "${required[@]}"; do
@@ -154,6 +156,7 @@ jobs:
             "AnY-${ver}-macOS-arm64.zip"
             "AnY-${ver}-macOS-x86_64.zip"
             "AnY-${ver}-macOS-Python.zip"
+            "AnY-MCP-${ver}.zip"
             "SHA256SUMS-${ver}.txt"
             "build-report-${ver}.json"
           )

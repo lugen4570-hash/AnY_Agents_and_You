@@ -162,9 +162,25 @@ jobs:
           } | ConvertTo-Json | Set-Content _site/macos-update.json -Encoding utf8NoBOM
           Copy-Item -LiteralPath $macArchive.FullName -Destination _site/downloads/AnY-macOS-Python.zip
 
+          $mcpName = "AnY-MCP-$version.zip"
+          gh release download "v$version" --repo "${{ github.repository }}" --pattern $mcpName --dir _site/downloads
+          if ($LASTEXITCODE -ne 0) { throw "MCP bundle download failed" }
+          $mcpArchive = Get-Item -LiteralPath "_site/downloads/$mcpName"
+          $mcpHash = (Get-FileHash -LiteralPath $mcpArchive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($checksumMap[$mcpName] -ne $mcpHash) { throw "MCP bundle checksum mismatch" }
+          Move-Item -LiteralPath $mcpArchive.FullName -Destination _site/downloads/AnY-MCP.zip
+          "$mcpHash  AnY-MCP.zip" | Set-Content -LiteralPath _site/downloads/AnY-MCP.zip.sha256 -Encoding utf8NoBOM
+
           @{
             version = $version
             release_tag = "v$version"
+            mcp = @{
+              filename = "AnY-MCP.zip"
+              url = "downloads/AnY-MCP.zip"
+              release_url = $releaseAssets[$mcpName].url
+              sha256 = $mcpHash
+              size = $mcpArchive.Length
+            }
             windows = @{
               setup = @{
                 filename = "AnY-Setup-$version.exe"

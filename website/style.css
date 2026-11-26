@@ -494,6 +494,33 @@ html:not(.has-js) .stage-tabs { display: none; }
 .platform-picker { display: flex; flex-wrap: wrap; gap: 6px; }
 .cli-card { --panel: #18222e; --action: #e6eef6; --action-text: #0b0e13; --control-line: #718294; --focus: #b7d0dc; }
 .cli-card pre { margin: 0; padding: 16px; font: 13px/1.7 var(--mono); }
+
+.page-mcp { background: radial-gradient(ellipse at 50% 8%, #192a3c 0%, var(--paper) 62%); }
+.mcp-page { max-width: 960px; padding-block: clamp(42px, 7vw, 96px); }
+.mcp-heading { margin-bottom: clamp(24px, 4vw, 42px); animation: mcp-enter .35s ease-out both; }
+.mcp-heading h1 { font-size: clamp(30px, 5.2vw, 58px); margin-bottom: 14px; }
+.mcp-heading p:last-child { margin-bottom: 0; }
+.mcp-name { color: var(--ai); font: 600 14px/1.4 var(--mono); }
+.mcp-setup { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: clamp(16px, 4vw, 36px); }
+.mcp-setup p { color: var(--muted); }
+.mcp-options, .mcp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.mcp-options { padding-bottom: 22px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+.mcp-options .platform-picker { margin-inline-start: auto; }
+.mcp-options button, .mcp-options select, .mcp-actions a { min-height: 44px; }
+.mcp-options select { max-width: 100%; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--control-line); background: var(--paper); color: var(--ink); font: inherit; }
+.mcp-code { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; }
+.mcp-code pre { flex: 1 1 340px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcp-code button { margin: 12px; min-height: 44px; }
+.mcp-actions { margin-bottom: 16px; }
+.mcp-actions a:not(.button), .mcp-guide-link { text-decoration: underline; text-underline-offset: 3px; }
+.mcp-actions a:not(.button), .mcp-guide-link { display: inline-flex; align-items: center; min-height: 44px; }
+.mcp-config summary { cursor: pointer; min-height: 44px; padding-block: 8px; }
+.mcp-config h3 { font-size: 16px; margin: 12px 0 8px; }
+.mcp-config pre { padding: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcp-setup .mcp-check { margin: 24px 0 0; padding-top: 18px; border-top: 1px solid var(--line); }
+@keyframes mcp-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mcp-heading { animation: none; } }
+@media (max-width: 720px) { .mcp-options .platform-picker { margin-inline-start: 0; } }
 .copy-status, .noscript-tip { margin: 8px 0; font-size: 13px; }
 .noscript-tip { padding-inline: 16px; }
 
