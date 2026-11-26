@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.36",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.36.exe",
-  "sha256": "62e6271b0f279a9877985865833d9ba18fcc613943bb05669712cfc942354763",
-  "size": 13666856,
-  "notes": "AnY 2.8.36 移除添加联系人向导中的 MCP 官网下载链接。MCP 下载和安装说明集中在官网。"
+  "version": "2.8.38",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.38.exe",
+  "sha256": "b235574756981feb910c501e9a26c84a50af87a205a291bdc18566d0be53331b",
+  "size": 13670198,
+  "notes": "AnY 2.8.38 更新桌面与终端界面，并扩充本机 Agent 发现名单。"
 }
