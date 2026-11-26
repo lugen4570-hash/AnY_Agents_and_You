@@ -17,6 +17,15 @@ from bridge import access, common, connections, discovery, install, registry
 
 
 class TestDiscovery(unittest.TestCase):
+    def test_discovery_only_commands_are_not_offered_as_automatic_drivers(self):
+        entries = {entry["id"]: entry for entry in discovery.load_catalog()}
+        for agent_id in ("devin", "cline", "kilo", "vibe"):
+            with self.subTest(agent=agent_id), patch.object(discovery, "_find_cli", return_value="installed-agent"):
+                item = discovery._inspect_entry(entries[agent_id], set(), {}, {}, {}, set())
+                self.assertTrue(item["present"])
+                self.assertEqual(item["level"], "unsupported")
+                self.assertEqual(item["options"], [])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.old_log = common.LOG_DIR

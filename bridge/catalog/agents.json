@@ -4,6 +4,8 @@
       "id": "devin",
       "label": "Devin",
       "color": "#7b61ff",
+      "cli": { "bin": ["devin"] },
+      "discovery_only": true,
       "desktop": {
         "detect": [
           "%LOCALAPPDATA%\\Programs\\Devin\\Devin.exe",
@@ -14,6 +16,24 @@
         "shortcuts": ["Devin"],
         "uninstall": ["Devin"]
       }
+    },
+    {
+      "id": "cline",
+      "label": "Cline CLI",
+      "cli": { "bin": ["cline"] },
+      "discovery_only": true
+    },
+    {
+      "id": "kilo",
+      "label": "Kilo CLI",
+      "cli": { "bin": ["kilo"] },
+      "discovery_only": true
+    },
+    {
+      "id": "vibe",
+      "label": "Mistral Vibe",
+      "cli": { "bin": ["vibe"] },
+      "discovery_only": true
     },
     {
       "id": "claude",

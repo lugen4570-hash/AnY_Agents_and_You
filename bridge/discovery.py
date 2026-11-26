@@ -192,7 +192,11 @@ def _inspect_entry(entry, installed_names, specs, conn_cat, host_map, dismissed)
     if host_id and (has_desktop or has_direct or mcp_installed):
         options.append("mcp")
 
-    if has_direct:
+    if present and entry.get("discovery_only") and not (spec or {}).get("user"):
+        level = "unsupported"
+        via = "none"
+        options = []
+    elif has_direct:
         level = "direct"
         via = options[0]
     elif has_desktop and host_id:
