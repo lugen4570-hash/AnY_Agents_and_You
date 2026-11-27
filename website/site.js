@@ -630,10 +630,14 @@ if (guideDialog) {
 }
 
 const windowsSetupLink = document.querySelector('[data-dl-target="win-setup"]');
-if (windowsSetupLink && !dlSelector) {
+const siteVersionLabels = document.querySelectorAll('[data-site-version]');
+if ((windowsSetupLink && !dlSelector) || siteVersionLabels.length) {
   fetch('update.json', { cache: 'no-store' })
     .then((response) => (response.ok ? response.json() : null))
-    .then((update) => { if (update?.url) windowsSetupLink.href = update.url; })
+    .then((update) => {
+      if (update?.url && windowsSetupLink && !dlSelector) windowsSetupLink.href = update.url;
+      if (update?.version) for (const label of siteVersionLabels) label.textContent = `当前版本 ${update.version} · MIT 开源`;
+    })
     .catch(() => {});
 }
 if (dlSelector) {
