@@ -1,6 +1,8 @@
 """Terminal entry point and local AnY HTTP client."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import http.client
+import importlib.util
 import json
 import os
 import sys
@@ -182,14 +184,20 @@ def main(argv=None):
             message = sys.stdin.read() if args.text == "-" else args.text
             result = client.call(room_path(args.room, "send"), {"text": message})
         else:
-            try:
-                from .terminal import AnYTerminal
-            except ModuleNotFoundError as error:
-                if error.name not in ("textual", "rich"):
-                    raise
-                raise CliError('请先在源码目录运行 python -m pip install -e ".[cli]"。') from error
+            if not all(importlib.util.find_spec(name) for name in ("textual", "rich")):
+                raise CliError('请先在源码目录运行 python -m pip install -e ".[cli]"。')
             from .cli_autostart import ensure_backend
-            ensure_backend(args.port)
+            if sys.stderr.isatty():
+                print("AnY 正在启动…", file=sys.stderr, flush=True)
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                backend = executor.submit(ensure_backend, args.port)
+                try:
+                    from .terminal import AnYTerminal
+                except ModuleNotFoundError as error:
+                    if error.name not in ("textual", "rich"):
+                        raise
+                    raise CliError('请先在源码目录运行 python -m pip install -e ".[cli]"。') from error
+                backend.result()
             AnYTerminal(client, getattr(args, "room", None)).run()
             return 0
         print(json.dumps(result))

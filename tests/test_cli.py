@@ -20,7 +20,7 @@ os.environ["ROUNDTABLE_LOG_DIR"] = DATA.name
 sys.path.insert(0, str(ROOT))
 
 from bridge import room, web
-from bridge.cli import LocalClient, main, room_path
+from bridge.cli import CliError, LocalClient, main, room_path
 from bridge.cli_autostart import server_ready
 
 
@@ -53,6 +53,16 @@ class CojamCliTest(unittest.TestCase):
         result = self.command("messages", meeting.id, "--since", str(batch["next"]))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["messages"], [])
+
+    @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
+    def test_backend_start_failure_does_not_open_terminal(self):
+        with (patch("bridge.cli_autostart.ensure_backend", side_effect=CliError("后台启动失败")),
+              patch("bridge.terminal.AnYTerminal") as terminal,
+              patch("sys.stderr") as stderr):
+            stderr.isatty.return_value = False
+            self.assertEqual(main([]), 1)
+            terminal.assert_not_called()
+            self.assertIn("后台启动失败", "".join(call.args[0] for call in stderr.write.call_args_list))
 
     @unittest.skipUnless(importlib.util.find_spec("textual"), "install the cli extra to test the terminal UI")
     def test_interactive_entrypoint_starts_backend_on_selected_port_and_reuses_it(self):
