@@ -35,7 +35,8 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
             f"[void][System.Management.Automation.Language.Parser]::ParseFile('{ps1}', [ref]$tokens, [ref]$errors); "
             "if ($errors.Count) { $errors | ForEach-Object { Write-Error $_.Message }; exit 1 }"
         )
-        res = subprocess.run(['powershell', '-NoProfile', '-Command', script], capture_output=True, text=True)
+        shell_exe = shutil.which('powershell') or shutil.which('pwsh')
+        res = subprocess.run([shell_exe, '-NoProfile', '-Command', script], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stderr + res.stdout)
 
     def test_download_page_exposes_dmg_and_curl_irm_commands(self):
