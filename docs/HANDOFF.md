@@ -1,5 +1,12 @@
 # AnY 交接摘要
 
+## CLI 启动优化与 AnY 2.8.44 发布
+
+- CLI 交互入口先显示启动状态，并行加载终端界面和准备本机后台。后台启动失败时仍报告错误，缺少终端依赖时提示安装。隔离冷启动测试中，原串行准备约 11.97 秒，并行准备约 10.52 秒，数值随机器和环境变化。CLI 测试 10 项、mypy 和 Ruff 通过，本机终端已验证启动提示及进入界面。
+- 源码 `90b5d89c9bdd8837ab3793725a33c84b919328a3` 已发布为桌面端 `v2.8.44` 与 CLI `cli-v2.8.43`。Windows 全量回归、安装和数据保留验证、双架构 macOS 构建及 Windows/Linux CLI 验证通过。[发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45994684292) · [CLI 验证](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45994684975)
+- 官网部署成功，CLI 更新清单指向上述源码，桌面安装包实际下载后核对为 13720961 字节、SHA-256 `6a56344d4a3fce27491a2e376087b43b81df9f0b8f5a74a92cd6d3b91358ee50`。Release 13 个附件的大小及 12 项校验清单与上传元数据一致。本机 CLI 已更新至 2.8.43，桌面程序已安装 2.8.44。[官网部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45996674535)
+- 构建报告标记 `source_dirty: true`，构建时工作区变化尚未定位。Windows 包未签名，原生桌面交互及 Apple Silicon 真机启动尚未验证。
+
 ## AnY 2.8.43 与 CLI 2.8.42 发布
 
 - 联系人向导重构、单成员点名与模式切换调整已发布。桌面端源码为 `7ecf01bd543aa6901c54d3b80836bcdc2944f314`，CLI 标签 `cli-v2.8.42` 指向同一提交。首次 `v2.8.42` 的 Windows 回归发现重构后旧测试未更新，未生成 Release。修正测试后使用新版本发布。
