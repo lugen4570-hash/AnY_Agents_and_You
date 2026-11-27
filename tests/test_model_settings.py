@@ -11,18 +11,19 @@ class ModelSettings(unittest.TestCase):
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
 const source=fs.readFileSync('static/connections.js','utf8');
-const begin=source.indexOf("document.getElementById('connRescan').onclick = async () => {");
-const end=source.indexOf('    const selected =',begin);
-let busy=[],renders=0;
-const nodes={connRescan:{},connProgramHelp:{}};
-const w={id:'qodercli',saved:true,localChoice:'qodercli',form:{},controller:{signal:{}},busy:false};
+const begin=source.indexOf("const rescan = document.getElementById('connRescan');");
+const end=source.indexOf("    mbox.querySelectorAll('[data-conn-program]')",begin);
+assert.ok(begin>=0 && end>begin);
+let renders=0;
+const nodes={connRescan:{}};
+const w={id:'qodercli',saved:true,localChoice:'qodercli',form:{},controller:{signal:{}},busy:false,type:'local',step:2};
 const ctx=vm.createContext({w,document:{getElementById:id=>nodes[id]},agCat:{connections:{qodercli:{state:'ready'}}},
- setConnectionBusy:(flow,value)=>{flow.busy=value;busy.push(value)},captureConnectionForm:flow=>flow.form.command='unsaved-command',
+ captureConnectionForm:flow=>flow.form.command='unsaved-command',
  refreshContacts:async()=>{},wizardCurrent:()=>true,renderConnectionWizard:()=>renders++,wizardError:()=>{}});
 vm.runInContext(source.slice(begin,end),ctx);
 (async()=>{await nodes.connRescan.onclick();assert.equal(w.localChoice,'qodercli');assert.equal(w.id,'qodercli');
  assert.equal(w.saved,true);assert.equal(w.form.command,'unsaved-command');assert.equal(w.status.state,'ready');
- assert.deepEqual(busy,[true,false]);assert.equal(renders,1);assert.match(nodes.connProgramHelp.textContent,/检索完成/);
+ assert.equal(w.scanning,false);assert.equal(nodes.connRescan.disabled,false);assert.equal(renders,1);
 })().catch(e=>{console.error(e);process.exitCode=1});
 '''
         result = subprocess.run(['node', '-e', script], cwd=Path(__file__).resolve().parents[1],
