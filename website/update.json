@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.41",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.41.exe",
-  "sha256": "0deee3b666b452057e8fb4d37f787a9ae76cb08c1c0b977fc3710b1df03d12c3",
-  "size": 13678776,
-  "notes": "AnY 2.8.41 支持不归属项目的独立会话、Harness 的 [AnY] 标签和会话自动清理。"
+  "version": "2.8.43",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.43.exe",
+  "sha256": "a92881ada8141567552f755e63aa1f8193b5a9b6b92e5bf47b1d8d040b88cc54",
+  "size": 13719461,
+  "notes": "AnY 2.8.43 重构联系人接入，并优化会话点名和模式切换。"
 }
