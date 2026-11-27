@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.43",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.43.exe",
-  "sha256": "a92881ada8141567552f755e63aa1f8193b5a9b6b92e5bf47b1d8d040b88cc54",
-  "size": 13719461,
-  "notes": "AnY 2.8.43 重构联系人接入，并优化会话点名和模式切换。"
+  "version": "2.8.44",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.44.exe",
+  "sha256": "6a56344d4a3fce27491a2e376087b43b81df9f0b8f5a74a92cd6d3b91358ee50",
+  "size": 13720961,
+  "notes": "AnY 2.8.44 优化 CLI 启动等待。"
 }
