@@ -1,6 +1,13 @@
 # AnY 交接摘要
 
-最近更新：2026-11-26。
+最近更新：2026-11-27。
+
+## AnY 2.8.41 正式发布（2026-11-27）
+
+- 本版支持不建项目直接创建独立会话，在向外部 Harness 传递会话标题及首轮非原生提示词时统一加 `[AnY] ` 前缀标注（AnY 自身列表保持原标题），并在删除未交出终端（`handed_off`）的会话时自动清理 Claude、Codex 与 OpenCode 对应会话；官网同步上线 T2 设计优化与新版 Logo。
+- 首次 `v2.8.40` 构建因 `macos-arm64` 偶发 `hdiutil: Resource busy` 及 `tests/test_purge_part.py` 在未安装 `opencode` 的 Windows runner 上触发 `KeyError` 而失败（未发布 Release）。修复测试并递增版本号至 `2.8.41` 后，发布源码 `3b677483e4617a86d5b172789baae7f602ce9985` 通过全部发布检查（`cli-linux`、`macos`、`macos-arm64`、`windows`、`publish`）。[发布流程](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45844497976)
+- 已下载 Release 全部 13 个附件并核对大小、SHA-256 与 ZIP 完整性；实下载 `AnY-Portable-2.8.41.exe` 在隔离端口与数据目录下完成 `/api/server/info`、独立会话创建（`POST /api/rooms/new`）、`GET /api/rooms`、`POST /api/rooms/delete` 及 `/api/server/exit` 验证。Windows 产物未签名（`build-report-2.8.41.json` 标记 `source_dirty: false`、`signed: false`），Tauri 原生窗口交互与 Apple Silicon 实机启动待真机验收。[Release](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/tag/v2.8.41) · [构建报告](https://github.com/lugen4570-hash/AnY_Agents_and_You/releases/download/v2.8.41/build-report-2.8.41.json)
+- 官网发布提交 `285938bf95d129d2b65b49e84936040ca577af41` 与 `26c9a980f0ceb39b226b001996bda07c582d4ecd` 已通过 Pages 部署；已核对首页、`download.html`、`update.json`、`downloads/manifest.json` 与 `cli/current.json`，并实下载官网 Windows 安装版（13,678,776 字节，`0deee3b666b452057e8fb4d37f787a9ae76cb08c1c0b977fc3710b1df03d12c3`）、Windows 便携版（13,516,441 字节，`129d1f8d6705d8a9b7f71291edd492ea898afc341bfa8e20ea70131d44b08434`）、macOS Apple 芯片 DMG（32,658,984 字节）、macOS Intel DMG（27,081,390 字节）、macOS Python ZIP（2,002,914 字节）、MCP ZIP（24,806 字节）及 CLI 源码包 `any-cli-3b677483e4617a86d5b172789baae7f602ce9985.tar.gz`（481,079 字节），大小与 SHA-256 全部一致。[Pages 部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45943763092) · [官网下载](https://lugen4570-hash.github.io/AnY_Agents_and_You/download.html)
 
 ## AnY 2.8.39 正式发布（2026-11-26）
 
