@@ -19,6 +19,30 @@ def plain(value):
     return "".join(c for c in str(value) if c in "\n\t" or (ord(c) >= 32 and not 127 <= ord(c) <= 159))
 
 
+def composer_mention(text, members, picked=None):
+    """Keep a single recipient while preserving the draft text."""
+    ids = sorted(set(members) | {"用户", "user"}, key=len, reverse=True)
+    selected = ""
+    count = 0
+
+    def strip_mention(match):
+        nonlocal selected, count
+        name = match[1].lower()
+        member = "用户" if name == "user" else name
+        count += 1
+        selected = "" if selected == member else member
+        return ""
+
+    pattern = r"@(" + "|".join(map(re.escape, ids)) + r")(?![A-Za-z0-9_])[ \t]?"
+    body = re.sub(pattern, strip_mention, text, flags=re.I)
+    if picked:
+        selected = "" if selected == picked else picked
+    if count < 2 and not picked:
+        return text
+    body = body.lstrip()
+    return (f"@{selected}" + (" " if body or picked else "") if selected else "") + body
+
+
 @dataclass(frozen=True)
 class Command:
     description: str
@@ -217,16 +241,17 @@ class Composer(Vertical):
             if name.lower() in COMMANDS:
                 return self.complete_argument(name.lower(), argument)
             return []
-        mention = re.search(r"(?<![\w@])@([\w-]*)$", value[:position])
+        mention = re.search(r"(?<![\w@])@([\w.-]*)$", value[:position])
         if mention:
-            suffix = re.match(r"[\w-]+", value[position:])
+            suffix = re.match(r"[\w.-]+", value[position:])
             end = position + (len(suffix[0]) if suffix else 0)
+            draft = value[:mention.start()] + value[end:]
+            members = [member for member, _ in self.complete_argument("@", "")]
             candidates = []
             for member, label in self.complete_argument("@", mention[1]):
-                prefix = value[:mention.start()] + "@" + member
-                if not value[end:end + 1].isspace():
-                    prefix += " "
-                candidates.append(Completion("@" + member, label, prefix + value[end:], cursor=len(prefix)))
+                updated = composer_mention(draft, members, member)
+                cursor = len(member) + 1 + int(not value[end:end + 1].isspace()) if updated.startswith("@" + member + " ") else 0
+                candidates.append(Completion("@" + member, label, updated, cursor=cursor))
             return candidates
         return []
 

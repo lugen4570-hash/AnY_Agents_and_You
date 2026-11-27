@@ -528,13 +528,15 @@ feed.addEventListener('scroll',()=>{hideMenu();updateSelectionTools()});
 addEventListener('resize',()=>{hideMenu();updateSelectionTools()});
 fileEl.onchange=()=>{const fs=[...fileEl.files],rid=filePickerRoom||RID;filePickerRoom=null;fileEl.value='';fs.forEach(f=>upload(f,rid))};
 async function send(){
-  const rid=RID,original=ta.value,text=original.trim();
+  const rid=RID,original=ta.value;
+  const harness=typeof window!=='undefined'&&(window.AnYHarness||window.CojamHarness);
+  const text=(harness?.composerMention ? harness.composerMention(original,S).text : original).trim();
   if(!rid||sendingRooms.has(rid))return;
   if(uploads.get(rid)){alert('附件还在上传，稍等一下');return}
   if(!text&&!pend.length)return;
   const atts=pend.slice(),qm=quote;
-  if(!atts.length&&typeof window!=='undefined'&&(window.AnYHarness||window.CojamHarness)&&typeof (window.AnYHarness||window.CojamHarness).handleComposerSlashCommand==='function'){
-    const slashResult=await (window.AnYHarness||window.CojamHarness).handleComposerSlashCommand(text);
+  if(!atts.length&&typeof harness?.handleComposerSlashCommand==='function'){
+    const slashResult=await harness.handleComposerSlashCommand(text);
     if(slashResult&&slashResult.handled){
       if(slashResult.clear){
         const draft=getDraft(rid);

@@ -258,7 +258,7 @@ const ctx=vm.createContext({document:{getElementById:id=>boxes[id]},esc:s=>Strin
  agCat:{owner_devices:[{label:'我的手机',online:true}],connections:{'friend-codex':{state:'connected',label:'已连接'}},members:{'friend-codex':{automatic:true,device:'朋友的 Mac'}}},
  AG_DRV:{},S:{participants:['codex','friend-codex']},quickEl:boxes.quick});
 vm.runInContext(part+'\n'+quick,ctx);ctx.drawContacts();ctx.drawQuick();
-assert.match(boxes.contactList.innerHTML,/我的手机/);assert.match(boxes.contactList.innerHTML,/朋友的 Mac/);assert.match(boxes.contactList.innerHTML,/@friend-codex/);
+assert.doesNotMatch(boxes.contactList.innerHTML,/我的手机/);assert.match(boxes.contactList.innerHTML,/朋友的 Mac/);assert.match(boxes.contactList.innerHTML,/@friend-codex/);
 assert.match(boxes.quick.innerHTML,/data-ins="@codex "[^>]*>@我的 Codex/);
 assert.match(boxes.quick.innerHTML,/data-ins="@friend-codex "[^>]*>@朋友的 Codex/);
 '''
@@ -683,7 +683,7 @@ setTimeout(()=>{try{assert.equal(clean,'/enroll');assert.equal(calls[0].url,'/ap
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     @unittest.skipUnless(shutil.which('node'), 'Node is needed to test the device wizard')
-    def test_enrollment_completion_closes_wizard_after_refresh(self):
+    def test_enrollment_completion_returns_to_settings_after_refresh(self):
         root = Path(__file__).resolve().parents[1]
         script = r'''
 const fs=require('fs'),vm=require('vm'),assert=require('assert/strict');
@@ -691,7 +691,8 @@ const js=fs.readFileSync('static/connections.js','utf8');
 const fn=js.match(/async function pollDeviceEnrollment\(w, id\) \{[\s\S]*?\n\}/)[0];
 let closed=0, refreshed=0, cleared=0, status={devices:[]}, message={textContent:''};
 const ctx=vm.createContext({wizardCurrent:()=>true, clearInterval:()=>cleared++,
- connectionGet:async()=>[true,status], refreshContacts:async()=>{refreshed++},hideModal:()=>closed++,document:{getElementById:()=>message}});
+ connectionGet:async()=>[true,status], refreshContacts:async()=>{refreshed++},
+ connectionLeaveModal:()=>{assert.equal(refreshed,1);closed++},document:{getElementById:()=>message}});
 vm.runInContext(fn,ctx);
 (async()=>{const w={type:'mydevice',step:2,timer:1};await ctx.pollDeviceEnrollment(w,'dev_x');
  assert.equal(closed,0);status={devices:[{id:'dev_x',last_seen:123}]};await ctx.pollDeviceEnrollment(w,'dev_x');

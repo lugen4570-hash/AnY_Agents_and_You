@@ -163,10 +163,11 @@ function drawQuick(){          // 输入框上面那排 @：跟着这场会议�
   const key=ids.join(',');
   if(quickEl.dataset.k===key)return;
   quickEl.dataset.k=key;
-  quickEl.innerHTML=ids.map(id=>{const contact=CONTACTS.find(a=>a.id===id),label=contact&&contact.label||id;return '<button type="button" data-ins="@'+esc(id)+' " title="@'+esc(id)+'">@'+esc(label)+'</button>'}).join('')
-    +'<button type="button" data-ins="@用户 ">@用户</button>';
+  quickEl.innerHTML=[...ids,'用户'].map(id=>{const contact=CONTACTS.find(a=>a.id===id),label=contact&&contact.label||id;return '<button type="button" data-ins="@'+esc(id)+' " data-mention="'+esc(id)+'" aria-pressed="false" title="@'+esc(id)+'">@'+esc(label)+'</button>'}).join('');
   quickEl.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    const t=document.getElementById('ta');if(!t)return;t.value+=b.dataset.ins;t.dispatchEvent(new Event('input',{bubbles:true}));t.focus();
+    const t=document.getElementById('ta');if(!t)return;
+    t.value=(window.AnYHarness||window.CojamHarness).composerMention(t.value,S,b.dataset.mention).text;
+    t.dispatchEvent(new Event('input',{bubbles:true}));t.focus();
   });
 }
 const AG_DRV={cli:'命令行程序',acp:'ACP 常驻协议',http:'网页服务',external:'在它自己的界面里',claude:'Claude Code 命令行',codex:'Codex 常驻服务'};
@@ -335,12 +336,12 @@ async function undoStep(n){
   if(!ok)alert(j.error||'失败');
   await loadState();poll();
 }
-async function toggleMode(){
-  const to=(S&&S.mode==='work')?'discuss':'work';
-  if(to==='work'&&!confirm('切到干活模式？\n\nclaude 和 codex 拿到完整权限，跟你平时在桌面版里用一样：改文件、跑命令、联网、用 git。只有 MCP 工具不加载（为了回得快）。\n它们用编辑工具改的文件每一步都记下来，可以一键撤回；用命令写的文件、删掉的文件、git 操作撤不回。'))return;
+async function toggleMode(to=(S&&S.mode==='work')?'discuss':'work'){
+  if(S?.mode===to)return true;
   const [ok,j]=await post(api('mode'),{mode:to});
   if(!ok)alert(j.error||'失败');
   await loadState();poll();
+  return ok;
 }
 function openMoveRoom(room,projects){
   const destinations=projects.filter(p=>p.id!==room.project);

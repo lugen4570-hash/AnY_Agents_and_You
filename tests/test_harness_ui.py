@@ -68,12 +68,12 @@ const ctx=vm.createContext({esc:String, RID:'room', S:{meeting:'room',participan
     querySelector:()=>null,querySelectorAll:()=>[],addEventListener(k,f){events['document:'+k]=f}},
   api:()=>'/tools', fetch:()=>{requests++;return new Promise(resolve=>{finish=resolve})}});
 vm.runInContext(src,ctx);
-events.input();
+events.input({});
 assert.equal(menu.hidden,false);
 assert.match(menu.innerHTML,/\/compact/);
 assert.equal(requests,1);
 input.value='/mo';input.selectionStart=3;
-events.input();
+events.input({});
 assert.match(menu.innerHTML,/\/model/);
 assert.equal(requests,1);
 events['document:keydown']({key:'Escape'});
@@ -145,6 +145,14 @@ const toCodex = h.buildModelChipState('@codex please check', state, state.agents
 assert.equal(toCodex.readonly, false);
 assert.equal(toCodex.pending, true);
 assert.equal(toCodex.label, 'Codex · gpt-5.4 · high');
+
+// Replacing or cancelling a recipient preserves the draft.
+assert.equal(h.composerMention('请检查', state, 'codex').text, '@codex 请检查');
+assert.equal(h.composerMention('@codex 请检查', state, 'codex').text, '请检查');
+assert.equal(h.composerMention('@codex 请检查', state, 'antigravity').text, '@antigravity 请检查');
+assert.equal(h.composerMention('@codex @codex 请检查', state).text, '请检查');
+assert.equal(h.resolveComposerTarget('@codex @antigravity 请检查', state).aiId, 'antigravity');
+assert.deepEqual(h.resolveComposerTarget('@用户 请检查', state).aiIds, []);
 
 // 3. Explicit @antigravity (desktop) shows read-only reported model
 const toAgy = h.buildModelChipState('@antigravity review this', state, state.agents);
@@ -300,9 +308,10 @@ with tempfile.TemporaryDirectory() as wd:
         'read': True, 'post': True, 'trigger': True, 'board': False, 'files': False, 'work': False,
     }
     r.meta['instruction_seen'] = {'codex': r.instruction_signature('codex', 'discuss')}
+    previous_messages = list(r.messages)
     ok, msg = r.set_mode('work')
     assert ok, msg
-    assert r.messages[-1]['text'] == '切到干活模式', r.messages[-1]['text']
+    assert r.messages == previous_messages
     assert r.member_mode('codex') == 'discuss'
 
     ok, msg = r.set_members(['codex'], {'codex': {'work': True}})

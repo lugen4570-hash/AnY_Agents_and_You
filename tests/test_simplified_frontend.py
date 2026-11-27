@@ -174,7 +174,7 @@ const ctx=vm.createContext({
   confirm:()=>true, alert:m=>{throw Error(m)}, loadTools:async()=>{},
   poll:async()=>{}, loadState:async()=>{}, pollRooms:async()=>{}, refreshContacts:async()=>{},
   fetch:async url=>{
-    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.41',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
+    if(url==='/api/server/info')return {ok:true,json:async()=>({app:'AI Bridge',version:'2.8.42',api_revision:3,lan_url:'http://192.168.1.5:8766'})};
     if(url==='/api/rooms')return {ok:true,json:async()=>({projects,rooms})};
     if(url==='/api/trash')return {ok:true,json:async()=>({trash:[]})};
     if(url==='/api/settings/connection')return {ok:true,json:async()=>({global:{heartbeat_interval:10},contacts:{},fields:{heartbeat_interval:{label:'心跳间隔',min:3,max:120,default:10}}})};
@@ -182,7 +182,7 @@ const ctx=vm.createContext({
     if(url.startsWith('/api/r/r1/state'))return {ok:true,json:async()=>({meeting:'r1',title:'Room 1',participants:['demo'],permissions:{demo:{read:true,post:true}}})};
     if(url.startsWith('/api/r/r1/tools'))return {ok:true,json:async()=>({mcp:[],plugins:[],skills:[]})};
     if(url.startsWith('/api/extensions'))return {ok:true,json:async()=>({skill_roots:[],items:[]})};
-    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.41',latest:'2.8.41',state:'current'})};
+    if(url.startsWith('/api/update/'))return {ok:true,json:async()=>({current:'2.8.42',latest:'2.8.42',state:'current'})};
     return {ok:true,json:async()=>({})};
   },
   post:async url=>{
@@ -333,17 +333,62 @@ vm.runInContext(harnessJs,ctx);
   assert.equal(hasId('agentSummaryBack'),false, 'Root Agent Summary must not show Back button');
   ctx.hideModal();
 
-  // Saved external contacts are not local program configuration shortcuts.
+  // Test the real entry points and the entire back path without awaiting a request.
   contacts.push({id:'devin',label:'Devin',driver:'external',kind:'ai',enabled:true});
-  ctx.agCat.discovered_presets = [{id:'qoder',label:'Qoder',driver:'external',kind:'ai',enabled:true}];
-  await ctx.startConnectionWizard('', 'local');
-  assert.ok(hasId('connCheck'), 'Local Agent still verifies the selected program');
-  assert.doesNotMatch(modalHtml, /配置 Devin|配置 Qoder|data-external-agent|\/mcp\.html/);
+  ctx.agCat.discovered_presets = [
+    {id:'second',label:'Second CLI',driver:'acp',enabled:true},
+    {id:'qoder',label:'Qoder',driver:'external',kind:'ai',enabled:true},
+  ];
+  const choose = type => mbox.querySelector('[data-connection-type="'+type+'"]').onclick();
+  const back = () => getNode('connWizardBack').onclick();
+  await ctx.startConnectionWizard();
+  assert.match(modalHtml, /用户接入.*Harness 接入/);
+  assert.doesNotMatch(modalHtml, /我的设备/);
+  choose('user');
+  assert.ok(hasId('connGuestGenerate'));
+  back();
+  choose('harness');
+  assert.doesNotMatch(modalHtml, /高级设置/);
+  choose('local');
+  choose('cli');
+  assert.ok(hasId('connCheck'));
+  assert.match(modalHtml, /Demo.*Second CLI.*手动添加 CLI 或 ACP 程序/);
+  assert.doesNotMatch(modalHtml, /配置 Devin|配置 Qoder|connOpenScan|<select id="connLocal"/);
+  back();
+  assert.match(modalHtml, /CLI 端.*桌面端/);
+  choose('desktop');
+  assert.ok(hasId('connDesktopScan'));
+  extractDataNodes('data-conn-program').find(n=>n.dataset.connProgram==='__custom__').onclick();
+  assert.match(modalHtml, /本机 Harness · 桌面端/);
+  assert.match(modalHtml, /\/mcp\.html/);
+  back();
+  back();
+  back();
+  choose('external');
+  assert.ok(hasId('connRemoteBase'));
+  getNode('connRemoteBase').value = 'http://127.0.0.1:8765';
+  getNode('connRemoteBase').oninput();
+  getNode('connDeviceNext').onclick();
+  assert.ok(hasId('connRemoteBase'), 'Remote setup must reject a loopback address');
+  getNode('connRemoteBase').value = 'https://any.example.test';
+  getNode('connRemoteBase').oninput();
+  getNode('connDeviceNext').onclick();
+  choose('cli');
+  assert.match(modalHtml, /https:\/\/any\.example\.test/);
+  assert.match(modalHtml, /生成成员连接配置/);
+  assert.doesNotMatch(modalHtml, /Second CLI|\/mcp\.html/);
+  back();
+  choose('desktop');
+  assert.match(modalHtml, /其他设备上的 Harness · 桌面端/);
+  assert.match(modalHtml, /生成 MCP 接入密钥/);
   ctx.hideModal();
 
-  await ctx.startConnectionWizard('', 'external');
-  assert.match(modalHtml, /通过 MCP 手动参与/);
-  assert.doesNotMatch(modalHtml, /\/mcp\.html/);
+  ctx.openAppSettings('personal');
+  getNode('settingsPersonalDevices').onclick();
+  await new Promise(r=>setTimeout(r,15));
+  assert.ok(hasId('connDeviceCreate'), 'Personal Settings opens device management');
+  back();
+  assert.ok(hasId('settingsPersonalDevices'), 'Return reopens Personal Settings');
   ctx.hideModal();
 })().catch(e=>{console.error(e);process.exitCode=1});
 ''')

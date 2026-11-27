@@ -260,18 +260,17 @@ async function openAgentManager() {
   const agentRows=agents=>agents.map(a=>'<div class="agent-room-row"><span><b>'+esc(a.label)+'</b><small>'+esc(a.enabled?contactStatusLabel(a):'未找到程序，可修改路径')+'</small></span><button type="button" data-agent-settings="'+esc(a.id)+'">详情</button></div>').join('');
   showModal('<div id="agentManager"><div class="connection-heading">'+(canBack?'<button type="button" class="modal-back" id="agentManagerBack">← 返回</button>':'')+'<div><span class="eyebrow">应用设置</span><h3>Agent 与连接</h3></div><button id="agentManagerClose" aria-label="关闭设置">×</button></div>'
     +'<p class="hint">选择联系人查看状态，或添加新的 AI。</p>'
-    +'<div class="agent-manager-tools">'+(local?'<button id="contactsScan">查找已安装的 AI</button>':'')+'<details><summary>高级设置</summary><button id="connSettingsBtn">连接与心跳</button></details><button id="managerDevices">我的设备</button></div>'
+    +'<div class="agent-manager-tools">'+(local?'<button id="contactsScan">查找已安装的 AI</button>':'')+'<button id="connSettingsBtn">连接与心跳</button></div>'
     +'<h4>我的 Agent <span class="badge">'+active.length+'</span></h4>'
     +(agentRows(active)||'<p class="nav-empty">还没有接入 Agent。</p>')
     +(presets.length?'<details class="connection-advanced"><summary>其他预置 Agent（'+presets.length+'）</summary>'+agentRows(presets)+'</details>':'')
     +'<div class="btns agent-settings-actions"><button id="agentManagerDone">完成</button><button id="agentManagerAdd" class="pri">添加 Agent</button></div></div>');
   if(canBack&&document.getElementById('agentManagerBack'))document.getElementById('agentManagerBack').onclick=()=>popModalBack();
   mbox.querySelectorAll('[data-agent-settings]').forEach(b=>b.onclick=()=>{pushBack(()=>openAgentManager());openAgentSettings(b.dataset.agentSettings)});
-  document.getElementById('agentManagerAdd').onclick=()=>{pushBack(()=>openAgentManager());startConnectionWizard('','local')};
+  document.getElementById('agentManagerAdd').onclick=()=>{pushBack(()=>openAgentManager());startConnectionWizard('','ai')};
   document.getElementById('agentManagerClose').onclick=hideModal;
   document.getElementById('agentManagerDone').onclick=()=>{if(canBack)popModalBack();else hideModal();};
   document.getElementById('connSettingsBtn').onclick=()=>{pushBack(()=>openAgentManager());openConnectionSettingsModal()};
-  document.getElementById('managerDevices').onclick=()=>{pushBack(()=>openAgentManager());startConnectionWizard('','mydevice')};
   if(local)document.getElementById('contactsScan').onclick=()=>{pushBack(()=>openAgentManager());openDiscoveryModal(true)};
 }
 async function openAgentMembership(id, roomId) {

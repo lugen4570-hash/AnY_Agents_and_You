@@ -39,6 +39,7 @@
       'composer.busy': '运行中锁定',
       'settings.title': '设置',
       'settings.general': '通用',
+      'settings.personal': '个人设置',
       'settings.cloud': '账号与同步',
       'settings.agents': 'Agent 与连接',
       'settings.extensions': '扩展',
@@ -120,6 +121,7 @@
       'composer.busy': 'Locked while busy',
       'settings.title': 'Settings',
       'settings.general': 'General',
+      'settings.personal': 'Personal',
       'settings.cloud': 'Account & Sync',
       'settings.agents': 'Agents & Connections',
       'settings.extensions': 'Extensions',
@@ -274,15 +276,31 @@
     return found;
   }
 
+  function composerMention(text, state, clicked) {
+    const ids = [...new Set([...(state?.participants || []), ...getRoomAiIds(state), '用户', 'user'])]
+      .sort((a, b) => b.length - a.length).map(id => id.replaceAll('.', '\\.'));
+    let selected = '';
+    let count = 0;
+    const original = String(text || '');
+    const pattern = new RegExp('@(' + ids.join('|') + ')(?![A-Za-z0-9_])[ \\t]?', 'gi');
+    const body = original.replace(pattern, (full, name) => {
+      const id = name.toLowerCase() === 'user' ? '用户' : name.toLowerCase();
+      count++;
+      selected = selected === id ? '' : id;
+      return '';
+    });
+    if (clicked) selected = selected === clicked ? '' : clicked;
+    if (count < 2 && !clicked) return {selected, count, text:original};
+    return {selected, count, text:(selected ? '@' + selected + (clicked || body.trimStart() ? ' ' : '') : '') + body.trimStart()};
+  }
+
   function resolveComposerTarget(text, state) {
     const aiIds = getRoomAiIds(state);
-    const mentions = extractExplicitMentions(text, aiIds);
-    if (mentions.length === 1) {
-      return { mode: 'single', aiId: mentions[0], explicit: true, aiIds };
+    const {selected} = composerMention(text, state);
+    if (selected && aiIds.includes(selected)) {
+      return { mode: 'single', aiId: selected, explicit: true, aiIds };
     }
-    if (mentions.length > 1) {
-      return { mode: 'multi', aiIds: mentions, explicit: true, allAiIds: aiIds };
-    }
+    if (selected) return { mode: 'multi', aiIds: [], explicit: true, allAiIds: aiIds };
     if (aiIds.length === 1) {
       return { mode: 'single', aiId: aiIds[0], explicit: false, aiIds };
     }
@@ -863,6 +881,7 @@
     isDesktopManaged,
     extractExplicitMentions,
     resolveComposerTarget,
+    composerMention,
     buildModelChipState,
     blockedWorkTargets,
     buildOnboardingState,
@@ -1384,6 +1403,10 @@
       extBtn.textContent = t('composer.ext');
     }
     if (modelBtn) {
+      const {selected} = composerMention(taEl ? taEl.value : '', state);
+      document.getElementById('quick')?.querySelectorAll?.('[data-mention]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.mention === selected));
+      });
       const chip = buildModelChipState(taEl ? taEl.value : '', state, contacts);
       modelBtn.disabled = chip.disabled;
       modelBtn.classList.toggle('readonly', chip.readonly);
@@ -1602,19 +1625,10 @@
         return await executeSlashCompact(targetIds || [], explicitTarget);
       case 'mode': {
         const arg = String(argText || '').trim().toLowerCase();
-        if (!arg) {
-          if (typeof toggleMode === 'function') await toggleMode();
-          return true;
-        }
+        if (!arg) return await toggleMode();
         const want = (arg === 'work' || arg === '干活') ? 'work' : ((arg === 'discuss' || arg === '讨论') ? 'discuss' : '');
         if (!want) { alert('用法：/mode discuss 或 /mode work'); return false; }
-        if (S && S.mode === want) return true;
-        if (want === 'work' && !confirm('切到干活模式？\n\n开启干活权限的成员可改文件与跑命令（每一步支持按步撤回）。')) return false;
-        const [ok, j] = await post(api('mode'), { mode: want });
-        if (!ok) { alert((j && j.error) || '切换模式失败'); return false; }
-        await loadState();
-        if (typeof poll === 'function') poll();
-        return true;
+        return await toggleMode(want);
       }
       case 'model':
         if (targetId && typeof openAi === 'function') openAi(targetId);
@@ -1920,6 +1934,7 @@
     const canBack = typeof hasModalBack === 'function' && hasModalBack();
     const tabs = [
       ['general', t('settings.general')],
+      ['personal', t('settings.personal')],
       ['cloud', t('settings.cloud')],
       ['agents', t('settings.agents')],
       ['extensions', t('settings.extensions')],
@@ -2061,6 +2076,12 @@
           openAppSettings('general');
         };
       });
+    } else if (tab === 'personal') {
+      const devices = document.getElementById('settingsPersonalDevices');
+      if (devices) devices.onclick = () => {
+        pushModalBack(() => openAppSettings('personal'));
+        startConnectionWizard('', 'mydevice');
+      };
     } else if (tab === 'cloud') {
       root.anyCloudAccount?.mount(body);
     } else if (tab === 'tutorial') {
@@ -2188,6 +2209,7 @@
     settingsTab = tab || settingsTab || 'general';
     const headings = {
       general: t('settings.general'),
+      personal: t('settings.personal'),
       cloud: t('settings.cloud'),
       agents: t('settings.agents'),
       extensions: t('settings.extensions'),
@@ -2195,6 +2217,7 @@
       about: t('settings.about'),
     };
     const bodyHtml = settingsTab === 'general' ? renderGeneralTab()
+      : settingsTab === 'personal' ? '<div class="settings-group"><h4>我的设备</h4><p class="hint">让手机、平板或另一台电脑以你的身份打开 AnY，或撤销已接入设备的权限。</p><button type="button" id="settingsPersonalDevices">管理我的设备</button></div>'
       : settingsTab === 'agents' ? renderAgentsTab()
       : settingsTab === 'about' ? renderAboutTab()
       : settingsTab === 'tutorial' ? ''
@@ -2352,7 +2375,17 @@
 
   const taEl = document.getElementById('ta');
   if (taEl) {
-    taEl.addEventListener('input', () => { syncComposerBar(); updateSlashMenu(); });
+    taEl.addEventListener('input', event => {
+      if (!event.isComposing && taEl.selectionEnd === taEl.value.length
+          && (/\s$/.test(taEl.value) || event.inputType === 'insertFromPaste')) {
+        const result = composerMention(taEl.value, typeof S !== 'undefined' ? S : null);
+        if (result.count > 1) {
+          taEl.value = result.text;
+          if (typeof saveDraft === 'function') saveDraft();
+        }
+      }
+      syncComposerBar(); updateSlashMenu();
+    });
     taEl.addEventListener('click', () => { syncComposerBar(); updateSlashMenu(); });
     taEl.addEventListener('keyup', e => {
       if (['ArrowLeft', 'ArrowRight'].includes(e.key)) updateSlashMenu();

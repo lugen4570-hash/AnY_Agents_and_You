@@ -28,7 +28,7 @@ from .terminal_brand import (
     AGENT_FALLBACKS, CORAL, GOLD, INK, MINT, MUTED_TEXT,
     PAPER, RAISED, RED, SILVER, TERMINAL_THEME, Splash, WelcomeMark, splash_enabled,
 )
-from .terminal_input import COMMANDS, Completion, Composer, plain
+from .terminal_input import COMMANDS, Completion, Composer, composer_mention, plain
 from .version import CLI_VERSION
 
 
@@ -1172,6 +1172,10 @@ class AnYTerminal(App):
             argument = parts[1] if len(parts) == 2 else ""
             if command not in COMMANDS:
                 self.notify("没有这个命令。输入 / 查看候选，发送以 / 开头的文字时用 //。", severity="warning")
+                return
+        if not command:
+            value = composer_mention(value, self.state.get("participants", [])).strip()
+            if not value:
                 return
         local = {"help": self.action_help, "new": self.action_new_room, "resume": self.action_resume,
                  "status": self.show_status, "quit": self.exit,

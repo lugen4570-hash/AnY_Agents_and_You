@@ -75,8 +75,10 @@ class MultiRoom(unittest.TestCase):
         self.assertEqual(call("POST", rp(room, "rename"), {"title": "\n"})[0], 409)
         self.assertEqual(call("POST", rp(room, "rename"), {"title": "越权"}, auth=False)[0], 403)
         self.assertEqual(call("POST", "/api/rooms/new", {**body, "permissions": {"codex": {"work": "true"}}})[0], 400)
+        previous_messages = list(room.messages)
         self.assertEqual(call("POST", rp(room, "mode"), {"mode": "work"})[0], 200)
-        self.assertEqual(room.messages[-1]["text"], "切到干活模式")
+        self.assertEqual(room.mode(), "work")
+        self.assertEqual(room.messages, previous_messages)
         self.assertEqual(call("POST", rp(room, "members"), {"participants": ["codex"], "permissions": {"codex": {"work": False}}})[0], 200)
         self.assertEqual(room.messages[-1]["text"], "已关闭干活权限：codex")
         room.meta["codex_session"] = "old-codex-session"

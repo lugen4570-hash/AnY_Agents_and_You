@@ -1201,7 +1201,6 @@ class Room:
             self.meta["mode"] = mode
             self.state["chain"] = 0
             self.save_meta()
-            self.system_note("切到干活模式" if mode == "work" else "切回讨论模式")
         agents.stop_codex(self)   # 两种模式加载的工具不一样，下一轮按新模式重起
         return True, ""
 
@@ -1635,7 +1634,7 @@ class Room:
                 quoted = reply_to["speaker"] if reply_to and reply_to["speaker"] in self.ais else None
                 want = [n for n in names if n not in ("用户",)]
                 targets = [n for n in want if n in self.ais]
-                if not want and not outside_human:  # 外部真人必须明确点名，不由普通发言自动唤起
+                if not names and not outside_human:  # 明确点名用户时，不自动叫 AI；外部真人须明确点名 AI
                     targets = [quoted] if quoted else list(self.ais)
                 elif want and not targets:                 # @ 了一个不在会里的 AI：别顺手把别人叫起来
                     if outside_human and dispatch_errors is not None:
