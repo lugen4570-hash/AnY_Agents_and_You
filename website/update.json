@@ -1,8 +1,8 @@
 {
   "app": "AnY",
-  "version": "2.8.39",
-  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.39.exe",
-  "sha256": "ef909247ddc047336a9eb02d0ca39d403d492189a087336d04aa1bc12c41bca3",
-  "size": 13673140,
-  "notes": "AnY 2.8.39 细化 CLI 启动画面标志。"
+  "version": "2.8.41",
+  "url": "https://lugen4570-hash.github.io/AnY_Agents_and_You/downloads/AnY-Setup-2.8.41.exe",
+  "sha256": "0deee3b666b452057e8fb4d37f787a9ae76cb08c1c0b977fc3710b1df03d12c3",
+  "size": 13678776,
+  "notes": "AnY 2.8.41 支持不归属项目的独立会话、Harness 的 [AnY] 标签和会话自动清理。"
 }
