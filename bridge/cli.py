@@ -8,7 +8,7 @@ from http.cookies import CookieError, SimpleCookie
 from threading import Lock
 from urllib.parse import quote
 
-from .version import VERSION
+from .version import CLI_VERSION, VERSION
 
 
 class CliError(Exception):
@@ -88,9 +88,56 @@ def port_number(value):
     return port
 
 
+def _run_cli_update(*, check_only: bool, as_json: bool) -> int:
+    from . import cli_updater
+
+    result = cli_updater.check()
+    if not check_only and result.get("state") == "available" and result.get("release"):
+        if not result.get("can_install"):
+            if as_json:
+                print(json.dumps({**result, "error": "当前为源码模式，请在源码目录运行 git pull 更新。"}, ensure_ascii=False))
+            else:
+                print(
+                    f"发现 AnY CLI 新版本 v{result['latest']}（当前 v{result['current']}）。\n"
+                    "当前不是通过官方终端安装脚本部署的环境，请在源码目录运行 git pull 更新。",
+                    file=sys.stderr,
+                )
+            return 1
+        try:
+            installed = cli_updater.install_update(result["release"])
+        except Exception as error:
+            if as_json:
+                print(json.dumps({**result, "state": "error", "error": str(error)}, ensure_ascii=False))
+            else:
+                print(f"AnY CLI 更新失败：{error}", file=sys.stderr)
+            return 1
+        if as_json:
+            print(json.dumps(installed, ensure_ascii=False))
+        else:
+            print(f"AnY CLI 已更新至 v{installed['installed']}（commit {installed['commit'][:7]}），桌面端未受影响。")
+            print("重新运行 any 即可使用新版 CLI。")
+        return 0
+
+    if as_json:
+        out = {k: v for k, v in result.items() if k != "release"}
+        print(json.dumps(out, ensure_ascii=False))
+    elif result["state"] == "error":
+        print(f"检查 AnY CLI 更新失败：{result['error']}", file=sys.stderr)
+        return 1
+    elif result["state"] == "available":
+        print(f"发现 AnY CLI 新版本 v{result['latest']}（当前 v{result['current']}）。")
+        if result["notes"]:
+            print(result["notes"])
+        print("运行 any update（或在终端内输入 /update install）即可独立更新 CLI。" if result["can_install"]
+              else "当前为源码模式，请在源码目录运行 git pull 更新。")
+    else:
+        print(f"AnY CLI 当前已是最新版本（v{result['current']}，桌面端后台 v{VERSION}，两者独立更新）。")
+    return 1 if result["state"] == "error" else 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="any", description="AnY 终端客户端")
-    parser.add_argument("--version", action="version", version=f"AnY {VERSION}")
+    parser.add_argument("--version", action="version", version=f"AnY CLI {CLI_VERSION}")
     parser.add_argument("--port", type=port_number, default=os.environ.get("ROUNDTABLE_PORT", "8765"),
                         help="本机后台端口（默认 8765 或 ROUNDTABLE_PORT）")
     commands = parser.add_subparsers(dest="command")
@@ -104,7 +151,13 @@ def main(argv=None):
     messages = commands.add_parser("messages", help="读取指定会话消息，输出 JSON")
     messages.add_argument("room", help="会话 ID")
     messages.add_argument("--since", type=int, default=0, help="上次响应的 next 游标")
+    upd = commands.add_parser("update", help="检查或更新 AnY CLI（与桌面端更新分离）")
+    upd.add_argument("--check", action="store_true", help="只检查是否有 CLI 新版本")
+    upd.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     args = parser.parse_args(argv)
+
+    if args.command == "update":
+        return _run_cli_update(check_only=args.check, as_json=args.json)
 
     if args.command == "serve":
         os.environ["ROUNDTABLE_PORT"] = str(args.port)

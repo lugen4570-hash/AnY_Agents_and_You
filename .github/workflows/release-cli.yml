@@ -1,0 +1,37 @@
+name: Verify AnY CLI Release
+
+on:
+  push:
+    tags:
+      - "cli-v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CLI test dependencies
+        run: python -m pip install -e ".[cli]"
+      - name: Verify tag matches CLI_VERSION
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_ver=$(python -c "from bridge.version import CLI_VERSION; print(CLI_VERSION)")
+          if [[ "${GITHUB_REF_NAME}" != "cli-v${cli_ver}" ]]; then
+            echo "CLI tag ${GITHUB_REF_NAME} does not match CLI_VERSION (${cli_ver})" >&2
+            exit 1
+          fi
+      - name: Run CLI and updater tests
+        run: python -m unittest tests.test_cli tests.test_cli_updater tests.test_cli_installer_and_website
+      - name: Verify fresh CLI bootstrap and any --help
+        run: python packaging/smoke_cli_install.py

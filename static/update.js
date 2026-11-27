@@ -39,6 +39,7 @@
     }
     else if(data.state==='installing')body+='<p>正在安装更新，AnY 将关闭并在安装完成后重新打开。</p>';
     else if(data.state==='installed')body+='<p>安装完成。如果 AnY 没有自动重新打开，请退出后重新打开。</p>';
+    else if(data.state==='cli_only')body+='<p>当前由 AnY CLI 后台运行。CLI 更新已与桌面端分离，请在终端输入 <code>/update</code> 或运行 <code>any update</code>。</p>';
     else if(data.state==='current')body+='<p>当前已是最新发布版本（'+esc(data.latest)+'）。</p>';
     else body+='<p role="alert">'+esc(data.error||'正在检查更新…')+'</p>';
     box.innerHTML=body+'<p><a href="'+officialDownloads+'" target="_blank" rel="noopener noreferrer">打开官网下载页</a></p>';

@@ -65,7 +65,7 @@ def ensure_backend(port):
 
     directory = Path(os.environ.get("ROUNDTABLE_LOG_DIR") or data_directory()).resolve()
     log = directory / "cli-server.log"
-    env = dict(os.environ, ROUNDTABLE_LOG_DIR=str(directory), ROUNDTABLE_OWNER_LIFECYCLE="1")
+    env = dict(os.environ, ROUNDTABLE_LOG_DIR=str(directory), ROUNDTABLE_OWNER_LIFECYCLE="1", ROUNDTABLE_CLI_MODE="1")
     options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {"start_new_session": True}
     try:
         directory.mkdir(parents=True, exist_ok=True)

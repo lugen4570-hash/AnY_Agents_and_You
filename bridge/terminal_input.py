@@ -47,6 +47,7 @@ COMMANDS = {
     "announce": Command("更新或清空会议目标", "[目标]", optional=True),
     "todo": Command("添加看板待办", "内容"),
     "done": Command("完成看板待办", "编号"),
+    "update": Command("检查或更新 AnY CLI 终端版", "[check|install]", optional=True),
     "help": Command("查看键盘操作和命令"),
     "quit": Command("退出终端客户端"),
 }

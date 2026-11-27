@@ -173,8 +173,8 @@ class CojamCliTest(unittest.TestCase):
                 self.assertIsNone(app.room)
                 self.assertFalse(app.query_one("#chat").display)
                 self.assertFalse(app.query(Footer))
-                from bridge.version import VERSION
-                self.assertIn(VERSION, app.export_screenshot())
+                from bridge.version import CLI_VERSION
+                self.assertIn(CLI_VERSION, app.export_screenshot())
                 self.assertIn("新建项目", app.export_screenshot())
                 self.assertEqual(app.query_one("#rooms", OptionList).highlighted_option.id, existing.id)
                 await pilot.press("enter")
@@ -210,6 +210,31 @@ class CojamCliTest(unittest.TestCase):
                 app.composer.set_text("/mo")
                 await pilot.press("down", "tab")
                 self.assertEqual(app.composer.prompt.text, "/mode ")
+                app.composer.set_text("/mode")
+                self.assertEqual(app.composer.suggestions[0].label, "/mode")
+                app.composer.set_text("/upd")
+                self.assertEqual([c.label for c in app.composer.suggestions], ["/update"])
+                app.composer.set_text("/update ")
+                self.assertEqual([c.label for c in app.composer.suggestions], ["check", "install"])
+                with patch("bridge.cli_updater.check", return_value={
+                    "state": "available", "channel": "cli", "current": "2.8.40", "latest": "2.8.41",
+                    "commit": "b" * 40, "sha256": "c" * 64, "size": 128, "url": "", "notes": "CLI 新特性",
+                    "mode": "managed", "can_install": True, "root": DATA.name, "launcher": "",
+                    "release": {"version": "2.8.41", "commit": "b" * 40}, "error": "",
+                }) as cli_check, patch("bridge.cli_updater.install_update", return_value={
+                    "state": "installed", "installed": "2.8.41", "commit": "b" * 40,
+                }) as cli_install:
+                    app.composer.set_text("/update")
+                    await pilot.press("enter")
+                    await wait_for(pilot, lambda: any("发现 AnY CLI 新版本 v2.8.41" in line.text
+                                                      for line in app.query_one(RichLog).lines))
+                    cli_install.assert_not_called()
+                    app.composer.set_text("/update install")
+                    await pilot.press("enter")
+                    await wait_for(pilot, lambda: any("AnY CLI 已更新至 v2.8.41" in line.text
+                                                      for line in app.query_one(RichLog).lines))
+                    self.assertEqual(cli_check.call_count, 2)
+                    cli_install.assert_called_once()
                 app.composer.set_text("/mode")
                 self.assertEqual(app.composer.suggestions[0].label, "/mode")
                 await pilot.press("tab")

@@ -39,6 +39,7 @@ python -m pip install -e ".[cli]"
 | 管理回复 | 生成期间按 `Esc` 或 `/stop [ID]` 停止回复，`/compact [ID]` 压缩上下文 |
 | 切换模式 | `/mode discuss` 或 `/mode work` |
 | 设置模型 | `/model` 依次选择可配置的成员、模型及可选思考强度。也可输入 `/model ID MODEL [EFFORT]`，用 `default` 选会话默认值 |
+| 检查与更新 CLI | `/update`（或 `/update check`）独立检查 CLI 新版本；`/update install` 下载并切换 CLI 版本（与桌面端互不干扰）。终端外部也可运行 `any update [--check]` |
 | 帮助和退出 | `F1` 或 `/help`，`Ctrl+Q` 或 `/quit` 退出客户端 |
 
 已连接的 Agent 仍由 AnY 后台调度。用 `@codex` 等成员 ID 发言后，聊天区会显示回复，输入框上方会显示正在生成的进度。要在原生终端继续一个受支持的现有会话，输入 `/handoff codex`，再把显示的续接命令复制到另一个终端运行。结束后输入 `/return codex`，把这个成员收回到 AnY。其他支持交接的 CLI 可以替换相应的成员 ID。

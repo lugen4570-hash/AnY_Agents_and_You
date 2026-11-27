@@ -275,12 +275,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._external_get(path, q)
         if path.startswith("/api/") and not self._from_browser():
             return self._json(403, {"error": USER_ONLY_MSG})
-        if path == "/api/update/check":
+        if path in ("/api/update/check", "/api/update/status"):
+            if os.environ.get("ROUNDTABLE_CLI_MODE") == "1":
+                from .version import CLI_VERSION
+                return self._json(200, {
+                    "state": "cli_only",
+                    "channel": "desktop",
+                    "current": CLI_VERSION,
+                    "desktop_version": VERSION,
+                    "can_install": False,
+                    "error": "",
+                    "message": "当前后台由 AnY CLI 启动，桌面端与 CLI 更新已分离；请在终端运行 /update 或 any update。",
+                })
             from . import updater
-            return self._json(200, updater.check())
-        if path == "/api/update/status":
-            from . import updater
-            return self._json(200, updater.status())
+            return self._json(200, updater.check() if path == "/api/update/check" else updater.status())
         if path == "/api/server/runtime":
             from .common import LOG_DIR
             from .server_runtime import installation
@@ -587,6 +595,8 @@ class Handler(BaseHTTPRequestHandler):
                     body["conflict_name"] = error.conflict_name
                 return self._json(error.code, body)
         if path == "/api/update/download":
+            if os.environ.get("ROUNDTABLE_CLI_MODE") == "1":
+                return self._json(409, {"error": "当前后台由 AnY CLI 启动，请直接在终端运行 /update 或 any update。"})
             if not self._is_local_owner():
                 return self._json(403, {"error": "请在运行 AnY 的电脑上下载更新"})
             from . import updater
@@ -599,6 +609,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as error:
                 return self._json(409, {"error": str(error)})
         if path == "/api/update/install":
+            if os.environ.get("ROUNDTABLE_CLI_MODE") == "1":
+                return self._json(409, {"error": "当前后台由 AnY CLI 启动，请直接在终端运行 /update install 或 any update。"})
             if not self._is_local_owner() or bool(getattr(self, "_device_id", "")):
                 return self._json(403, {"error": "请在运行 AnY 的电脑上安装更新"})
             if any(row.get("running") or row.get("queued") for row in R.rooms.listing()):

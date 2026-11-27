@@ -22,13 +22,14 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, OptionList, RichLog, Select, SelectionList, Static
 from textual.widgets.option_list import Option
 
+from . import cli_updater
 from .cli import CliError, room_path
 from .terminal_brand import (
     AGENT_FALLBACKS, CORAL, GOLD, INK, MINT, MUTED_TEXT,
     PAPER, RAISED, RED, SILVER, TERMINAL_THEME, Splash, WelcomeMark, splash_enabled,
 )
 from .terminal_input import COMMANDS, Completion, Composer, plain
-from .version import VERSION
+from .version import CLI_VERSION
 
 
 CLI_VIAS = ("cli", "codex", "claude")
@@ -522,6 +523,7 @@ class AnYTerminal(App):
         self._transcript_items: list[Any] = []
         self._transcript_width: int | None = None
         self.splash_active = False
+        self.updating_cli = False
 
     @property
     def composer(self):
@@ -540,7 +542,7 @@ class AnYTerminal(App):
                                           ("\n/ 命令 · @ 点名成员", f"dim {MUTED_TEXT}"),
                                           ("\nF3 看板与成员 · F1 帮助", f"dim {MUTED_TEXT}")),
                             id="masthead-tips", markup=False)
-                        yield Static(f"  v{VERSION} · Agents and You", id="masthead-tagline", markup=False)
+                        yield Static(f"  v{CLI_VERSION} · Agents and You", id="masthead-tagline", markup=False)
                 with Horizontal(id="project-actions"):
                     yield Label("项目与会话", id="projects-heading", classes="heading")
                     yield Button("新建会话", id="home-new", compact=True, classes="link-button")
@@ -591,7 +593,7 @@ class AnYTerminal(App):
             mark.compact = compact
             mark.redraw()
         with suppress(Exception):
-            self.query_one("#masthead").border_title = f" AnY v{VERSION} "
+            self.query_one("#masthead").border_title = f" AnY v{CLI_VERSION} "
 
     def update_masthead(self):
         try:
@@ -1144,6 +1146,8 @@ class AnYTerminal(App):
         if index == 0:
             if command == "mode":
                 return {"discuss": "讨论模式", "work": "干活模式"}, ""
+            if command == "update":
+                return {"check": "检查 CLI 新版本", "install": "下载并安装 CLI 新版本"}, ""
             if command == "invite":
                 return {row["id"]: row["label"] for row in self.state.get("agents", [])
                         if row["enabled"] and row["id"] not in participants}, ""
@@ -1188,6 +1192,17 @@ class AnYTerminal(App):
                 self.notify("用法 /connect ID cli 或 /connect ID acp。先用 /scan 查找程序。", severity="warning")
                 return
             self.submit("/api/discovery/connect", {"id": parts[0], "via": parts[1]}, draft=event.text)
+            return
+        if command == "update":
+            sub = argument.strip().lower()
+            if sub not in ("", "check", "install"):
+                self.notify("用法 /update、/update check 或 /update install", severity="warning")
+                return
+            if self.updating_cli:
+                self.notify("正在检查或更新 CLI，请稍候…", severity="warning")
+                return
+            self.composer.set_text("")
+            self.run_cli_update(install=(sub == "install"))
             return
         if not self.room:
             self.notify("请先选择或创建会话。", severity="warning")
@@ -1333,3 +1348,58 @@ class AnYTerminal(App):
             self.notify(plain(error), severity="error", markup=False)
         finally:
             self.sending = False
+
+    @work(group="cli-update")
+    async def run_cli_update(self, *, install: bool):
+        if self.updating_cli:
+            return
+        self.updating_cli = True
+        self.write("正在检查 AnY CLI 更新（与桌面端更新独立）…", "dim")
+        try:
+            result = await asyncio.to_thread(cli_updater.check)
+            state = result.get("state")
+            if state == "error":
+                msg = f"检查 AnY CLI 更新失败：{result.get('error') or '请检查网络后重试'}"
+                self.write(msg, RED)
+                self.notify(plain(msg), severity="error", markup=False)
+                return
+            if state != "available":
+                msg = f"AnY CLI 当前已是最新版本（v{result.get('current')}，独立于桌面端更新）。"
+                self.write(msg, "cyan")
+                return
+
+            notes = f"\n{result['notes']}" if result.get("notes") else ""
+            if not install:
+                hint = (
+                    "\n输入 /update install 即可下载并安装新版 CLI（不影响桌面端）。"
+                    if result.get("can_install")
+                    else "\n当前为源码运行模式，请在源码目录执行 git pull 更新。"
+                )
+                self.write(
+                    f"发现 AnY CLI 新版本 v{result['latest']}（当前 v{result['current']}）{notes}{hint}",
+                    GOLD,
+                )
+                return
+
+            if not result.get("can_install") or not result.get("release"):
+                msg = (
+                    f"发现 AnY CLI 新版本 v{result['latest']}（当前 v{result['current']}）。\n"
+                    "当前不是通过官方终端安装脚本部署的环境，请在源码目录执行 git pull 更新。"
+                )
+                self.write(msg, CORAL)
+                return
+
+            self.write(f"正在下载并安装 AnY CLI v{result['latest']}…", "cyan")
+            installed = await asyncio.to_thread(cli_updater.install_update, result["release"])
+            msg = (
+                f"AnY CLI 已更新至 v{installed['installed']}（{installed['commit'][:7]}），桌面端未受影响。\n"
+                "退出后重新运行 any 即可启用新版（可输入 /quit 退出）。"
+            )
+            self.write(msg, MINT)
+            self.notify("AnY CLI 更新完成，重新运行 any 即可生效。", timeout=6)
+        except Exception as error:
+            msg = f"AnY CLI 更新失败：{error}"
+            self.write(msg, RED)
+            self.notify(plain(msg), severity="error", markup=False)
+        finally:
+            self.updating_cli = False

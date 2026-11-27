@@ -134,17 +134,33 @@ jobs:
             'packaging/member-readme.md', 'packaging/start-member.bat', 'packaging/start-member.command'
           )
           New-Item -ItemType Directory -Force -Path _site/cli | Out-Null
-          git fetch --no-tags --depth=1 origin tag "v$version"
-          if ($LASTEXITCODE -ne 0) { throw "Could not fetch release source tag v$version" }
-          $commit = git rev-parse --verify "refs/tags/v$version^{commit}"
-          if ($LASTEXITCODE -ne 0) { throw "Release source tag v$version is unavailable" }
-          $cliArchive = "_site/cli/any-cli-$commit.tar.gz"
-          git archive --format=tar.gz --prefix=AnY-CLI/ --output=$cliArchive $commit -- @cliSources
+          $cliVersion = (Select-String '^CLI_VERSION = "(.*)"' bridge/version.py).Matches[0].Groups[1].Value
+          $cliMeta = if (Test-Path website/cli-release.json) { Get-Content website/cli-release.json -Raw | ConvertFrom-Json } else { $null }
+          $cliTagRef = git ls-remote --tags origin "cli-v$cliVersion"
+          if ($cliTagRef) {
+            git fetch --no-tags --depth=1 origin tag "cli-v$cliVersion"
+            if ($LASTEXITCODE -ne 0) { throw "Could not fetch CLI release tag cli-v$cliVersion" }
+            $cliCommit = git rev-parse --verify "refs/tags/cli-v$cliVersion^{commit}"
+          } elseif ($cliMeta -and $cliMeta.version -eq $cliVersion) {
+            $cliCommit = git rev-parse HEAD
+          } else {
+            git fetch --no-tags --depth=1 origin tag "v$version"
+            if ($LASTEXITCODE -ne 0) { throw "Could not fetch release source tag v$version" }
+            $cliCommit = git rev-parse --verify "refs/tags/v$version^{commit}"
+          }
+          if ($LASTEXITCODE -ne 0) { throw "CLI source commit resolution failed" }
+          $cliArchive = "_site/cli/any-cli-$cliCommit.tar.gz"
+          git archive --format=tar.gz --prefix=AnY-CLI/ --output=$cliArchive $cliCommit -- @cliSources
           if ($LASTEXITCODE -ne 0) { throw "CLI source bundle build failed" }
+          $cliNotes = if ($cliMeta -and $cliMeta.version -eq $cliVersion -and $cliMeta.notes) { [string]$cliMeta.notes } else { "" }
           @{
-            commit = $commit
+            app = "AnY-CLI"
+            version = $cliVersion
+            commit = $cliCommit
+            url = "https://lugen4570-hash.github.io/AnY_Agents_and_You/cli/any-cli-$cliCommit.tar.gz"
             sha256 = (Get-FileHash -LiteralPath $cliArchive -Algorithm SHA256).Hash.ToLowerInvariant()
             size = (Get-Item -LiteralPath $cliArchive).Length
+            notes = $cliNotes
           } | ConvertTo-Json | Set-Content _site/cli/current.json -Encoding utf8NoBOM
 
           $macName = "AnY-$version-macOS-Python.zip"
