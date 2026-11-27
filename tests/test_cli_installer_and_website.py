@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -26,6 +27,7 @@ class CliInstallerAndWebsiteTests(unittest.TestCase):
             raw = (ROOT / rel).read_bytes()
             self.assertNotIn(b'\r', raw, f'{rel} must use LF line endings')
 
+    @unittest.skipUnless(shutil.which('powershell') or shutil.which('pwsh'), 'powershell is needed for the syntax parse test')
     def test_powershell_installer_parses_without_syntax_errors(self):
         ps1 = ROOT / 'website' / 'install-cli.ps1'
         script = (
