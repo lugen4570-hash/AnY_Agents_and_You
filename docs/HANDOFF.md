@@ -1,5 +1,12 @@
 # AnY 交接摘要
 
+## AnY 2.8.43 与 CLI 2.8.42 发布
+
+- 联系人向导重构、单成员点名与模式切换调整已发布。桌面端源码为 `7ecf01bd543aa6901c54d3b80836bcdc2944f314`，CLI 标签 `cli-v2.8.42` 指向同一提交。首次 `v2.8.42` 的 Windows 回归发现重构后旧测试未更新，未生成 Release。修正测试后使用新版本发布。
+- [桌面发布流水线](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45986035848)及 CLI Windows、Linux 验证通过。Windows 完整回归、安装及数据保留验证通过，两种 macOS 构建通过。Release 有 13 个附件，发布流水线核对了上传文件的大小和哈希。构建报告记录 `source_dirty: true`，具体构建时工作区变化尚未定位。Windows 程序未签名，原生桌面交互与 Apple Silicon 真机启动尚未验证。
+- [官网部署](https://github.com/lugen4570-hash/AnY_Agents_and_You/actions/runs/45987628730)完成。线上桌面更新清单为 2.8.43，CLI 清单为 2.8.42，首页和下载页指向新安装包。实际下载官网 Windows 安装包并核对大小 13719461 字节及 SHA-256 `a92881ada8141567552f755e63aa1f8193b5a9b6b92e5bf47b1d8d040b88cc54`。CLI 更新包由更新器校验大小及哈希后安装。
+- 本机 `D:\AnY` 桌面外壳及核心已更新到 2.8.43，核心使用隔离端口和数据目录启动，前端版本一致并退出。CLI `any --version` 显示 2.8.42，`any update --check` 确认为最新。原数据目录保留。朋友设备上的终端重复绘制和错位仍待在相同环境复现。
+
 最近更新：2026-11-27。
 
 ## AnY 2.8.41 正式发布（2026-11-27）
