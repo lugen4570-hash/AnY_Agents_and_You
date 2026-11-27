@@ -2,6 +2,14 @@
 
 名称写作 AnY，来自 Agents and You。品牌以 T2 定稿为准（[design/brand/any-logo-t2/](../design/brand/any-logo-t2/)）：液态黑铬 Y 托住彭罗斯金 A，底板是蓝宝石银玻璃。三端共用这套材质语言：**银色代表你（主持人），金色代表 AI，珊瑚色只用于需要你确认或出错的地方**。
 
+## 标志几何（2026-11 修订）
+
+- 穿插方向：**A 的右脚在前、左脚在后**——Y 的左臂在交叉区压过 A 的左腿，A 的右腿完整压在 Y 的右臂上。渲染管线在 `build_t2_kit.py` 的 `y-left-3d-bridge` / `shadow-y-left-over-a`。
+- A 整体垂直压扁（×0.85，围绕 y=105），腿型更宽更稳；常量在 `build_t2_kit.py` 的 `A_SQUASH`。
+- 透明版徽标的居中参考点是**字形正面对称轴 (128, 125.3)**，不是含 3D 厚度的包围盒中心——否则徽标在圆形徽环里会偏左上（官网 hero、GUI 空会话都受影响）。
+- 素材全部由参数化脚本再生成：`python design/brand/any-logo-t2/build_t2_kit.py` 产出 SVG，`render_pngs.py` 产出 PNG/ICO/ICNS；同步目标见 README（`static/`、`website/assets/`、`desktop_tauri/src-tauri/icons/`）。
+- CLI 里 A 的腿脚在 y=146 截断（刚过交叉点），长细脚在半块字符分辨率下只是噪点；见 `bridge/terminal_brand.py`。
+
 | 角色 | 色值 |
 | --- | --- |
 | 深底 / 墨色 | `#070A0F` · `#0B0E13` · `#101821` |

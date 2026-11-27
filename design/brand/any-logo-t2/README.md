@@ -1,6 +1,13 @@
 # AnY Logo T2 Production Kit
 
-Approved variant: **Round 7 `T2`** (`t2-penrose-sapphireglass.svg`).
+Approved variant: **Round 7 `T2`** (`t2-penrose-sapphireglass.svg`), with the 2026-11 revision:
+the gold `A` is vertically squashed (x0.85) and the interlock is flipped - the A's RIGHT leg
+now crosses in front of the Y's right arm while the Y's LEFT arm bridges over the A's left leg.
+Transparent/master centering uses the letterform front-face axis `(128, 125.3)`, not the
+wall-inclusive bounding box. Rebuild with `build_t2_kit.py` then `render_pngs.py`, and sync:
+`static/logo-collaboration.svg`, `static/logo-app.svg`, `static/logo.svg`, `static/logo-dark.svg`,
+`website/assets/logo.svg` (master); `static/logo-mark.svg`, `website/assets/t2-emblem.svg` (transparent);
+`static/icon-192.png`, `website/assets/icon-192.png` (png 192); `desktop_tauri/src-tauri/icons/` (ico/icns).
 
 ## SVG Masters
 - `any-logo-master.svg` — Full T2 emblem on sapphire-crystal double-bevel silvered-glass plaque (`static/logo-collaboration.svg`, `static/logo-app.svg`).

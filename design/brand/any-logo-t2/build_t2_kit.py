@@ -72,6 +72,12 @@ DY_Y = 8.0
 DX_A = 4.0
 DY_A = 3.0
 
+# Design revision (2026-11): the gold A is vertically squashed for a wider stance,
+# and the interlock is flipped - the A's RIGHT leg now crosses in front of the Y's
+# right arm while the Y's LEFT arm bridges over the A's left leg.
+A_SQUASH = 0.85
+A_SQUASH_CY = 105.0
+
 
 def build_t2_emblem_layers(include_mirror_shadow: bool) -> str:
     """Return the complete T2 Y+A emblem groups (optional through-glass mirror shadow)."""
@@ -140,46 +146,42 @@ def build_t2_emblem_layers(include_mirror_shadow: bool) -> str:
         (y_in_r(154.0) + 4.5, 154.0),
     ]
 
-    a_svg, a_back_d, geom = build_pure_penrose_a(B_TOP, B_BOT, with_walls=True, dx_a=DX_A, dy_a=DY_A)
+    a_svg, a_back_d, geom = build_pure_penrose_a(
+        B_TOP, B_BOT, with_walls=True, dx_a=DX_A, dy_a=DY_A, squash=A_SQUASH, squash_cy=A_SQUASH_CY
+    )
 
     y_l_zone: Poly = [(y_out_l(Y_TOP), Y_TOP), (y_in_l(Y_TOP), Y_TOP), (CX, Y_CROTCH), (CX, Y_STEM), (STEM_L, Y_STEM)]
     y_l_inner_wall: Poly = [(y_in_l(Y_TOP), Y_TOP), (CX, Y_CROTCH), (CX + DX_Y, Y_CROTCH + DY_Y), (y_in_l(Y_TOP) + DX_Y, Y_TOP + DY_Y)]
     y_r_zone: Poly = [(y_in_r(Y_TOP), Y_TOP), (y_out_r(Y_TOP), Y_TOP), (STEM_R, Y_STEM), (CX, Y_STEM), (CX, Y_CROTCH)]
 
     sh_a_on_y = []
-    for ap in (geom["left_leg"], geom["full_bar"]):
+    for ap in (geom["right_leg"], geom["full_bar"]):
         shifted = translate(ap, 5.5 + DX_A, 6.0 + DY_A)
         for yz in (y_l_zone, y_l_inner_wall, y_r_zone):
             c = clip_convex(shifted, yz)
             if len(c) >= 3 and abs(poly_area(c)) > 18.0:
                 sh_a_on_y.append(c)
 
-    bridge_clip_r: Poly = [(CX, 84.0), (242.0, 84.0), (242.0, 168.0), (CX, 168.0)]
-    br_r_inner = clip_convex(y_r_inner, bridge_clip_r)
-    br_r_outer = clip_convex(y_r_outer, bridge_clip_r)
-    br_r_glint = clip_convex(y_r_inner_glint, bridge_clip_r)
-    br_r_outer_glint = clip_convex(y_r_outer_glint, bridge_clip_r)
-    y_r_outer_wall: Poly = [
-        (y_out_r(Y_TOP), Y_TOP),
-        (y_out_r(Y_TOP) + DX_Y, Y_TOP + DY_Y),
-        (STEM_R + DX_Y, Y_STEM + DY_Y),
-        (STEM_R, Y_STEM),
-    ]
-    br_r_wall = clip_convex(y_r_outer_wall, bridge_clip_r)
-    br_r_stair = clip_convex(stair_r_poly, bridge_clip_r)
+    # Flipped interlock: the Y LEFT arm bridges OVER the A left leg (y = 84..168)
+    bridge_clip_l: Poly = [(14.0, 84.0), (CX, 84.0), (CX, 168.0), (14.0, 168.0)]
+    br_l_inner = clip_convex(y_l_inner, bridge_clip_l)
+    br_l_outer = clip_convex(y_l_outer, bridge_clip_l)
+    br_l_glint = clip_convex(y_l_glint, bridge_clip_l)
+    br_l_stair = clip_convex(st_l, bridge_clip_l)
+    br_l_wall = clip_convex(y_l_inner_wall, bridge_clip_l)
 
-    y_r_arm_with_wall: Poly = [
-        (y_in_r(Y_TOP), Y_TOP),
-        (y_out_r(Y_TOP), Y_TOP),
-        (y_out_r(Y_TOP) + DX_Y, Y_TOP + DY_Y),
-        (STEM_R + DX_Y, Y_STEM + DY_Y),
-        (STEM_R, Y_STEM),
+    # Shadows cast by the Y left bridge onto the A left leg
+    y_l_arm_with_wall: Poly = [
+        (y_out_l(Y_TOP), Y_TOP),
+        (y_in_l(Y_TOP), Y_TOP),
+        (y_in_l(Y_TOP) + DX_Y, Y_TOP + DY_Y),
+        (CX + DX_Y, Y_CROTCH + DY_Y),
         (CX, Y_CROTCH),
     ]
-    y_r_bridge_shadow_src = clip_convex(y_r_arm_with_wall, bridge_clip_r)
+    y_l_bridge_shadow_src = clip_convex(y_l_arm_with_wall, bridge_clip_l)
     sh_y_on_a = []
     for off in ((-4.5, -4.0), (5.5, 5.5)):
-        c1 = clip_convex(translate(y_r_bridge_shadow_src, *off), geom["right_leg"])
+        c1 = clip_convex(translate(y_l_bridge_shadow_src, *off), geom["left_leg"])
         if len(c1) >= 3 and abs(poly_area(c1)) > 16.0:
             sh_y_on_a.append(c1)
 
@@ -217,22 +219,21 @@ def build_t2_emblem_layers(include_mirror_shadow: bool) -> str:
       {''.join(f'<path fill="#06080B" fill-opacity="0.75" d="{path_d(c)}"/>' for c in sh_a_on_y)}
     </g>
     {a_svg}
-    <g id="shadow-y-right-over-a">
+    <g id="shadow-y-left-over-a">
       {''.join(f'<path fill="#3D2202" fill-opacity="0.74" d="{path_d(c)}"/>' for c in sh_y_on_a)}
     </g>
-    <g id="y-right-3d-bridge">
-      {f'<path fill="url(#bc-wall-right)" d="{path_d(br_r_wall)}"/>' if len(br_r_wall) >= 3 else ''}
-      {f'<path fill="url(#bc-bright)" d="{path_d(br_r_inner)}"/>' if len(br_r_inner) >= 3 else ''}
-      {f'<path fill="url(#bc-deep)" d="{path_d(br_r_outer)}"/>' if len(br_r_outer) >= 3 else ''}
-      {f'<path fill="#C7D2DE" fill-opacity="0.42" d="{path_d(br_r_stair)}"/>' if len(br_r_stair) >= 3 else ''}
-      {f'<path fill="#DCE4EC" fill-opacity="0.68" d="{path_d(br_r_glint)}"/>' if len(br_r_glint) >= 3 else ''}
-      {f'<path fill="#CFD8E3" fill-opacity="0.58" d="{path_d(br_r_outer_glint)}"/>' if len(br_r_outer_glint) >= 3 else ''}
+    <g id="y-left-3d-bridge">
+      {f'<path fill="url(#bc-wall-inner)" d="{path_d(br_l_wall)}"/>' if len(br_l_wall) >= 3 else ''}
+      {f'<path fill="url(#bc-deep)" d="{path_d(br_l_inner)}"/>' if len(br_l_inner) >= 3 else ''}
+      {f'<path fill="url(#bc-bright)" d="{path_d(br_l_outer)}"/>' if len(br_l_outer) >= 3 else ''}
+      {f'<path fill="#C7D2DE" fill-opacity="0.45" d="{path_d(br_l_stair)}"/>' if len(br_l_stair) >= 3 else ''}
+      {f'<path fill="#E4EBF2" fill-opacity="0.72" d="{path_d(br_l_glint)}"/>' if len(br_l_glint) >= 3 else ''}
     </g>"""
 
 
 def write_master_svg() -> str:
     t_defs, t_bg = silvered_glass_defs_and_bg(T2_GLASS_CFG)
-    cx_off, cy_off = -DX_Y * 0.42, -DY_Y * 0.42
+    cx_off, cy_off = 0.0, 1.7
     layers = build_t2_emblem_layers(include_mirror_shadow=True)
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title">
   <title id="title">AnY</title>
@@ -257,7 +258,7 @@ def write_transparent_svg() -> str:
   <defs>
     {high_gloss_and_penrose_defs()}
   </defs>
-  <g id="emblem" transform="translate(128 128) scale(0.96) translate(-133 -130)">{layers}
+  <g id="emblem" transform="translate(128 128) scale(0.96) translate(-128 -125.3)">{layers}
   </g>
 </svg>'''
     out = os.path.join(KIT_DIR, "any-logo-transparent.svg")
@@ -269,6 +270,9 @@ def write_transparent_svg() -> str:
 def build_mono_paths() -> str:
     """Build true 1-color interlocking Y + A silhouette with clean transparent crossing gaps (zero white knockouts)."""
     gap_h = 5.2  # horizontal gap corresponding to ~4.5px perpendicular clearance along 60-degree edges
+
+    def sq(poly: Poly) -> Poly:
+        return [(x, A_SQUASH_CY + (y - A_SQUASH_CY) * A_SQUASH) for x, y in poly]
 
     # Upper-left Y arm (kept strictly left of A left outer edge - gap)
     y_arm_l: Poly = [(y_out_l(Y_TOP), Y_TOP), (y_in_l(Y_TOP), Y_TOP), (CX, Y_CROTCH), (STEM_L, Y_STEM)]
@@ -303,22 +307,22 @@ def build_mono_paths() -> str:
     p_apex_r_seam = (CX + u_a, A_APEX_Y + u_a * S3)
     p_apex_l_seam = (CX - u_a, A_APEX_Y + u_a * S3)
     hp_yr_l = (-1.0, -1.0 / S3, CX + Y_CROTCH / S3 - gap_h)
-    a_left_leg: Poly = [P_TOP, p_apex_r_seam, P_LI_RI, (a_li(A_BOT), A_BOT), (a_lo(A_BOT), A_BOT)]
-    a_upper_right: Poly = [
+    a_left_leg: Poly = sq([P_TOP, p_apex_r_seam, P_LI_RI, (a_li(A_BOT), A_BOT), (a_lo(A_BOT), A_BOT)])
+    a_upper_right: Poly = sq([
         P_TOP,
         (a_ro(B_BOT + 18.0), B_BOT + 18.0),
         (a_ri(B_BOT + 18.0), B_BOT + 18.0),
         P_LI_RI,
         p_apex_l_seam,
-    ]
+    ])
     a_upper_right_clipped = clip_halfplane(a_upper_right, *hp_yr_l)
-    a_crossbar_raw: Poly = [(a_lm_x := a_lo(B_TOP) + W_A * 0.5, B_TOP), (a_ro(B_TOP), B_TOP), (a_ro(B_BOT), B_BOT), (a_lo(B_BOT) + W_A * 0.5, B_BOT)]
+    a_crossbar_raw: Poly = sq([(a_lm_x := a_lo(B_TOP) + W_A * 0.5, B_TOP), (a_ro(B_TOP), B_TOP), (a_ro(B_BOT), B_BOT), (a_lo(B_BOT) + W_A * 0.5, B_BOT)])
     _ = a_lm_x
     a_crossbar_clipped = clip_halfplane(a_crossbar_raw, *hp_yr_l)
 
     # Lower right gold foot of A emerging cleanly right of Y right outer edge + gap
     # y_out_r(y) = CX + (Y_CROTCH - y)/S3 + 30 -> x >= CX + (Y_CROTCH - y)/S3 + 30 + gap_h
-    a_lower_right_raw: Poly = [(a_ri(118.0), 118.0), (a_ro(118.0), 118.0), (a_ro(A_BOT), A_BOT), (a_ri(A_BOT), A_BOT)]
+    a_lower_right_raw: Poly = sq([(a_ri(118.0), 118.0), (a_ro(118.0), 118.0), (a_ro(A_BOT), A_BOT), (a_ri(A_BOT), A_BOT)])
     a_lower_right_foot = clip_halfplane(a_lower_right_raw, 1.0, 1.0 / S3, -(CX + Y_CROTCH / S3 + 30.0 + gap_h))
 
     parts: List[Poly] = [
@@ -330,7 +334,10 @@ def build_mono_paths() -> str:
         a_crossbar_clipped,
         a_lower_right_foot,
     ]
-    return " ".join(path_d(p) for p in parts if len(p) >= 3 and abs(poly_area(p)) > 16.0)
+    # The flipped interlock is the horizontal mirror of the original construction
+    # (both letterforms are symmetric about CX; only the over-under direction changes).
+    mirrored = [[(256.0 - x, y) for x, y in reversed(p)] for p in parts]
+    return " ".join(path_d(p) for p in mirrored if len(p) >= 3 and abs(poly_area(p)) > 16.0)
 
 
 def write_mono_svgs() -> Tuple[str, str]:
@@ -353,7 +360,14 @@ def write_mono_svgs() -> Tuple[str, str]:
 def write_readme() -> str:
     content = """# AnY Logo T2 Production Kit
 
-Approved variant: **Round 7 `T2`** (`t2-penrose-sapphireglass.svg`).
+Approved variant: **Round 7 `T2`** (`t2-penrose-sapphireglass.svg`), with the 2026-11 revision:
+the gold `A` is vertically squashed (x0.85) and the interlock is flipped - the A's RIGHT leg
+now crosses in front of the Y's right arm while the Y's LEFT arm bridges over the A's left leg.
+Transparent/master centering uses the letterform front-face axis `(128, 125.3)`, not the
+wall-inclusive bounding box. Rebuild with `build_t2_kit.py` then `render_pngs.py`, and sync:
+`static/logo-collaboration.svg`, `static/logo-app.svg`, `static/logo.svg`, `static/logo-dark.svg`,
+`website/assets/logo.svg` (master); `static/logo-mark.svg`, `website/assets/t2-emblem.svg` (transparent);
+`static/icon-192.png`, `website/assets/icon-192.png` (png 192); `desktop_tauri/src-tauri/icons/` (ico/icns).
 
 ## SVG Masters
 - `any-logo-master.svg` — Full T2 emblem on sapphire-crystal double-bevel silvered-glass plaque (`static/logo-collaboration.svg`, `static/logo-app.svg`).

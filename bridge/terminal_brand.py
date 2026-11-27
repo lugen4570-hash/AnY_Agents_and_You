@@ -36,10 +36,19 @@ TERMINAL_THEME = Theme(
 )
 
 # Logo geometry in the SVG's 256-space (design/brand/any-logo-t2).
+# The brand A is vertically squashed (x0.85 around y=105): apex y 44 -> 53.15, crossbar
+# y 103/121 -> 103.3/118.6. In the terminal the long thin feet read as noise, so the legs
+# are cut at y=146 - just past where they exit the Y's arms (~y 139) - instead of 156.85.
+def _sq(y):
+    return 105.0 + (y - 105.0) * 0.85
+
+
 Y_POLY = ((26.2, 38), (56.2, 38), (128, 162.3), (199.8, 38), (229.8, 38), (142, 190),
           (142, 202), (156, 202), (156, 214), (100, 214), (100, 202), (114, 202), (114, 190))
-A_OUTER = ((128, 44), (198.4, 166), (183.9, 166), (158, 121), (98, 121), (72.1, 166), (57.6, 166))
-A_HOLE = ((128, 69.1), (108.4, 103), (147.6, 103))
+A_LEG_CUT = 146.0
+A_OUTER = ((128, _sq(44)), (191.1, A_LEG_CUT), (176.6, A_LEG_CUT), (158, _sq(121)), (98, _sq(121)),
+           (79.4, A_LEG_CUT), (64.9, A_LEG_CUT))
+A_HOLE = ((128, _sq(69.1)), (108.4, _sq(103)), (147.6, _sq(103)))
 BBOX = (26.2, 38.0, 229.8 - 26.2, 214 - 38.0)   # x, y, w, h
 
 
@@ -104,7 +113,7 @@ def _pixels(cols, rows):
                     in_y = _inside(Y_POLY, x, y)
                     in_a = _inside(A_OUTER, x, y) != _inside(A_HOLE, x, y)
                     if in_a and in_y:
-                        shape = "Y" if x > 128 and 84 <= y <= 168 else "A"
+                        shape = "Y" if x < 128 and 84 <= y <= 168 else "A"
                     elif in_a:
                         shape = "A"
                     elif in_y:
